@@ -1,5 +1,5 @@
 import {
-  createRound, dealRound, finishAuction, distributeRoundTalon, skartRoundPlayer, announceSkartCount,
+  createRound, dealRound, finishAuction, distributeRoundTalon, skartRoundPlayer,
   createInitialState, setPartnership, recordPartnerCall, startDeclarations, startPlay,
   declareFigureInGame, playCard, canRaiseGameContraInGame, raiseGameContraInGame,
   canRaiseDeclarationContraInGame, raiseDeclarationContraInGame,
@@ -85,6 +85,30 @@ export class AuthoritativeRoom {
       if (options.persisted.roomId !== this.roomId) throw new Error('A mentett szobaazonosító nem egyezik.');
       if (JSON.stringify(options.persisted.playerIds) !== JSON.stringify(this.playerIds)) throw new Error('A mentett játékoslista nem egyezik.');
       this.round = { ...options.persisted.round, parallelSkart: true };
+      // Migrate older rooms that skipped the fektetés-közlés subphase.
+      if (this.round.takerId && this.round.players.every(p => p.skart.length === p.receivedTalon.length)) {
+        const needsAnnouncements = (this.round.phase === 'skart' || (this.round.phase === 'partner-call' && !this.round.skartAnnouncementResolved))
+          ? this.round.players.some(p => p.playerId !== this.round.takerId && (p.skartTarokkCount ?? 0) > 0 && !p.skartAnnounced)
+          : false;
+        const preparedPlayers = this.round.players.map(p => {
+          if (p.playerId === this.round.takerId) {
+            return { ...p, skartRevealed: (p.skartTarokkCount ?? p.skart.filter(c => c.kind === 'tarokk').length) > 0, skartAnnounced: true };
+          }
+          return { ...p, skartAnnounced: (p.skartTarokkCount ?? p.skart.filter(c => c.kind === 'tarokk').length) === 0 ? true : p.skartAnnounced };
+        });
+        if (this.round.phase === 'skart' || (this.round.phase === 'partner-call' && !this.round.skartAnnouncementResolved)) {
+          this.round = {
+            ...this.round,
+            players: preparedPlayers,
+            phase: needsAnnouncements ? 'skart-announcement' : 'partner-call',
+            currentPlayerId: needsAnnouncements ? undefined : this.round.takerId,
+            skartAnnouncementResolved: !needsAnnouncements,
+            eventLog: [...(this.round.eventLog ?? []), needsAnnouncements
+              ? 'A fektetés lezárult; szükség szerint következik a fektetés közlése.'
+              : 'A fektetés lezárult; következik a kötelező partnerhívás.'],
+          };
+        }
+      }
       this.game = options.persisted.game;
       this.declarationWindow = options.persisted.declarationWindow;
       this.sequence = options.persisted.sequence;
@@ -132,7 +156,7 @@ export class AuthoritativeRoom {
   get currentPlayerId(): string | undefined {
     if (this.game?.phase === 'declarations') return this.round.currentPlayerId;
     if (this.game) return this.game.players[this.game.nextPlayerIndex]?.id;
-    if (this.round.phase === 'skart' && this.round.parallelSkart) return this.round.currentPlayerId;
+    if ((this.round.phase === 'skart' || this.round.phase === 'skart-announcement') && this.round.parallelSkart) return this.round.currentPlayerId;
     return this.round.currentPlayerId ?? this.round.auction.seats[this.round.auction.currentSeat]?.playerId;
   }
 
@@ -140,7 +164,12 @@ export class AuthoritativeRoom {
     this.assertPlayer(playerId);
     if (!this.connected.has(playerId)) throw new Error('A játékos nincs csatlakoztatva ehhez a szobához.');
     if (phaseOf(this.round, this.game) === 'auction' && !this.isReady()) throw new Error('A szoba még nem teljes; várd meg mind a négy játékost.');
-    if (expectedSequence !== this.sequence) throw new Error(`Elavult játékállapot: várt szekvencia ${this.sequence}.`);
+    const parallelSkartStale = (action.type === 'skart' || action.type === 'skart-announce')
+      && (this.round.phase === 'skart' || this.round.phase === 'skart-announcement')
+      && this.round.parallelSkart
+      && Number.isFinite(expectedSequence)
+      && expectedSequence <= this.sequence;
+    if (expectedSequence !== this.sequence && !parallelSkartStale) throw new Error(`Elavult játékállapot: várt szekvencia ${this.sequence}.`);
     const before = this.exportPersistedState();
     try {
       const beforePhase = phaseOf(this.round, this.game);
@@ -165,7 +194,12 @@ export class AuthoritativeRoom {
     this.assertPlayer(playerId);
     if (!this.connected.has(playerId)) throw new Error('A játékos nincs csatlakoztatva ehhez a szobához.');
     if (phaseOf(this.round, this.game) === 'auction' && !this.isReady()) throw new Error('A szoba még nem teljes; várd meg mind a négy játékost.');
-    if (expectedSequence !== this.sequence) throw new Error(`Elavult játékállapot: várt szekvencia ${this.sequence}.`);
+    const parallelSkartStale = (action.type === 'skart' || action.type === 'skart-announce')
+      && (this.round.phase === 'skart' || this.round.phase === 'skart-announcement')
+      && this.round.parallelSkart
+      && Number.isFinite(expectedSequence)
+      && expectedSequence <= this.sequence;
+    if (expectedSequence !== this.sequence && !parallelSkartStale) throw new Error(`Elavult játékállapot: várt szekvencia ${this.sequence}.`);
     const before = this.exportPersistedState();
     try {
       const beforePhase = phaseOf(this.round, this.game);
@@ -197,7 +231,8 @@ export class AuthoritativeRoom {
   private turnTimeoutMs(): number {
     switch (phaseOf(this.round, this.game)) {
       case 'auction': return 90_000;
-      case 'skart': return 120_000;
+      case 'skart':
+      case 'skart-announcement': return 120_000;
       case 'partner-call': return 60_000;
       case 'declarations': return 60_000;
       case 'play': return 45_000;
@@ -221,7 +256,13 @@ export class AuthoritativeRoom {
         result.skartCardIds = allDone ? [] : legalSkartCards(p.hand, this.round.invitedTarokk).map(c => c.id);
         result.skartComplete = p.skart.length === p.receivedTalon.length;
         result.skartAllDone = allDone;
-        result.skartAnnounced = p.skartAnnounced;
+      }
+      return result;
+    }
+    if (!this.game && this.round.phase === 'skart-announcement' && this.round.parallelSkart) {
+      const p = this.round.players.find(x => x.playerId === playerId);
+      if (p && p.playerId !== this.round.takerId && (p.skartTarokkCount ?? 0) > 0 && !p.skartAnnounced) {
+        result.skartNeedsAnnouncement = true;
       }
       return result;
     }
@@ -242,7 +283,6 @@ export class AuthoritativeRoom {
         result.skartCount = p.receivedTalon.length;
         result.skartCardIds = legalSkartCards(p.hand, this.round.invitedTarokk).map(c => c.id);
         result.skartComplete = p.skart.length === p.receivedTalon.length;
-        result.skartAnnounced = p.skartAnnounced;
       }
     } else if (!this.game && this.round.phase === 'partner-call') {
       result.partnerRanks = ([18, 19, 20] as const).filter(rank => !!resolveCalledPartner(playerId, rank, this.round.players.map(p => ({ id: p.playerId, hand: p.hand }))));
@@ -337,7 +377,11 @@ export class AuthoritativeRoom {
       if (!p) return [];
       const allDone = this.round.players.every(x => x.skart.length === x.receivedTalon.length);
       if (!allDone && p.skart.length < p.receivedTalon.length) return ['skart'];
-      if (allDone && this.currentPlayerId === playerId && !p.skartAnnounced) return ['skart-announce'];
+      return [];
+    }
+    if (!this.game && this.round.phase === 'skart-announcement') {
+      const p = this.round.players.find(x => x.playerId === playerId);
+      if (p && p.playerId !== this.round.takerId && (p.skartTarokkCount ?? 0) > 0 && !p.skartAnnounced) return ['skart-announce'];
       return [];
     }
     const current = this.currentPlayerId;
@@ -349,7 +393,7 @@ export class AuthoritativeRoom {
       if (this.round.phase === 'auction') return legalAuctionActions(this.round.auction, playerId, handsMap(this.round)).length ? ['auction'] : [];
       if (this.round.phase === 'skart') {
         const p = this.round.players.find(x => x.playerId === playerId)!;
-        return p.skart.length < p.receivedTalon.length ? ['skart'] : ['skart-announce'];
+        return p.skart.length < p.receivedTalon.length ? ['skart'] : [];
       }
       if (this.round.phase === 'partner-call') return ['partner-call'];
     }
@@ -368,7 +412,7 @@ export class AuthoritativeRoom {
     switch (action.type) {
       case 'auction': return this.applyAuction(playerId, action.action);
       case 'skart': return this.applySkart(playerId, action.cardIds);
-      case 'skart-announce': return this.applySkartAnnounce(playerId);
+      case 'skart-announce': return this.applySkartAnnouncement(playerId);
       case 'partner-call': return this.applyPartnerCall(playerId, action.rank);
       case 'declaration': return this.applyDeclaration(playerId, action.action);
       case 'game-contra': return this.applyGameContra(playerId);
@@ -402,8 +446,19 @@ export class AuthoritativeRoom {
     this.round = skartRoundPlayer(this.round, playerId, cards as Card[]);
   }
 
-  private applySkartAnnounce(playerId: string): void {
-    this.round = announceSkartCount(this.round, playerId);
+
+  private applySkartAnnouncement(playerId: string): void {
+    if (this.round.phase !== 'skart-announcement') throw new Error('Most nincs fektetésközlési fázis.');
+    const p = this.round.players.find(x => x.playerId === playerId);
+    if (!p) throw new Error('Ismeretlen játékos.');
+    if (playerId === this.round.takerId) throw new Error('A felvevő fektetett tarokkjait a rendszer automatikusan felfedi.');
+    if ((p.skartTarokkCount ?? 0) <= 0) throw new Error('Nincs mit közölni: nem fektettél tarokkot.');
+    if (p.skartAnnounced) throw new Error('A fektetés már közölve lett.');
+    const players = this.round.players.map(x => x.playerId === playerId ? { ...x, skartAnnounced: true } : x);
+    const pending = players.some(x => x.playerId !== this.round.takerId && (x.skartTarokkCount ?? 0) > 0 && !x.skartAnnounced);
+    this.round = pending
+      ? { ...this.round, players, currentPlayerId: undefined, eventLog: [...this.round.eventLog, `${playerId} közölte: tarokkot fektetett.`] }
+      : { ...this.round, players, phase: 'partner-call', currentPlayerId: this.round.takerId, skartAnnouncementResolved: true, eventLog: [...this.round.eventLog, `${playerId} közölte: tarokkot fektetett.`, 'Minden szükséges fektetésközlés lezárult; következik a kötelező partnerhívás.'] };
   }
 
   private applyPartnerCall(playerId: string, rank: 18 | 19 | 20): void {
@@ -486,9 +541,16 @@ export class AuthoritativeRoom {
 
   private applyPlayCard(playerId: string, cardId: string): void {
     if (!this.game || this.game.phase !== 'play') throw new Error('Most nincs lejátszási fázis.');
+    const completedBefore = this.game.completedTricks.length;
     this.game = playCard(this.game, playerId, cardId);
+    const firstTrickJustClosed = completedBefore === 0 && this.game.completedTricks.length === 1;
     const nextPhase: RoundState['phase'] = this.game.phase === 'scoring' ? 'scoring' : this.game.phase === 'complete' ? 'complete' : 'play';
-    this.round = { ...this.round, currentPlayerId: nextPhase === 'play' ? this.game.players[this.game.nextPlayerIndex]?.id : undefined, phase: nextPhase };
+    this.round = {
+      ...this.round,
+      players: firstTrickJustClosed ? this.round.players.map(p => p.playerId === this.round.takerId ? { ...p, skartRevealed: false } : p) : this.round.players,
+      currentPlayerId: nextPhase === 'play' ? this.game.players[this.game.nextPlayerIndex]?.id : undefined,
+      phase: nextPhase,
+    };
 
   }
 

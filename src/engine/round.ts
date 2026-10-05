@@ -5,7 +5,7 @@ import { TalonDistribution, distributeTalon, applyFektetes } from './talon.js';
 import { resolveAuctionOutcome, AuctionOutcome } from './auctionOutcome.js';
 import { createInitialState, GameState, setPartnership } from './game.js';
 
-export type RoundPhase = 'auction'|'talon-distribution'|'skart'|'partner-call'|'declarations'|'play'|'scoring'|'complete';
+export type RoundPhase = 'auction'|'talon-distribution'|'skart'|'skart-announcement'|'partner-call'|'declarations'|'play'|'scoring'|'complete';
 
 export interface PlayerRoundState {
   playerId: string;
@@ -35,6 +35,8 @@ export interface RoundState {
   talon: Card[];
   /** Multiplayer rooms use simultaneous fektetés; single-player/AI keeps turn-based fektetés. */
   parallelSkart?: boolean;
+  /** True once all required fektetés-közlések have been resolved. */
+  skartAnnouncementResolved?: boolean;
 }
 
 export function createRound(playerIds: string[], firstBidder = 0): RoundState {
@@ -141,39 +143,136 @@ export function skartRoundPlayer(state: RoundState, playerId: string, cards: Car
   const count = player.receivedTalon.length;
   if (cards.length !== count) throw new Error(`Pontosan ${count} lapot kell fektetni.`);
   const result = applyFektetes(player.hand, cards, count, playerId === state.takerId, state.invitedTarokk);
-  let players = state.players.map(p => p.playerId === playerId ? {...p, hand: result.remainingHand, skart: result.skart, skartTarokkCount: result.tarokkCount, skartRevealed: state.parallelSkart ? false : result.revealSkart, skartAnnounced: false} : p);
+  let players = state.players.map(p => p.playerId === playerId
+    ? { ...p, hand: result.remainingHand, skart: result.skart, skartTarokkCount: result.tarokkCount, skartRevealed: state.parallelSkart ? false : result.revealSkart, skartAnnounced: false }
+    : p);
   const allDone = players.every(p => p.skart.length === p.receivedTalon.length);
-  if (allDone && state.takerId) players = players.map(p => p.playerId === state.takerId ? {...p, skartRevealed: true} : p);
   if (!allDone) {
     const next = state.parallelSkart ? undefined : nextSkarter(players, playerId);
-    return {...state, players, currentPlayerId: next, eventLog: [...state.eventLog, `${playerId} fektetett ${result.tarokkCount} tarokkot.`]};
+    return { ...state, players, currentPlayerId: next, eventLog: [...state.eventLog, `${playerId} fektetett ${result.tarokkCount} tarokkot.`] };
   }
-  const announcer = nextSkartAnnouncer(players, state.takerId);
-  return announcer
-    ? {...state, players, phase: 'skart', currentPlayerId: announcer, eventLog: [...state.eventLog, `${playerId} fektetett ${result.tarokkCount} tarokkot.`, 'Minden játékos befejezte a fektetést; következik a fektetés bemondása.']}
-    : {...state, players, phase: 'partner-call', currentPlayerId: state.takerId, eventLog: [...state.eventLog, `${playerId} fektetett ${result.tarokkCount} tarokkot.`, 'Minden játékos befejezte a fektetést; következik a partnerhívás.']};
+  if (!state.takerId) throw new Error('Nincs felvevő a fektetés lezárásához.');
+
+  // A single-player/AI engine keeps its established serial fektetés-közlés flow.
+  // The authoritative multiplayer room uses the dedicated parallel subphase below.
+  if (!state.parallelSkart) {
+    const nextAnnouncer = nextSkartAnnouncer(players, state.takerId);
+    if (nextAnnouncer) {
+      return {
+        ...state,
+        players,
+        phase: 'skart',
+        currentPlayerId: nextAnnouncer,
+        eventLog: [...state.eventLog, `${playerId} fektetett ${result.tarokkCount} tarokkot.`, 'A fektetés lezárult; következik a fektetett tarokkok számának közlése.']
+      };
+    }
+    return {
+      ...state,
+      players,
+      phase: 'partner-call',
+      currentPlayerId: state.takerId,
+      skartAnnouncementResolved: true,
+      eventLog: [...state.eventLog, `${playerId} fektetett ${result.tarokkCount} tarokkot.`, 'Minden szükséges fektetésközlés lezárult; következik a kötelező partnerhívás.']
+    };
+  }
+
+  // Multiplayer: a fektetés lezárult. A felvevő tarokkos fektetése automatikusan
+  // nyilvánossá válik az első ütés végéig; a nem felvevő tarokkos fektetését az
+  // érintett játékos közli. Minden érintett védő egyszerre közölhet.
+  const preparedPlayers = players.map(p => {
+    if (p.playerId === state.takerId) {
+      const hasTakerTarokk = (p.skartTarokkCount ?? 0) > 0;
+      return { ...p, skartRevealed: hasTakerTarokk, skartAnnounced: true };
+    }
+    return {
+      ...p,
+      skartAnnounced: (p.skartTarokkCount ?? 0) === 0,
+    };
+  });
+
+  const pendingAnnouncements = preparedPlayers.filter(p =>
+    p.playerId !== state.takerId && (p.skartTarokkCount ?? 0) > 0 && !p.skartAnnounced
+  ).length;
+  const takerHasTarokk = (preparedPlayers.find(p => p.playerId === state.takerId)?.skartTarokkCount ?? 0) > 0;
+  const baseLog = [
+    `${playerId} fektetett ${result.tarokkCount} tarokkot.`,
+    ...(takerHasTarokk ? ['A felvevő fektetett tarokkjai nyilvánosak az első ütés végéig.'] : []),
+  ];
+
+  if (pendingAnnouncements > 0) {
+    return {
+      ...state,
+      players: preparedPlayers,
+      phase: 'skart-announcement',
+      currentPlayerId: undefined,
+      skartAnnouncementResolved: false,
+      eventLog: [
+        ...state.eventLog,
+        ...baseLog,
+        'A tarokkot fektetett nem felvevő játékosoknak közölniük kell a fektetést; ez megelőzi a partnerhívást.'
+      ]
+    };
+  }
+
+  return {
+    ...state,
+    players: preparedPlayers,
+    phase: 'partner-call',
+    currentPlayerId: state.takerId,
+    skartAnnouncementResolved: true,
+    eventLog: [
+      ...state.eventLog,
+      ...baseLog,
+      'Minden szükséges fektetésközlés lezárult; következik a kötelező partnerhívás.'
+    ]
+  };
 }
 
-
 export function announceSkartCount(state: RoundState, playerId: string): RoundState {
-  if (state.phase !== 'skart') throw new Error('Ebben a fázisban nincs fektetési bemondás.');
-  if (state.currentPlayerId !== playerId) throw new Error('Most nem ennek a játékosnak kell bemondania.');
-  const player = state.players.find(p => p.playerId === playerId);
-  if (!player || player.skart.length !== player.receivedTalon.length) throw new Error('A játékos még nem fejezte be a fektetést.');
-  if (!state.players.every(p => p.skart.length === p.receivedTalon.length)) throw new Error('A fektetés bemondása csak mind a négy játékos fektetése után kezdődhet.');
-  if (player.skartAnnounced) throw new Error('A fektetés már be lett mondva.');
-  const players = state.players.map(p => p.playerId === playerId ? {...p, skartAnnounced: true} : p);
-  const allAnnounced = players.every(p => p.skartAnnounced);
-  if (!allAnnounced) {
-    const next = nextSkartAnnouncer(players, state.takerId);
-    return next ? {...state, players, currentPlayerId: next, eventLog: [...state.eventLog, `${playerId} bemondta: ${player.skartTarokkCount ?? 0} tarokk.`]} : {...state, players};
+  if (!state.parallelSkart) {
+    if (state.phase !== 'skart') throw new Error('Most nincs fektetésközlési fázis.');
+    if (state.currentPlayerId !== playerId) throw new Error('Most nem ennek a játékosnak kell bemondania a fektetést.');
+    const player = state.players.find(p => p.playerId === playerId);
+    if (!player) throw new Error('Ismeretlen játékos.');
+    if (player.skart.length !== player.receivedTalon.length) throw new Error('A játékos még nem fejezte be a fektetést.');
+    if (player.skartAnnounced) throw new Error('A fektetés már közölve lett.');
+
+    const players = state.players.map(p => p.playerId === playerId ? { ...p, skartAnnounced: true } : p);
+    const allAnnounced = players.every(p => p.skartAnnounced);
+    if (!allAnnounced) {
+      const next = nextSkartAnnouncer(players, state.takerId);
+      return { ...state, players, currentPlayerId: next, eventLog: [...state.eventLog, `${playerId} közölte a fektetett tarokkok számát.`] };
+    }
+    if (!state.takerId) throw new Error('Nincs felvevő a partnerhíváshoz.');
+    return {
+      ...state,
+      players,
+      phase: 'partner-call',
+      currentPlayerId: state.takerId,
+      skartAnnouncementResolved: true,
+      eventLog: [...state.eventLog, `${playerId} közölte a fektetett tarokkok számát.`, 'Minden szükséges fektetésközlés lezárult; következik a kötelező partnerhívás.']
+    };
   }
-  const reveal = players.find(p => p.playerId === state.takerId)?.skart ?? [];
-  if (!state.takerId) throw new Error('Nincs felvevő a fektetési bemondás lezárásához.');
-  // The partner call is always the first declaration-stage action.
-  // Even when the auction fixed an invite, the taker must explicitly call
-  // that tarokk before making any other declaration.
-  return {...state, players, phase: 'partner-call', currentPlayerId: state.takerId, eventLog: [...state.eventLog, `${playerId} bemondta: ${player.skartTarokkCount ?? 0} tarokk.`, `A felvevő fektetett lapjai felfedve: ${reveal.map(c => c.id).join(', ')}`]};
+
+  if (state.phase !== 'skart-announcement') throw new Error('Most nincs fektetésközlési fázis.');
+  const player = state.players.find(p => p.playerId === playerId);
+  if (!player) throw new Error('Ismeretlen játékos.');
+  if (playerId === state.takerId) throw new Error('A felvevő fektetett tarokkjait a rendszer automatikusan felfedi.');
+  if ((player.skartTarokkCount ?? 0) <= 0) throw new Error('Nincs mit közölni: nem fektettél tarokkot.');
+  if (player.skartAnnounced) throw new Error('A fektetés már közölve lett.');
+  const players = state.players.map(p => p.playerId === playerId ? { ...p, skartAnnounced: true } : p);
+  const pending = players.some(p => p.playerId !== state.takerId && (p.skartTarokkCount ?? 0) > 0 && !p.skartAnnounced);
+  if (pending) {
+    return { ...state, players, currentPlayerId: undefined, eventLog: [...state.eventLog, `${playerId} közölte: tarokkot fektetett.`] };
+  }
+  return {
+    ...state,
+    players,
+    phase: 'partner-call',
+    currentPlayerId: state.takerId,
+    skartAnnouncementResolved: true,
+    eventLog: [...state.eventLog, `${playerId} közölte: tarokkot fektetett.`, 'Minden szükséges fektetésközlés lezárult; következik a kötelező partnerhívás.']
+  };
 }
 
 function nextSkartAnnouncer(players: PlayerRoundState[], takerId?: string): string | undefined {

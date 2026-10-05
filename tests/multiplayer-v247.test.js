@@ -22,8 +22,9 @@ function chooseCards(room, playerId, count) {
   const before = room.snapshotFor('A');
   assert.ok(before.legalActionTypes.includes('skart'));
   const aCards = chooseCards(room,'A',before.legalActionHints.skartCount);
-  room.dispatch('A',room.sequence,{type:'skart',cardIds:aCards});
-  // B can submit even though A just acted and C is offline; there is no serial turn.
+  const parallelBaseSequence = room.sequence;
+  room.dispatch('A',parallelBaseSequence,{type:'skart',cardIds:aCards});
+  // B may still submit using the sequence it saw before A acted; these are independent parallel actions.
   assert.ok(room.snapshotFor('B').legalActionTypes.includes('skart'));
   const bCards = chooseCards(room,'B',room.snapshotFor('B').legalActionHints.skartCount);
   room.dispatch('B',room.sequence,{type:'skart',cardIds:bCards});
@@ -36,8 +37,8 @@ function chooseCards(room, playerId, count) {
   room.dispatch('C',room.sequence,{type:'skart',cardIds:cCards});
 }
 
-// After all four have fektetett, the taker's skart is revealed and the sequential skart-count
-// announcements begin. The announcement phase then advances to partner-call after the last count.
+// After all four have fektetett, the multiplayer room may enter the automatic
+// fektetés-közlés phase before the mandatory partner-call, when a defender fektetett tarokkot.
 {
   const room = createAuthoritativeRoom({roomId:'SKART-REVEAL', playerIds:['A','B','C','D'], dealerIndex:0, random:()=>0.123});
   room.dispatch('B',0,{type:'auction',action:{type:'bid',contract:'three'}});
@@ -50,21 +51,35 @@ function chooseCards(room, playerId, count) {
     const count=room.snapshotFor(id).legalActionHints.skartCount;
     room.dispatch(id,room.sequence,{type:'skart',cardIds:chooseCards(room,id,count)});
   }
-  assert.equal(room.round.phase,'skart');
-  assert.ok(room.currentPlayerId && room.currentPlayerId !== taker);
+  assert.equal(room.round.phase,'skart-announcement');
+  assert.equal(room.currentPlayerId,undefined);
   const publicToA=room.snapshotFor('A');
   const takerView=publicToA.players.find(p=>p.id===taker);
   assert.ok(Array.isArray(takerView.revealedSkart));
   assert.equal(takerView.revealedSkart.length,3);
-  assert.equal(room.snapshotFor('A').players.find(p=>p.id==='C').skartCount,undefined);
-
-  let guard=4;
-  while(room.round.phase==='skart' && guard--) {
-    const cur=room.currentPlayerId;
-    const view=room.snapshotFor(cur);
-    assert.deepEqual(view.legalActionTypes,['skart-announce']);
-    room.dispatch(cur,room.sequence,{type:'skart-announce'});
+  const announcementActors = room.playerIds.filter(id => id !== taker && (room.round.players.find(p=>p.playerId===id)?.skartTarokkCount ?? 0) > 0);
+  assert.ok(announcementActors.length > 0);
+  for (const id of announcementActors) {
+    assert.ok(room.snapshotFor(id).legalActionTypes.includes('skart-announce'));
+    room.dispatch(id, room.sequence, {type:'skart-announce'});
   }
   assert.equal(room.round.phase,'partner-call');
   assert.equal(room.currentPlayerId,taker);
+  assert.ok(room.snapshotFor(taker).legalActionTypes.includes('partner-call'));
+
+  const partnerRank=room.snapshotFor(taker).legalActionHints.partnerRanks[0];
+  room.dispatch(taker,room.sequence,{type:'partner-call',rank:partnerRank});
+  assert.equal(room.round.phase,'declarations');
+  assert.equal(room.currentPlayerId,taker);
+  assert.equal(room.snapshotFor(taker).legalActionTypes.includes('declaration'), true);
+
+  // Three consecutive passes in the actual declaration phase start the play phase.
+  const declOrder=[taker,...room.playerIds.filter(id=>id!==taker)];
+  for (const id of declOrder.slice(0,3)) {
+    assert.equal(room.snapshotFor(id).legalActionHints.declarationActions.some(a=>a.type==='pass'), true);
+    room.dispatch(id,room.sequence,{type:'declaration',action:{type:'pass'}});
+  }
+  assert.equal(room.round.phase,'play');
+  assert.equal(room.game.phase,'play');
+  assert.equal(room.currentPlayerId,room.round.startingPlayerId);
 }
