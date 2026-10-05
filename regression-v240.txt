@@ -1,0 +1,2592 @@
+TAP version 13
+# Subtest: erős kézzel az AI nem automatikusan passzol
+ok 1 - erős kézzel az AI nem automatikusan passzol
+  ---
+  duration_ms: 52.655571
+  type: 'test'
+  ...
+# Subtest: gyenge, honőr nélküli kéznél az AI passzol
+ok 2 - gyenge, honőr nélküli kéznél az AI passzol
+  ---
+  duration_ms: 12.419611
+  type: 'test'
+  ...
+# Subtest: első körben az XIX invit előnyben van a ritka XX önhívással szemben
+ok 3 - első körben az XIX invit előnyben van a ritka XX önhívással szemben
+  ---
+  duration_ms: 9.292865
+  type: 'test'
+  ...
+# Subtest: illusztrált stratégia: gyenge, védtelen Pagáttal a veszteségminimalizáló Szóló előnyös lehet
+ok 4 - illusztrált stratégia: gyenge, védtelen Pagáttal a veszteségminimalizáló Szóló előnyös lehet
+  ---
+  duration_ms: 10.427202
+  type: 'test'
+  ...
+# Subtest: 5 tarokkos, XX-XIX-XVIII nélküli védtelen Pagát is veszteségminimalizáló kéz
+ok 5 - 5 tarokkos, XX-XIX-XVIII nélküli védtelen Pagát is veszteségminimalizáló kéz
+  ---
+  duration_ms: 8.534627
+  type: 'test'
+  ...
+# Subtest: Skíz + Pagát + 7 tarokk esetén a Szóló agresszív stratégiai opció
+ok 6 - Skíz + Pagát + 7 tarokk esetén a Szóló agresszív stratégiai opció
+  ---
+  duration_ms: 15.326376
+  type: 'test'
+  ...
+# Subtest: Csak XXI + közvetlenül előtte Hármas: a fogási veszély visszafogja a licitet
+ok 7 - Csak XXI + közvetlenül előtte Hármas: a fogási veszély visszafogja a licitet
+  ---
+  duration_ms: 7.630453
+  type: 'test'
+  ...
+# Subtest: Csak XXI gyenge kézzel: a fogási veszély nem blokkolja a felvevőség keresését
+ok 8 - Csak XXI gyenge kézzel: a fogási veszély nem blokkolja a felvevőség keresését
+  ---
+  duration_ms: 8.689893
+  type: 'test'
+  ...
+# Subtest: XXI-fogási védekezés: 3-2-1 után a gyenge XXI-es tart, nem engedi ki automatikusan
+ok 9 - XXI-fogási védekezés: 3-2-1 után a gyenge XXI-es tart, nem engedi ki automatikusan
+  ---
+  duration_ms: 1.460701
+  type: 'test'
+  ...
+# Subtest: Skíz + XX + rövidebb tarokk: a talonigény miatt a kiengedés is valós stratégiai opció
+ok 10 - Skíz + XX + rövidebb tarokk: a talonigény miatt a kiengedés is valós stratégiai opció
+  ---
+  duration_ms: 7.175333
+  type: 'test'
+  ...
+# Subtest: 3→2 nem azonosítja automatikusan a Kettesest Skízként
+ok 11 - 3→2 nem azonosítja automatikusan a Kettesest Skízként
+  ---
+  duration_ms: 0.447131
+  type: 'test'
+  ...
+# Subtest: 3→2→1 után az eredeti Hármasos Szólója XIX invit, nem sima Szóló
+ok 12 - 3→2→1 után az eredeti Hármasos Szólója XIX invit, nem sima Szóló
+  ---
+  duration_ms: 0.644246
+  type: 'test'
+  ...
+# Subtest: 3→2→1→2 szabálytalan: Kettesre nincs visszalépési lehetőség
+ok 13 - 3→2→1→2 szabálytalan: Kettesre nincs visszalépési lehetőség
+  ---
+  duration_ms: 0.363286
+  type: 'test'
+  ...
+# Subtest: 3→2→1→Szóló XIX-invit: az invitáló nagyhonőre és legalább 5 tarokkra épül
+ok 14 - 3→2→1→Szóló XIX-invit: az invitáló nagyhonőre és legalább 5 tarokkra épül
+  ---
+  duration_ms: 0.266371
+  type: 'test'
+  ...
+# Subtest: explicit XIX-invit után csak XIX-et tartó fogadó emelhet, ha a kezek ismertek
+ok 15 - explicit XIX-invit után csak XIX-et tartó fogadó emelhet, ha a kezek ismertek
+  ---
+  duration_ms: 0.201629
+  type: 'test'
+  ...
+# Subtest: XIX-invit után a XIX-et tartó következő játékos nem passzol automatikusan
+ok 16 - XIX-invit után a XIX-et tartó következő játékos nem passzol automatikusan
+  ---
+  duration_ms: 5.743919
+  type: 'test'
+  ...
+# Subtest: XIX-invit után a partnerjelöltekből kiesik a már passzolt játékos
+ok 17 - XIX-invit után a partnerjelöltekből kiesik a már passzolt játékos
+  ---
+  duration_ms: 0.859258
+  type: 'test'
+  ...
+# Subtest: AI belief engine does not inspect hidden opponent hands
+ok 18 - AI belief engine does not inspect hidden opponent hands
+  ---
+  duration_ms: 3.454919
+  type: 'test'
+  ...
+# Subtest: called tarokk and declaration chain raise partner ownership prior without making it certain
+ok 19 - called tarokk and declaration chain raise partner ownership prior without making it certain
+  ---
+  duration_ms: 1.154075
+  type: 'test'
+  ...
+# Subtest: v1.88 bridges public AI beliefs into play-level partner tarokk scores
+ok 20 - v1.88 bridges public AI beliefs into play-level partner tarokk scores
+  ---
+  duration_ms: 24.871194
+  type: 'test'
+  ...
+# Subtest: v1.88 visible tarokks are not turned back into partner ownership certainty
+ok 21 - v1.88 visible tarokks are not turned back into partner ownership certainty
+  ---
+  duration_ms: 2.125698
+  type: 'test'
+  ...
+# Subtest: v1.88 partner-lead convention uses the bridged belief: suspected Skíz -> high trump
+ok 22 - v1.88 partner-lead convention uses the bridged belief: suspected Skíz -> high trump
+  ---
+  duration_ms: 9.466543
+  type: 'test'
+  ...
+# Subtest: v1.88 partner-lead convention uses seat: suspected XXI ahead -> small trump
+ok 23 - v1.88 partner-lead convention uses seat: suspected XXI ahead -> small trump
+  ---
+  duration_ms: 21.533633
+  type: 'test'
+  ...
+# Subtest: v1.92 detects an active opponent bird
+ok 24 - v1.92 detects an active opponent bird
+  ---
+  duration_ms: 2.085424
+  type: 'test'
+  ...
+# Subtest: v1.92 rewards taking an opponent-held prefix trick before deadline
+ok 25 - v1.92 rewards taking an opponent-held prefix trick before deadline
+  ---
+  duration_ms: 1.536418
+  type: 'test'
+  ...
+# Subtest: v1.92 discourages overtrumping the defensive partner
+ok 26 - v1.92 discourages overtrumping the defensive partner
+  ---
+  duration_ms: 0.42646
+  type: 'test'
+  ...
+# Subtest: v1.92 does not inspect hidden opponent hands when estimating threat
+ok 27 - v1.92 does not inspect hidden opponent hands when estimating threat
+  ---
+  duration_ms: 0.540147
+  type: 'test'
+  ...
+# Subtest: v2.29 one odd partner response does not erase the signal
+ok 28 - v2.29 one odd partner response does not erase the signal
+  ---
+  duration_ms: 2.41372
+  type: 'test'
+  ...
+# Subtest: v2.29 repeated clear mismatches downgrade the old interpretation
+ok 29 - v2.29 repeated clear mismatches downgrade the old interpretation
+  ---
+  duration_ms: 0.568733
+  type: 'test'
+  ...
+# Subtest: v2.29 high-value winning response is treated as possible tactical exception
+ok 30 - v2.29 high-value winning response is treated as possible tactical exception
+  ---
+  duration_ms: 1.905264
+  type: 'test'
+  ...
+# Subtest: v2.29 no public partner signal means no correction
+ok 31 - v2.29 no public partner signal means no correction
+  ---
+  duration_ms: 0.28228
+  type: 'test'
+  ...
+# Subtest: v2.26 stable communication line is stronger than unstable continuation
+ok 32 - v2.26 stable communication line is stronger than unstable continuation
+  ---
+  duration_ms: 2.283851
+  type: 'test'
+  ...
+# Subtest: v2.26 opponent ambiguity remains bounded and information-safe
+ok 33 - v2.26 opponent ambiguity remains bounded and information-safe
+  ---
+  duration_ms: 0.498849
+  type: 'test'
+  ...
+# Subtest: v2.26 no multi-trick evidence does not invent a line
+ok 34 - v2.26 no multi-trick evidence does not invent a line
+  ---
+  duration_ms: 0.392175
+  type: 'test'
+  ...
+# Subtest: v2.26 fragile counterfactual reduces communication value
+ok 35 - v2.26 fragile counterfactual reduces communication value
+  ---
+  duration_ms: 0.571031
+  type: 'test'
+  ...
+# Subtest: v2.30 recovery module is conservative without signal history
+ok 36 - v2.30 recovery module is conservative without signal history
+  ---
+  duration_ms: 1.609786
+  type: 'test'
+  ...
+# Subtest: v2.30 never forces a hard recovery outside tarokk replies
+ok 37 - v2.30 never forces a hard recovery outside tarokk replies
+  ---
+  duration_ms: 0.996078
+  type: 'test'
+  ...
+# Subtest: v2.27 current partner lead creates an acknowledgement stage
+ok 38 - v2.27 current partner lead creates an acknowledgement stage
+  ---
+  duration_ms: 2.855579
+  type: 'test'
+  ...
+# Subtest: v2.27 repeated compatible public replies become reinforcement
+ok 39 - v2.27 repeated compatible public replies become reinforcement
+  ---
+  duration_ms: 0.39961
+  type: 'test'
+  ...
+# Subtest: v2.27 old signal decays instead of becoming certainty
+ok 40 - v2.27 old signal decays instead of becoming certainty
+  ---
+  duration_ms: 0.3304
+  type: 'test'
+  ...
+# Subtest: v2.27 ambiguous response is not rewarded just because it is hard to read
+ok 41 - v2.27 ambiguous response is not rewarded just because it is hard to read
+  ---
+  duration_ms: 0.151126
+  type: 'test'
+  ...
+# Subtest: v2.27 no public signal means idle
+ok 42 - v2.27 no public signal means idle
+  ---
+  duration_ms: 0.134326
+  type: 'test'
+  ...
+# Subtest: Trull + four kings gets communication value in declaration strategy
+ok 43 - Trull + four kings gets communication value in declaration strategy
+  ---
+  duration_ms: 3.074624
+  type: 'test'
+  ...
+# Subtest: communication remains soft and does not create certainty
+ok 44 - communication remains soft and does not create certainty
+  ---
+  duration_ms: 0.286221
+  type: 'test'
+  ...
+# Subtest: v2.21 rewards a robust line over an optimistic partner-dependent line
+ok 45 - v2.21 rewards a robust line over an optimistic partner-dependent line
+  ---
+  duration_ms: 1.712102
+  type: 'test'
+  ...
+# Subtest: v2.21 detects partner-control fragility
+ok 46 - v2.21 detects partner-control fragility
+  ---
+  duration_ms: 0.314007
+  type: 'test'
+  ...
+# Subtest: v2.21 detects control fragility
+ok 47 - v2.21 detects control fragility
+  ---
+  duration_ms: 0.223637
+  type: 'test'
+  ...
+# Subtest: v2.21 leaves a stable line mostly intact
+ok 48 - v2.21 leaves a stable line mostly intact
+  ---
+  duration_ms: 0.263549
+  type: 'test'
+  ...
+# Subtest: v1.99: Szóló downstream vonal determinisztikus és nincs talon-szórása
+ok 49 - v1.99: Szóló downstream vonal determinisztikus és nincs talon-szórása
+  ---
+  duration_ms: 3.739784
+  type: 'test'
+  ...
+# Subtest: v1.99: talonos szerződés több determinisztikus világot vizsgál és valódi AI-fektetést használ
+ok 50 - v1.99: talonos szerződés több determinisztikus világot vizsgál és valódi AI-fektetést használ
+  ---
+  duration_ms: 21.54166
+  type: 'test'
+  ...
+# Subtest: v1.99: az erős downstream kéz magasabb vonalértéket kap, mint a gyenge kéz
+ok 51 - v1.99: az erős downstream kéz magasabb vonalértéket kap, mint a gyenge kéz
+  ---
+  duration_ms: 6.638353
+  type: 'test'
+  ...
+# Subtest: v1.99: az azonos kéz line search eredménye determinisztikus
+ok 52 - v1.99: az azonos kéz line search eredménye determinisztikus
+  ---
+  duration_ms: 7.079423
+  type: 'test'
+  ...
+# Subtest: v1.99: a downstream keresés nem használhat ellenfél rejtett kezét
+ok 53 - v1.99: a downstream keresés nem használhat ellenfél rejtett kezét
+  ---
+  duration_ms: 4.416895
+  type: 'test'
+  ...
+# Subtest: közös partiérték a három talonlap javítási lehetőségét beárazza
+ok 54 - közös partiérték a három talonlap javítási lehetőségét beárazza
+  ---
+  duration_ms: 1.345085
+  type: 'test'
+  ...
+# Subtest: két nagyhonőr és hosszú tarokkos kéz magasabb sikeresélyt kap
+ok 55 - két nagyhonőr és hosszú tarokkos kéz magasabb sikeresélyt kap
+  ---
+  duration_ms: 1.624554
+  type: 'test'
+  ...
+# Subtest: az aiStake ugyanazt a közös success-modellt használja
+ok 56 - az aiStake ugyanazt a közös success-modellt használja
+  ---
+  duration_ms: 0.721864
+  type: 'test'
+  ...
+# Subtest: a közös partiportfólió 50%-nál szimmetrikus kockázati alapon
+ok 57 - a közös partiportfólió 50%-nál szimmetrikus kockázati alapon
+  ---
+  duration_ms: 1.241449
+  type: 'test'
+  ...
+# Subtest: erős licitút pozitívabb, mint a passz tisztán gazdasági alapon
+ok 58 - erős licitút pozitívabb, mint a passz tisztán gazdasági alapon
+  ---
+  duration_ms: 0.267186
+  type: 'test'
+  ...
+# Subtest: gyenge licitút nem kap automatikus előnyt csak a szerződés névértéke miatt
+ok 59 - gyenge licitút nem kap automatikus előnyt csak a szerződés névértéke miatt
+  ---
+  duration_ms: 0.194832
+  type: 'test'
+  ...
+# Subtest: magas bemondási sikerarány magasabb portfólióértéket ad
+ok 60 - magas bemondási sikerarány magasabb portfólióértéket ad
+  ---
+  duration_ms: 0.740291
+  type: 'test'
+  ...
+# Subtest: kommunikáció növelheti a közös bemondási út értékét, de nem írja felül a reménytelen sikert
+ok 61 - kommunikáció növelheti a közös bemondási út értékét, de nem írja felül a reménytelen sikert
+  ---
+  duration_ms: 0.402431
+  type: 'test'
+  ...
+# Subtest: a kontraérték a tényleges break-probability-val együtt nő
+ok 62 - a kontraérték a tényleges break-probability-val együtt nő
+  ---
+  duration_ms: 0.488841
+  type: 'test'
+  ...
+# Subtest: a kontraút 50%-os break-becslésnél gazdaságilag semleges
+ok 63 - a kontraút 50%-os break-becslésnél gazdaságilag semleges
+  ---
+  duration_ms: 0.212015
+  type: 'test'
+  ...
+# Subtest: mordkontra után nincs további marginális kitettség
+ok 64 - mordkontra után nincs további marginális kitettség
+  ---
+  duration_ms: 0.306037
+  type: 'test'
+  ...
+# Subtest: communication does not make a hopeless declaration automatically good
+ok 65 - communication does not make a hopeless declaration automatically good
+  ---
+  duration_ms: 1.015032
+  type: 'test'
+  ...
+# Subtest: a strong communication signal can justify moderate risk
+ok 66 - a strong communication signal can justify moderate risk
+  ---
+  duration_ms: 0.218842
+  type: 'test'
+  ...
+# Subtest: counter value rises with realistic break probability
+ok 67 - counter value rises with realistic break probability
+  ---
+  duration_ms: 0.189732
+  type: 'test'
+  ...
+# Subtest: v2.28 declaration chain rewards a natural low-trump partner lead
+ok 68 - v2.28 declaration chain rewards a natural low-trump partner lead
+  ---
+  duration_ms: 15.640329
+  type: 'test'
+  ...
+# Subtest: v2.28 declaration chain discourages burning the communicated high trump on lead
+ok 69 - v2.28 declaration chain discourages burning the communicated high trump on lead
+  ---
+  duration_ms: 0.968243
+  type: 'test'
+  ...
+# Subtest: v2.28 partner reply can acknowledge the communicated target
+ok 70 - v2.28 partner reply can acknowledge the communicated target
+  ---
+  duration_ms: 0.791378
+  type: 'test'
+  ...
+# Subtest: v2.28 ordinary four kings without Trull does not invent a card signal
+ok 71 - v2.28 ordinary four kings without Trull does not invent a card signal
+  ---
+  duration_ms: 0.404352
+  type: 'test'
+  ...
+# Subtest: v2.28 failed declaration is not used as active communication
+ok 72 - v2.28 failed declaration is not used as active communication
+  ---
+  duration_ms: 2.422259
+  type: 'test'
+  ...
+# Subtest: v2.31: Trull + Four Kings is one canonical communication chain
+ok 73 - v2.31: Trull + Four Kings is one canonical communication chain
+  ---
+  duration_ms: 2.075256
+  type: 'test'
+  ...
+# Subtest: v2.31: Four Kings without Trull is encouragement only
+ok 74 - v2.31: Four Kings without Trull is encouragement only
+  ---
+  duration_ms: 0.508932
+  type: 'test'
+  ...
+# Subtest: v2.31: Centrum/Kismadar/Nagymadar remains a single public chain
+ok 75 - v2.31: Centrum/Kismadar/Nagymadar remains a single public chain
+  ---
+  duration_ms: 0.373144
+  type: 'test'
+  ...
+# Subtest: v2.31: communication state never asserts target-card ownership
+ok 76 - v2.31: communication state never asserts target-card ownership
+  ---
+  duration_ms: 0.268751
+  type: 'test'
+  ...
+# Subtest: v2.39 difficulty adapter always returns a legal card
+ok 77 - v2.39 difficulty adapter always returns a legal card
+  ---
+  duration_ms: 1424.163103
+  type: 'test'
+  ...
+# Subtest: v2.39 expert difficulty is identical to the expert policy result
+ok 78 - v2.39 expert difficulty is identical to the expert policy result
+  ---
+  duration_ms: 660.56579
+  type: 'test'
+  ...
+# Subtest: v2.39 decision exposes ranked alternatives without hidden-hand access
+ok 79 - v2.39 decision exposes ranked alternatives without hidden-hand access
+  ---
+  duration_ms: 265.138215
+  type: 'test'
+  ...
+# Subtest: v2.25 dual layer rewards partner acknowledgement with restrained opponent exposure
+ok 80 - v2.25 dual layer rewards partner acknowledgement with restrained opponent exposure
+  ---
+  duration_ms: 2.737711
+  type: 'test'
+  ...
+# Subtest: v2.25 very high tarokk carries opponent-read risk when several partner hypotheses exist
+ok 81 - v2.25 very high tarokk carries opponent-read risk when several partner hypotheses exist
+  ---
+  duration_ms: 0.420901
+  type: 'test'
+  ...
+# Subtest: v2.25 opponent figure can increase value of a natural controlled tarokk
+ok 82 - v2.25 opponent figure can increase value of a natural controlled tarokk
+  ---
+  duration_ms: 0.319048
+  type: 'test'
+  ...
+# Subtest: v2.25 dual communication remains bounded
+ok 83 - v2.25 dual communication remains bounded
+  ---
+  duration_ms: 0.24062
+  type: 'test'
+  ...
+# Subtest: v2.37 expert scenario catalog has broad category coverage
+ok 84 - v2.37 expert scenario catalog has broad category coverage
+  ---
+  duration_ms: 4.849519
+  type: 'test'
+  ...
+# Subtest: v2.37 separates legal-play quality from strategic quality
+ok 85 - v2.37 separates legal-play quality from strategic quality
+  ---
+  duration_ms: 5675.497479
+  type: 'test'
+  ...
+# Subtest: v2.37 every benchmark scenario has at least one legal expected/acceptable line
+ok 86 - v2.37 every benchmark scenario has at least one legal expected/acceptable line
+  ---
+  duration_ms: 0.490605
+  type: 'test'
+  ...
+# Subtest: v2.37 benchmark exposes reasons and chosen card for calibration review
+ok 87 - v2.37 benchmark exposes reasons and chosen card for calibration review
+  ---
+  duration_ms: 2545.866687
+  type: 'test'
+  ...
+# Subtest: v2.10 own silent Tuletroá frontier rewards taking the missing big honour
+ok 88 - v2.10 own silent Tuletroá frontier rewards taking the missing big honour
+  ---
+  duration_ms: 5.662064
+  type: 'test'
+  ...
+# Subtest: v2.10 partner frontier rewards letting partner capture a missing king
+ok 89 - v2.10 partner frontier rewards letting partner capture a missing king
+  ---
+  duration_ms: 1.622564
+  type: 'test'
+  ...
+# Subtest: v2.10 opponent silent Pagátultimó frontier rewards preventing the 9th-trick target
+ok 90 - v2.10 opponent silent Pagátultimó frontier rewards preventing the 9th-trick target
+  ---
+  duration_ms: 6.169818
+  type: 'test'
+  ...
+# Subtest: v2.06 Uhu: a strong target/control hand materially outranks a weak target hand
+ok 91 - v2.06 Uhu: a strong target/control hand materially outranks a weak target hand
+  ---
+  duration_ms: 2.1926
+  type: 'test'
+  ...
+# Subtest: v2.06 Ultimo: extra late control improves the target-trick plan
+ok 92 - v2.06 Ultimo: extra late control improves the target-trick plan
+  ---
+  duration_ms: 0.653521
+  type: 'test'
+  ...
+# Subtest: v2.06 Volát stays deliberately conservative compared with a strong normal target figure
+ok 93 - v2.06 Volát stays deliberately conservative compared with a strong normal target figure
+  ---
+  duration_ms: 0.363455
+  type: 'test'
+  ...
+# Subtest: v2.06 Volát is objectively dead as soon as the declaring side loses a trick
+ok 94 - v2.06 Volát is objectively dead as soon as the declaring side loses a trick
+  ---
+  duration_ms: 2.789804
+  type: 'test'
+  ...
+# Subtest: v1.90 maps bird figures to their correct deadline and target card
+ok 95 - v1.90 maps bird figures to their correct deadline and target card
+  ---
+  duration_ms: 7.45954
+  type: 'test'
+  ...
+# Subtest: v1.91 planner activates for the declaring partner as well
+ok 96 - v1.91 planner activates for the declaring partner as well
+  ---
+  duration_ms: 0.256646
+  type: 'test'
+  ...
+# Subtest: v1.90 planner returns no plan when the player has no active bird declaration
+ok 97 - v1.90 planner returns no plan when the player has no active bird declaration
+  ---
+  duration_ms: 0.178369
+  type: 'test'
+  ...
+# Subtest: v2.09 Pagat silent Ultimo remains live under Pagat Uhu without explicit Ultimo
+ok 98 - v2.09 Pagat silent Ultimo remains live under Pagat Uhu without explicit Ultimo
+  ---
+  duration_ms: 2.697693
+  type: 'test'
+  ...
+# Subtest: v2.09 portfolio combines declared Uhu and independent silent Ultimo goals
+ok 99 - v2.09 portfolio combines declared Uhu and independent silent Ultimo goals
+  ---
+  duration_ms: 13.217422
+  type: 'test'
+  ...
+# Subtest: v2.09 portfolio exposes combined declared/partner/opponent figure signals
+ok 100 - v2.09 portfolio exposes combined declared/partner/opponent figure signals
+  ---
+  duration_ms: 1.555958
+  type: 'test'
+  ...
+# Subtest: v2.32 Uhu and Ultimo stay independent
+ok 101 - v2.32 Uhu and Ultimo stay independent
+  ---
+  duration_ms: 1.540505
+  type: 'test'
+  ...
+# Subtest: v2.32 opponent bird target can be blocked at deadline
+ok 102 - v2.32 opponent bird target can be blocked at deadline
+  ---
+  duration_ms: 0.775488
+  type: 'test'
+  ...
+# Subtest: v2.32 own bird target is protected at deadline
+ok 103 - v2.32 own bird target is protected at deadline
+  ---
+  duration_ms: 0.464659
+  type: 'test'
+  ...
+# Subtest: v2.32 Volat and Double Game remain distinct objectives
+ok 104 - v2.32 Volat and Double Game remain distinct objectives
+  ---
+  duration_ms: 0.221047
+  type: 'test'
+  ...
+# Subtest: v2.32 does not inspect hidden hands
+ok 105 - v2.32 does not inspect hidden hands
+  ---
+  duration_ms: 0.320411
+  type: 'test'
+  ...
+# Subtest: v2.18 genuine partner bundle is worth more than an isolated positive objective
+ok 106 - v2.18 genuine partner bundle is worth more than an isolated positive objective
+  ---
+  duration_ms: 7.407417
+  type: 'test'
+  ...
+# Subtest: v2.18 own + partner + opponent overlap gets a three-way bonus
+ok 107 - v2.18 own + partner + opponent overlap gets a three-way bonus
+  ---
+  duration_ms: 0.352988
+  type: 'test'
+  ...
+# Subtest: v2.18 weak unrelated positives do not receive the same bundle bonus as strong overlap
+ok 108 - v2.18 weak unrelated positives do not receive the same bundle bonus as strong overlap
+  ---
+  duration_ms: 0.149658
+  type: 'test'
+  ...
+# Subtest: v2.20 identifies partner-pass-return on partner-next low trump lead
+ok 109 - v2.20 identifies partner-pass-return on partner-next low trump lead
+  ---
+  duration_ms: 1.252959
+  type: 'test'
+  ...
+# Subtest: v2.20 identifies hold-return-partner when partner control appears later
+ok 110 - v2.20 identifies hold-return-partner when partner control appears later
+  ---
+  duration_ms: 1.799771
+  type: 'test'
+  ...
+# Subtest: v2.20 identifies control cycle from value and settlement
+ok 111 - v2.20 identifies control cycle from value and settlement
+  ---
+  duration_ms: 8.002198
+  type: 'test'
+  ...
+# Subtest: v2.20 penalizes a line that loses both value and partner control
+ok 112 - v2.20 penalizes a line that loses both value and partner control
+  ---
+  duration_ms: 0.497582
+  type: 'test'
+  ...
+# Subtest: v2.19 multi-trick planner has a bounded three-trick horizon
+ok 113 - v2.19 multi-trick planner has a bounded three-trick horizon
+  ---
+  duration_ms: 16.053932
+  type: 'test'
+  ...
+# Subtest: v2.19 planner exposes the short-vs-extended continuation
+ok 114 - v2.19 planner exposes the short-vs-extended continuation
+  ---
+  duration_ms: 8.056566
+  type: 'test'
+  ...
+# Subtest: AI pair-figure policy is pair-level, not announcer-only
+ok 115 - AI pair-figure policy is pair-level, not announcer-only
+  ---
+  duration_ms: 2.194899
+  type: 'test'
+  ...
+# Subtest: v2.35 partner call uses only the taker hand and prefers XIX when free
+ok 116 - v2.35 partner call uses only the taker hand and prefers XIX when free
+  ---
+  duration_ms: 1.886765
+  type: 'test'
+  ...
+# Subtest: v2.35 fixed invite overrides the normal call preference
+ok 117 - v2.35 fixed invite overrides the normal call preference
+  ---
+  duration_ms: 0.365886
+  type: 'test'
+  ...
+# Subtest: v2.35 partner-call decision can be evaluated without opponent hands
+ok 118 - v2.35 partner-call decision can be evaluated without opponent hands
+  ---
+  duration_ms: 0.304777
+  type: 'test'
+  ...
+# Subtest: v2.13 partner coordination rewards sacrificing an immediate trick to save a near-complete silent partner figure
+ok 119 - v2.13 partner coordination rewards sacrificing an immediate trick to save a near-complete silent partner figure
+  ---
+  duration_ms: 7.378819
+  type: 'test'
+  ...
+# Subtest: v2.24 partner meta layer rewards a coherent acknowledgement
+ok 120 - v2.24 partner meta layer rewards a coherent acknowledgement
+  ---
+  duration_ms: 3.950204
+  type: 'test'
+  ...
+# Subtest: v2.24 meta layer stays soft when no partner signal exists
+ok 121 - v2.24 meta layer stays soft when no partner signal exists
+  ---
+  duration_ms: 0.26597
+  type: 'test'
+  ...
+# Subtest: v2.24 a single odd response does not become hidden-card certainty
+ok 122 - v2.24 a single odd response does not become hidden-card certainty
+  ---
+  duration_ms: 0.286389
+  type: 'test'
+  ...
+# Subtest: v2.24 urgent partner figure limits signalling bonus
+ok 123 - v2.24 urgent partner figure limits signalling bonus
+  ---
+  duration_ms: 0.214336
+  type: 'test'
+  ...
+# Subtest: play evaluator rewards partner communication without overpowering tactics
+ok 124 - play evaluator rewards partner communication without overpowering tactics
+  ---
+  duration_ms: 1.419089
+  type: 'test'
+  ...
+# Subtest: v1.89 continuation rollout evaluates every candidate against the same hidden worlds
+ok 125 - v1.89 continuation rollout evaluates every candidate against the same hidden worlds
+  ---
+  duration_ms: 18.806489
+  type: 'test'
+  ...
+# Subtest: v1.89 continuation rollout is a secondary strategic layer, not a legality bypass
+ok 126 - v1.89 continuation rollout is a secondary strategic layer, not a legality bypass
+  ---
+  duration_ms: 1.350901
+  type: 'test'
+  ...
+# Subtest: v1.89 real-play decision exposes a continuation score when a consistent rollout world exists
+ok 127 - v1.89 real-play decision exposes a continuation score when a consistent rollout world exists
+  ---
+  duration_ms: 264.914312
+  type: 'test'
+  ...
+# Subtest: v2.36 public card memory counts only observer hand plus public cards
+ok 128 - v2.36 public card memory counts only observer hand plus public cards
+  ---
+  duration_ms: 3.662603
+  type: 'test'
+  ...
+# Subtest: v2.36 detects exact tarokk control when all higher tarokks are accounted for
+ok 129 - v2.36 detects exact tarokk control when all higher tarokks are accounted for
+  ---
+  duration_ms: 1.997126
+  type: 'test'
+  ...
+# Subtest: v2.36 integrates public control into the live AI decision explanation
+ok 130 - v2.36 integrates public control into the live AI decision explanation
+  ---
+  duration_ms: 92.92222
+  type: 'test'
+  ...
+# Subtest: v2.36 complete-deal benchmark records a no-taker auction as a measured redeal
+ok 131 - v2.36 complete-deal benchmark records a no-taker auction as a measured redeal
+  ---
+  duration_ms: 10772.354456
+  type: 'test'
+  ...
+# Subtest: v2.04: taker skart tarokks are public before the first trick closes
+ok 132 - v2.04: taker skart tarokks are public before the first trick closes
+  ---
+  duration_ms: 5.090067
+  type: 'test'
+  ...
+# Subtest: v2.04: other players skart tarokks never become visible by the belief model
+ok 133 - v2.04: other players skart tarokks never become visible by the belief model
+  ---
+  duration_ms: 0.718066
+  type: 'test'
+  ...
+# Subtest: v2.04: after the first trick closes, the taker skart reveal leaves the public belief pool
+ok 134 - v2.04: after the first trick closes, the taker skart reveal leaves the public belief pool
+  ---
+  duration_ms: 0.47547
+  type: 'test'
+  ...
+# Subtest: v2.04: the taker always knows their own discarded tarokks
+ok 135 - v2.04: the taker always knows their own discarded tarokks
+  ---
+  duration_ms: 2.840069
+  type: 'test'
+  ...
+# Subtest: v2.36 AI quality gate completes a deterministic sample of full deals
+ok 136 - v2.36 AI quality gate completes a deterministic sample of full deals
+  ---
+  duration_ms: 12539.510398
+  type: 'test'
+  ...
+# Subtest: v1.83 regression fixture exposes neutral lead candidates in the card model
+ok 137 - v1.83 regression fixture exposes neutral lead candidates in the card model
+  ---
+  duration_ms: 1.00742
+  type: 'test'
+  ...
+# Subtest: suit lead: follow-suit rule prevents illegal tarokk response counting
+ok 138 - suit lead: follow-suit rule prevents illegal tarokk response counting
+  ---
+  duration_ms: 3.358971
+  type: 'test'
+  ...
+# Subtest: suit lead: tarokk becomes legal only when the led suit is absent
+ok 139 - suit lead: tarokk becomes legal only when the led suit is absent
+  ---
+  duration_ms: 1.300854
+  type: 'test'
+  ...
+# Subtest: AI rollout is information-safe and returns bounded probabilities
+ok 140 - AI rollout is information-safe and returns bounded probabilities
+  ---
+  duration_ms: 18.74921
+  type: 'test'
+  ...
+# Subtest: rollout partner coordination rewards handing an early prefix trick to a partner who hypothetically owns the target
+ok 141 - rollout partner coordination rewards handing an early prefix trick to a partner who hypothetically owns the target
+  ---
+  duration_ms: 0.653523
+  type: 'test'
+  ...
+# Subtest: partner hand-off gains value only when the partner also has useful next leads
+ok 142 - partner hand-off gains value only when the partner also has useful next leads
+  ---
+  duration_ms: 0.361372
+  type: 'test'
+  ...
+# Subtest: v2.35 AI-only round runs from auction to settlement
+ok 143 - v2.35 AI-only round runs from auction to settlement
+  ---
+  duration_ms: 9053.922306
+  type: 'test'
+  ...
+# Subtest: v2.35 AI-only round is deterministic for the same seed
+ok 144 - v2.35 AI-only round is deterministic for the same seed
+  ---
+  duration_ms: 6410.401847
+  type: 'test'
+  ...
+# Subtest: v2.07 own silent Tuletroa is recognised as a live target
+ok 145 - v2.07 own silent Tuletroa is recognised as a live target
+  ---
+  duration_ms: 4.878064
+  type: 'test'
+  ...
+# Subtest: v2.07 partner silent Tuletroa support gets positive value
+ok 146 - v2.07 partner silent Tuletroa support gets positive value
+  ---
+  duration_ms: 2.245166
+  type: 'test'
+  ...
+# Subtest: v2.07 opponent silent Volat is treated as a disruption target
+ok 147 - v2.07 opponent silent Volat is treated as a disruption target
+  ---
+  duration_ms: 2.684093
+  type: 'test'
+  ...
+# Subtest: v2.07 partner silent Tuletroa and opponent XXI-fogas can coexist
+ok 148 - v2.07 partner silent Tuletroa and opponent XXI-fogas can coexist
+  ---
+  duration_ms: 3.247207
+  type: 'test'
+  ...
+# Subtest: v2.07 silent Volat suppresses silent Tuletroa/FourKings/DoubleGame payout
+ok 149 - v2.07 silent Volat suppresses silent Tuletroa/FourKings/DoubleGame payout
+  ---
+  duration_ms: 1.475319
+  type: 'test'
+  ...
+# Subtest: v2.12 a már teljesült csendes Tulétroá eltűnik az élő AI-célok közül
+ok 150 - v2.12 a már teljesült csendes Tulétroá eltűnik az élő AI-célok közül
+  ---
+  duration_ms: 17.22053
+  type: 'test'
+  ...
+# Subtest: v2.12 a már sikertelen csendes Ultimó nem marad élő cél
+ok 151 - v2.12 a már sikertelen csendes Ultimó nem marad élő cél
+  ---
+  duration_ms: 1.208238
+  type: 'test'
+  ...
+# Subtest: v2.11 csendes Tulétroá csak akkor kap közvetlen bónuszt, ha a jelölt nyeri a célkártyát
+ok 152 - v2.11 csendes Tulétroá csak akkor kap közvetlen bónuszt, ha a jelölt nyeri a célkártyát
+  ---
+  duration_ms: 2.415101
+  type: 'test'
+  ...
+# Subtest: v2.11 partneri Tulétroá-cél csak akkor kap partnerbónuszt, ha a partner ténylegesen céllapot visz
+ok 153 - v2.11 partneri Tulétroá-cél csak akkor kap partnerbónuszt, ha a partner ténylegesen céllapot visz
+  ---
+  duration_ms: 0.950748
+  type: 'test'
+  ...
+# Subtest: AI skart prefers a point-rich disposable suit card over a tarokk control card
+ok 154 - AI skart prefers a point-rich disposable suit card over a tarokk control card
+  ---
+  duration_ms: 2.615023
+  type: 'test'
+  ...
+# Subtest: AI skart never chooses a forbidden king or big honour
+ok 155 - AI skart never chooses a forbidden king or big honour
+  ---
+  duration_ms: 0.703801
+  type: 'test'
+  ...
+# Subtest: AI skart can prefer creating a void when suit quality is otherwise comparable
+ok 156 - AI skart can prefer creating a void when suit quality is otherwise comparable
+  ---
+  duration_ms: 0.872859
+  type: 'test'
+  ...
+# Subtest: AI skart keeps the invited tarokk even though it is not otherwise a honour
+ok 157 - AI skart keeps the invited tarokk even though it is not otherwise a honour
+  ---
+  duration_ms: 0.208405
+  type: 'test'
+  ...
+# Subtest: v2.38 soak API exposes strategic quality metrics on full AI deals
+ok 158 - v2.38 soak API exposes strategic quality metrics on full AI deals
+  ---
+  duration_ms: 16031.044961
+  type: 'test'
+  ...
+# Subtest: v2.38 soak benchmark keeps the 100-1000 deal safety bounds
+ok 159 - v2.38 soak benchmark keeps the 100-1000 deal safety bounds
+  ---
+  duration_ms: 2.924311
+  type: 'test'
+  ...
+# Subtest: a higher contra level prices the marginal stake, not the whole stake
+ok 160 - a higher contra level prices the marginal stake, not the whole stake
+  ---
+  duration_ms: 1.213365
+  type: 'test'
+  ...
+# Subtest: a counter below the 50% success threshold has negative marginal value
+ok 161 - a counter below the 50% success threshold has negative marginal value
+  ---
+  duration_ms: 0.571081
+  type: 'test'
+  ...
+# Subtest: high-value figures create larger marginal exposure
+ok 162 - high-value figures create larger marginal exposure
+  ---
+  duration_ms: 0.121249
+  type: 'test'
+  ...
+# Subtest: mordkontra has no further escalation
+ok 163 - mordkontra has no further escalation
+  ---
+  duration_ms: 0.490782
+  type: 'test'
+  ...
+# Subtest: a 50% estimate is neutral before communication/position bonuses
+ok 164 - a 50% estimate is neutral before communication/position bonuses
+  ---
+  duration_ms: 0.341526
+  type: 'test'
+  ...
+# Subtest: v1.93 prefers the more urgent own figure when its target line is clearly stronger
+ok 165 - v1.93 prefers the more urgent own figure when its target line is clearly stronger
+  ---
+  duration_ms: 1.131023
+  type: 'test'
+  ...
+# Subtest: v1.93 prefers breaking an opponent figure when its deadline and break margin dominate
+ok 166 - v1.93 prefers breaking an opponent figure when its deadline and break margin dominate
+  ---
+  duration_ms: 0.197355
+  type: 'test'
+  ...
+# Subtest: v1.93 uses partner control as tie-breaker instead of inventing card ownership
+ok 167 - v1.93 uses partner control as tie-breaker instead of inventing card ownership
+  ---
+  duration_ms: 0.201953
+  type: 'test'
+  ...
+# Subtest: AI nem rejti el a bukható bemondást, csak alacsonyabbra pontozza
+ok 168 - AI nem rejti el a bukható bemondást, csak alacsonyabbra pontozza
+  ---
+  duration_ms: 4.450261
+  type: 'test'
+  ...
+# Subtest: kommunikáció emelhet egy önmagában kockázatos bemondást
+ok 169 - kommunikáció emelhet egy önmagában kockázatos bemondást
+  ---
+  duration_ms: 0.501272
+  type: 'test'
+  ...
+# Subtest: v2.05 values an important point-heavy defensive trick near the threshold
+ok 170 - v2.05 values an important point-heavy defensive trick near the threshold
+  ---
+  duration_ms: 3.426121
+  type: 'test'
+  ...
+# Subtest: v2.05 discourages taking a partner low-point trick with a high trump
+ok 171 - v2.05 discourages taking a partner low-point trick with a high trump
+  ---
+  duration_ms: 1.079867
+  type: 'test'
+  ...
+# Subtest: v2.05 raises the value of a final point-winning trick
+ok 172 - v2.05 raises the value of a final point-winning trick
+  ---
+  duration_ms: 0.947445
+  type: 'test'
+  ...
+# Subtest: v2.05 remains information-safe and does not inspect hidden hands
+ok 173 - v2.05 remains information-safe and does not inspect hidden hands
+  ---
+  duration_ms: 0.403338
+  type: 'test'
+  ...
+# Subtest: v2.00 play-beam respects known hidden-hand capacities and does not use unknown owner
+ok 174 - v2.00 play-beam respects known hidden-hand capacities and does not use unknown owner
+  ---
+  duration_ms: 9.640294
+  type: 'test'
+  ...
+# Subtest: v2.00 stratified sampler is deterministic and covers lower-probability beam mass
+ok 175 - v2.00 stratified sampler is deterministic and covers lower-probability beam mass
+  ---
+  duration_ms: 6.545282
+  type: 'test'
+  ...
+# Subtest: v2.00 candidate rollouts use the same sampled belief world set
+ok 176 - v2.00 candidate rollouts use the same sampled belief world set
+  ---
+  duration_ms: 21.357017
+  type: 'test'
+  ...
+# Subtest: world simulation uses only hypothesis worlds and returns a bounded probability
+ok 177 - world simulation uses only hypothesis worlds and returns a bounded probability
+  ---
+  duration_ms: 19.092633
+  type: 'test'
+  ...
+# Subtest: XXI catch simulation needs both Skiz and an opponent XXI hypothesis
+ok 178 - XXI catch simulation needs both Skiz and an opponent XXI hypothesis
+  ---
+  duration_ms: 3.193222
+  type: 'test'
+  ...
+# v1.94 settlement-aware AI source checks: 8/8
+# Subtest: tests/ai_settlement_aware.test.js
+ok 52 - tests/ai_settlement_aware.test.js
+  ---
+  duration_ms: 68.530835
+  type: 'test'
+  ...
+# v1.94 terminal settlement behavioural test: PASS
+# Subtest: tests/ai_terminal_settlement.test.js
+ok 53 - tests/ai_terminal_settlement.test.js
+  ---
+  duration_ms: 777.293098
+  type: 'test'
+  ...
+# Subtest: tests/auction.test.js
+ok 54 - tests/auction.test.js
+  ---
+  duration_ms: 60.41095
+  type: 'test'
+  ...
+# Subtest: licit lezárása meghatározza a felvevőt és a talonmennyiséget
+ok 182 - licit lezárása meghatározza a felvevőt és a talonmennyiséget
+  ---
+  duration_ms: 2.076877
+  type: 'test'
+  ...
+# Subtest: elfogadott invit után más nyertesnek kötelező az invitálót meghívnia
+ok 183 - elfogadott invit után más nyertesnek kötelező az invitálót meghívnia
+  ---
+  duration_ms: 0.315677
+  type: 'test'
+  ...
+# Subtest: honőr nélküli hármas csak honőrt tartalmazó talonnal érvényes
+ok 184 - honőr nélküli hármas csak honőrt tartalmazó talonnal érvényes
+  ---
+  duration_ms: 0.365544
+  type: 'test'
+  ...
+# Subtest: Trull + four kings creates XIX and at-least-five evidence
+ok 185 - Trull + four kings creates XIX and at-least-five evidence
+  ---
+  duration_ms: 13.295717
+  type: 'test'
+  ...
+# Subtest: four kings without Trull is encouragement, not a card signal
+ok 186 - four kings without Trull is encouragement, not a card signal
+  ---
+  duration_ms: 0.633841
+  type: 'test'
+  ...
+# Subtest: partner Trull is sufficient context for four-kings signal
+ok 187 - partner Trull is sufficient context for four-kings signal
+  ---
+  duration_ms: 0.348967
+  type: 'test'
+  ...
+# Subtest: Centrum refines an existing XIX communication instead of replacing it
+ok 188 - Centrum refines an existing XIX communication instead of replacing it
+  ---
+  duration_ms: 1.260694
+  type: 'test'
+  ...
+# Subtest: Centrum followed by double adds XVII as a convention, not hard ownership
+ok 189 - Centrum followed by double adds XVII as a convention, not hard ownership
+  ---
+  duration_ms: 0.302812
+  type: 'test'
+  ...
+# Subtest: az invitáló XIX-hiányára vonatkozó negatív információ nem kerül tévesen a partner kezének kizárásai közé
+ok 190 - az invitáló XIX-hiányára vonatkozó negatív információ nem kerül tévesen a partner kezének kizárásai közé
+  ---
+  duration_ms: 1.159857
+  type: 'test'
+  ...
+# Subtest: elsőként mondott szóló nem invit
+ok 191 - elsőként mondott szóló nem invit
+  ---
+  duration_ms: 0.93503
+  type: 'test'
+  ...
+# Subtest: egy ugrás XIX, két ugrás XVIII
+ok 192 - egy ugrás XIX, két ugrás XVIII
+  ---
+  duration_ms: 0.160726
+  type: 'test'
+  ...
+# Subtest: engedés csak XX-szal és legalább öt tarokkal, pagátos XX-szal nem
+ok 193 - engedés csak XX-szal és legalább öt tarokkal, pagátos XX-szal nem
+  ---
+  duration_ms: 0.433605
+  type: 'test'
+  ...
+# Subtest: invitnál csak a ténylegesen birtokolt invitlap jelenik meg
+ok 194 - invitnál csak a ténylegesen birtokolt invitlap jelenik meg
+  ---
+  duration_ms: 0.72487
+  type: 'test'
+  ...
+# Subtest: elfogadott invit esetén a későbbi nyertesnek meg kell hívnia az invitálót
+ok 195 - elfogadott invit esetén a későbbi nyertesnek meg kell hívnia az invitálót
+  ---
+  duration_ms: 0.332716
+  type: 'test'
+  ...
+# Subtest: ha az invit után nincs további licit, az invit nem fogadott és az invitáló normál licitáló marad
+ok 196 - ha az invit után nincs további licit, az invit nem fogadott és az invitáló normál licitáló marad
+  ---
+  duration_ms: 0.139593
+  type: 'test'
+  ...
+# Subtest: el nem fogadott invit után az invitáló visszatérhet a normál licitbe
+ok 197 - el nem fogadott invit után az invitáló visszatérhet a normál licitbe
+  ---
+  duration_ms: 1.619073
+  type: 'test'
+  ...
+# Subtest: engedéshez nagy honőr és legalább öt tarokk kell
+ok 198 - engedéshez nagy honőr és legalább öt tarokk kell
+  ---
+  duration_ms: 0.914832
+  type: 'test'
+  ...
+# Subtest: első licitáló hármast mondhat
+ok 199 - első licitáló hármast mondhat
+  ---
+  duration_ms: 1.71638
+  type: 'test'
+  ...
+# Subtest: három passz után a negyedik játékos honőr nélkül is mondhat hármast
+ok 200 - három passz után a negyedik játékos honőr nélkül is mondhat hármast
+  ---
+  duration_ms: 0.510777
+  type: 'test'
+  ...
+# Subtest: honőr nélküli hármas csak akkor érvényes, ha a talonban van honőr
+ok 201 - honőr nélküli hármas csak akkor érvényes, ha a talonban van honőr
+  ---
+  duration_ms: 0.315872
+  type: 'test'
+  ...
+# Subtest: honőrös játékosnál a honőr nélküli kivétel nem jelenik meg
+ok 202 - honőrös játékosnál a honőr nélküli kivétel nem jelenik meg
+  ---
+  duration_ms: 0.333989
+  type: 'test'
+  ...
+# Subtest: contra state machine
+    # Subtest: game: defence starts and sides alternate
+    ok 1 - game: defence starts and sides alternate
+      ---
+      duration_ms: 0.834728
+      type: 'test'
+      ...
+    # Subtest: figure owned by defence: taker starts the contra
+    ok 2 - figure owned by defence: taker starts the contra
+      ---
+      duration_ms: 0.22843
+      type: 'test'
+      ...
+    # Subtest: stops at mordkontra
+    ok 3 - stops at mordkontra
+      ---
+      duration_ms: 0.202571
+      type: 'test'
+      ...
+    # Subtest: does not allow a side to contra itself repeatedly
+    ok 4 - does not allow a side to contra itself repeatedly
+      ---
+      duration_ms: 0.409313
+      type: 'test'
+      ...
+    1..4
+ok 203 - contra state machine
+  ---
+  duration_ms: 2.792866
+  type: 'suite'
+  ...
+# Subtest: game integration of contra
+    # Subtest: keeps the complete game-level contra history
+    ok 1 - keeps the complete game-level contra history
+      ---
+      duration_ms: 24.581875
+      type: 'test'
+      ...
+    # Subtest: stores declaration-specific contra and settlement multiplier
+    ok 2 - stores declaration-specific contra and settlement multiplier
+      ---
+      duration_ms: 1.315457
+      type: 'test'
+      ...
+    1..2
+ok 204 - game integration of contra
+  ---
+  duration_ms: 26.116902
+  type: 'suite'
+  ...
+# Subtest: contra timing and eligibility
+    # Subtest: game contra is only open during declarations
+    ok 1 - game contra is only open during declarations
+      ---
+      duration_ms: 0.403218
+      type: 'test'
+      ...
+    # Subtest: a completed or failed declaration cannot be raised
+    ok 2 - a completed or failed declaration cannot be raised
+      ---
+      duration_ms: 2.911778
+      type: 'test'
+      ...
+    1..2
+ok 205 - contra timing and eligibility
+  ---
+  duration_ms: 4.471913
+  type: 'suite'
+  ...
+# Subtest: declaration contra alternates correctly for a defence-owned figure
+ok 206 - declaration contra alternates correctly for a defence-owned figure
+  ---
+  duration_ms: 0.888157
+  type: 'test'
+  ...
+# Subtest: a kontra lánc legfeljebb mordkontráig emelhető
+ok 207 - a kontra lánc legfeljebb mordkontráig emelhető
+  ---
+  duration_ms: 0.272376
+  type: 'test'
+  ...
+# Subtest: declaration lifecycle
+    # Subtest: creates lock for centrum and uses XX
+    ok 1 - creates lock for centrum and uses XX
+      ---
+      duration_ms: 1.979044
+      type: 'test'
+      ...
+    # Subtest: creates ultimo lock for pagat
+    ok 2 - creates ultimo lock for pagat
+      ---
+      duration_ms: 0.254295
+      type: 'test'
+      ...
+    # Subtest: can resolve a declaration and its lock together
+    ok 3 - can resolve a declaration and its lock together
+      ---
+      duration_ms: 0.35326
+      type: 'test'
+      ...
+    1..3
+ok 208 - declaration lifecycle
+  ---
+  duration_ms: 3.475174
+  type: 'suite'
+  ...
+# Subtest: a kényszerből korán kijátszott lekötött lap csak az ütés lezárásakor buktatja a figurát
+ok 209 - a kényszerből korán kijátszott lekötött lap csak az ütés lezárásakor buktatja a figurát
+  ---
+  duration_ms: 0.3325
+  type: 'test'
+  ...
+# Subtest: az Uhu lekötött lapjával a 9. ütésben játszott ulti csendes ulti
+ok 210 - az Uhu lekötött lapjával a 9. ütésben játszott ulti csendes ulti
+  ---
+  duration_ms: 2.419828
+  type: 'test'
+  ...
+# Subtest: az Uhu lekötött lapjának elfogása az utolsó ütésben bukott csendes ulti
+ok 211 - az Uhu lekötött lapjának elfogása az utolsó ütésben bukott csendes ulti
+  ---
+  duration_ms: 0.330079
+  type: 'test'
+  ...
+# Subtest: Király ultimó nem keletkezik csendes figuraként
+ok 212 - Király ultimó nem keletkezik csendes figuraként
+  ---
+  duration_ms: 0.349748
+  type: 'test'
+  ...
+# Subtest: csendes Tulétroá automatikusan felismerhető bármelyik oldalon
+ok 213 - csendes Tulétroá automatikusan felismerhető bármelyik oldalon
+  ---
+  duration_ms: 1.83906
+  type: 'test'
+  ...
+# Subtest: csendes Négykirály automatikusan felismerhető és nem duplázódik deklarált Négykirállyal
+ok 214 - csendes Négykirály automatikusan felismerhető és nem duplázódik deklarált Négykirállyal
+  ---
+  duration_ms: 0.498073
+  type: 'test'
+  ...
+# Subtest: csendes Pagátultimó Uhu nélkül is automatikusan felismerhető a 9. ütésben
+ok 215 - csendes Pagátultimó Uhu nélkül is automatikusan felismerhető a 9. ütésben
+  ---
+  duration_ms: 0.468074
+  type: 'test'
+  ...
+# Subtest: csendes Sasultimó Uhu nélkül is automatikusan felismerhető a 9. ütésben
+ok 216 - csendes Sasultimó Uhu nélkül is automatikusan felismerhető a 9. ütésben
+  ---
+  duration_ms: 0.153394
+  type: 'test'
+  ...
+# Subtest: csendes Pagátultimó nincs Uhuhoz kötve: az AI tájképe Uhu nélkül is látja a lehetőséget
+ok 217 - csendes Pagátultimó nincs Uhuhoz kötve: az AI tájképe Uhu nélkül is látja a lehetőséget
+  ---
+  duration_ms: 35.281718
+  type: 'test'
+  ...
+# Subtest: declaration restrictions
+    # Subtest: blocks a second figure by the same pair on the same trick
+    ok 1 - blocks a second figure by the same pair on the same trick
+      ---
+      duration_ms: 5.607851
+      type: 'test'
+      ...
+    # Subtest: blocks repeating an already declared figure
+    ok 2 - blocks repeating an already declared figure
+      ---
+      duration_ms: 0.180976
+      type: 'test'
+      ...
+    # Subtest: blocks ordinary declarations after volát
+    ok 3 - blocks ordinary declarations after volát
+      ---
+      duration_ms: 0.198764
+      type: 'test'
+      ...
+    # Subtest: blocks ultimo to uhu escalation
+    ok 4 - blocks ultimo to uhu escalation
+      ---
+      duration_ms: 0.103373
+      type: 'test'
+      ...
+    # Subtest: allows the first figure on a trick
+    ok 5 - allows the first figure on a trick
+      ---
+      duration_ms: 0.096244
+      type: 'test'
+      ...
+    1..5
+ok 218 - declaration restrictions
+  ---
+  duration_ms: 12.413511
+  type: 'suite'
+  ...
+# Subtest: allows Double Game and Volát to coexist in either declaration order
+ok 219 - allows Double Game and Volát to coexist in either declaration order
+  ---
+  duration_ms: 0.270276
+  type: 'test'
+  ...
+# Subtest: does not reopen Double Game after Volát
+ok 220 - does not reopen Double Game after Volát
+  ---
+  duration_ms: 0.22024
+  type: 'test'
+  ...
+# Subtest: bemondási passz nem végleges és három egymást követő passz lezár
+ok 221 - bemondási passz nem végleges és három egymást követő passz lezár
+  ---
+  duration_ms: 1.272719
+  type: 'test'
+  ...
+# Subtest: declaration does not advance the speaker until they pass
+ok 222 - declaration does not advance the speaker until they pass
+  ---
+  duration_ms: 0.546849
+  type: 'test'
+  ...
+# Subtest: pair figures are available without exposing the partner hand
+ok 223 - pair figures are available without exposing the partner hand
+  ---
+  duration_ms: 0.605491
+  type: 'test'
+  ...
+# Subtest: mandatory tarokk count cannot be bypassed with pass
+ok 224 - mandatory tarokk count cannot be bypassed with pass
+  ---
+  duration_ms: 0.627829
+  type: 'test'
+  ...
+# Subtest: engine rejection does not belong to declaration window state
+ok 225 - engine rejection does not belong to declaration window state
+  ---
+  duration_ms: 0.746307
+  type: 'test'
+  ...
+# Subtest: 8 tarokk: önkéntes 8-as tarokkszám elérhető
+ok 226 - 8 tarokk: önkéntes 8-as tarokkszám elérhető
+  ---
+  duration_ms: 1.504023
+  type: 'test'
+  ...
+# Subtest: 9 tarokk: csak 9 tarokkszám érhető el
+ok 227 - 9 tarokk: csak 9 tarokkszám érhető el
+  ---
+  duration_ms: 0.328476
+  type: 'test'
+  ...
+# Subtest: 9 tarokk esetén csak a 9-es tarokkszám mondható
+ok 228 - 9 tarokk esetén csak a 9-es tarokkszám mondható
+  ---
+  duration_ms: 1.630875
+  type: 'test'
+  ...
+# Subtest: figure declarations are offered even without the target cards
+ok 229 - figure declarations are offered even without the target cards
+  ---
+  duration_ms: 0.226306
+  type: 'test'
+  ...
+# Subtest: volat blocks ordinary declarations after it
+ok 230 - volat blocks ordinary declarations after it
+  ---
+  duration_ms: 0.19789
+  type: 'test'
+  ...
+# Subtest: defence can fulfil Centrum even when XX is held by a defence partner
+ok 231 - defence can fulfil Centrum even when XX is held by a defence partner
+  ---
+  duration_ms: 0.209157
+  type: 'test'
+  ...
+# Subtest: Centrum does not depend on who holds XX; the declaring side must take the first five tricks
+ok 232 - Centrum does not depend on who holds XX; the declaring side must take the first five tricks
+  ---
+  duration_ms: 0.215311
+  type: 'test'
+  ...
+# Subtest: Kismadar and Nagymadar use the same declaring-side principle
+ok 233 - Kismadar and Nagymadar use the same declaring-side principle
+  ---
+  duration_ms: 0.366398
+  type: 'test'
+  ...
+# Subtest: Centrum/Kismadár/Nagymadár Trull után, illetve igazolt trull nélküli taker-jelzésben jelenik meg
+ok 234 - Centrum/Kismadár/Nagymadár Trull után, illetve igazolt trull nélküli taker-jelzésben jelenik meg
+  ---
+  duration_ms: 0.303468
+  type: 'test'
+  ...
+# Subtest: Trull nélkül a taker szándékos Trull-kihagyása mellett ajánlható a célfigura
+ok 235 - Trull nélkül a taker szándékos Trull-kihagyása mellett ajánlható a célfigura
+  ---
+  duration_ms: 0.214193
+  type: 'test'
+  ...
+# Subtest: Trull nélkül, explicit taker-kihagyás nélkül a ritka út nem nyílik meg
+ok 236 - Trull nélkül, explicit taker-kihagyás nélkül a ritka út nem nyílik meg
+  ---
+  duration_ms: 0.315806
+  type: 'test'
+  ...
+# Subtest: A konkrét trull nélküli jelzés: Skíz-XXI-XX-XVIII + partneri XIX -> Centrum
+ok 237 - A konkrét trull nélküli jelzés: Skíz-XXI-XX-XVIII + partneri XIX -> Centrum
+  ---
+  duration_ms: 0.367627
+  type: 'test'
+  ...
+# Subtest: Lyukas Centrum csak igazolt ollós záróhelyzettel nyílik meg
+ok 238 - Lyukas Centrum csak igazolt ollós záróhelyzettel nyílik meg
+  ---
+  duration_ms: 0.34675
+  type: 'test'
+  ...
+# Subtest: availability keeps Double Game + Volát legal together, but closes Double Game after Volát
+ok 239 - availability keeps Double Game + Volát legal together, but closes Double Game after Volát
+  ---
+  duration_ms: 0.348294
+  type: 'test'
+  ...
+# Subtest: figure declarations remain available even when the hand cannot make them
+ok 240 - figure declarations remain available even when the hand cannot make them
+  ---
+  duration_ms: 0.14909
+  type: 'test'
+  ...
+# Subtest: pair figure assessment keeps holey Kismadar structurally possible
+ok 241 - pair figure assessment keeps holey Kismadar structurally possible
+  ---
+  duration_ms: 1.569012
+  type: 'test'
+  ...
+# Subtest: figure geometry: élő Centrum esetén a saját XX megőrzése látszik
+ok 242 - figure geometry: élő Centrum esetén a saját XX megőrzése látszik
+  ---
+  duration_ms: 0.319666
+  type: 'test'
+  ...
+# Subtest: figure geometry: lezárható előkészítő ütés ellenoldali győzelme kockázat
+ok 243 - figure geometry: lezárható előkészítő ütés ellenoldali győzelme kockázat
+  ---
+  duration_ms: 0.358901
+  type: 'test'
+  ...
+# Subtest: a pakli pontosan 42 lapos
+ok 244 - a pakli pontosan 42 lapos
+  ---
+  duration_ms: 1.010929
+  type: 'test'
+  ...
+# Subtest: 4 játékos mind 9 lapot kap, 6 lap marad a talonban
+ok 245 - 4 játékos mind 9 lapot kap, 6 lap marad a talonban
+  ---
+  duration_ms: 1.788259
+  type: 'test'
+  ...
+# Subtest: színre szín kötelező, ha van a vezetett színből
+ok 246 - színre szín kötelező, ha van a vezetett színből
+  ---
+  duration_ms: 1.88824
+  type: 'test'
+  ...
+# Subtest: a felvevő és párja rögzíthető a végső pontozáshoz
+ok 247 - a felvevő és párja rögzíthető a végső pontozáshoz
+  ---
+  duration_ms: 0.169858
+  type: 'test'
+  ...
+# Subtest: XX + Trull + partner Four Kings: low trump lead invites the communicated XIX
+ok 248 - XX + Trull + partner Four Kings: low trump lead invites the communicated XIX
+  ---
+  duration_ms: 2.147602
+  type: 'test'
+  ...
+# Subtest: XX + Trull + partner Four Kings: leading the communicated XIX itself is discouraged
+ok 249 - XX + Trull + partner Four Kings: leading the communicated XIX itself is discouraged
+  ---
+  duration_ms: 0.224251
+  type: 'test'
+  ...
+# Subtest: Trull without a card-signalling declaration does not invent a target lead
+ok 250 - Trull without a card-signalling declaration does not invent a target lead
+  ---
+  duration_ms: 1.385658
+  type: 'test'
+  ...
+# Subtest: Trull + Four Kings + Centrum: the latest communicated rung is used
+ok 251 - Trull + Four Kings + Centrum: the latest communicated rung is used
+  ---
+  duration_ms: 0.215226
+  type: 'test'
+  ...
+# Subtest: figure candidate value does not inspect hidden hands and rewards a visible prefix win
+ok 252 - figure candidate value does not inspect hidden hands and rewards a visible prefix win
+  ---
+  duration_ms: 3.163127
+  type: 'test'
+  ...
+# Subtest: GameState carries declaration progress and synchronizes locks
+ok 253 - GameState carries declaration progress and synchronizes locks
+  ---
+  duration_ms: 1.736954
+  type: 'test'
+  ...
+# Subtest: startPlay keeps declaration locks active
+ok 254 - startPlay keeps declaration locks active
+  ---
+  duration_ms: 0.352954
+  type: 'test'
+  ...
+# Subtest: other declaration is rejected before mandatory partner call
+ok 255 - other declaration is rejected before mandatory partner call
+  ---
+  duration_ms: 0.767147
+  type: 'test'
+  ...
+# Subtest: XX self-call is a valid recorded partner call
+ok 256 - XX self-call is a valid recorded partner call
+  ---
+  duration_ms: 0.253197
+  type: 'test'
+  ...
+# Subtest: declaration phase must start with the taker after the partner call
+ok 257 - declaration phase must start with the taker after the partner call
+  ---
+  duration_ms: 1.612859
+  type: 'test'
+  ...
+# Subtest: v1.85 tarokk X/XI boundary remains exact
+ok 258 - v1.85 tarokk X/XI boundary remains exact
+  ---
+  duration_ms: 7.697682
+  type: 'test'
+  ...
+# Subtest: v1.85 stores suit lengths immediately before skart
+ok 259 - v1.85 stores suit lengths immediately before skart
+  ---
+  duration_ms: 2.532332
+  type: 'test'
+  ...
+# Subtest: v1.85 bird defence opening prefers headless hearts, then diamonds, then black
+ok 260 - v1.85 bird defence opening prefers headless hearts, then diamonds, then black
+  ---
+  duration_ms: 0.736806
+  type: 'test'
+  ...
+# Subtest: v1.85 bird defence falls back to shorter pre-skart king suit when no headless suit exists
+ok 261 - v1.85 bird defence falls back to shorter pre-skart king suit when no headless suit exists
+  ---
+  duration_ms: 0.444217
+  type: 'test'
+  ...
+# Subtest: v1.85 opening kontra on lowest active target requests spade, then club
+ok 262 - v1.85 opening kontra on lowest active target requests spade, then club
+  ---
+  duration_ms: 1.693959
+  type: 'test'
+  ...
+# Subtest: v1.85 request chooses shorter pre-skart black king suit when both are only kings
+ok 263 - v1.85 request chooses shorter pre-skart black king suit when both are only kings
+  ---
+  duration_ms: 0.365079
+  type: 'test'
+  ...
+# Subtest: v1.85 weak Pagat taker prefers a king suit
+ok 264 - v1.85 weak Pagat taker prefers a king suit
+  ---
+  duration_ms: 0.615998
+  type: 'test'
+  ...
+# Subtest: v1.85 Skiz XXI-catch opening prefers headless suit for the catching starter
+ok 265 - v1.85 Skiz XXI-catch opening prefers headless suit for the catching starter
+  ---
+  duration_ms: 0.48869
+  type: 'test'
+  ...
+# Subtest: v1.85 partner tarokk request drives the next concrete suit lead
+ok 266 - v1.85 partner tarokk request drives the next concrete suit lead
+  ---
+  duration_ms: 0.601502
+  type: 'test'
+  ...
+# Subtest: v1.85 taker returning partners suit creates a trump-request continuation signal
+ok 267 - v1.85 taker returning partners suit creates a trump-request continuation signal
+  ---
+  duration_ms: 5.095338
+  type: 'test'
+  ...
+# Subtest: X/XI boundary: X asks for a headless short suit, XI asks for further high trump
+ok 268 - X/XI boundary: X asks for a headless short suit, XI asks for further high trump
+  ---
+  duration_ms: 1.05943
+  type: 'test'
+  ...
+# Subtest: taker partner normally prefers a trump lead
+ok 269 - taker partner normally prefers a trump lead
+  ---
+  duration_ms: 0.947784
+  type: 'test'
+  ...
+# Subtest: lekötött lapok lekötési sorrendben játszhatók
+ok 270 - lekötött lapok lekötési sorrendben játszhatók
+  ---
+  duration_ms: 1.129726
+  type: 'test'
+  ...
+# Subtest: a bemondásokból automatikusan létrejön a lekötési sorrend
+ok 271 - a bemondásokból automatikusan létrejön a lekötési sorrend
+  ---
+  duration_ms: 0.808396
+  type: 'test'
+  ...
+# Subtest: a lekötési sorrend játékosonként érvényesül, nem blokkolja másik játékos lapját
+ok 272 - a lekötési sorrend játékosonként érvényesül, nem blokkolja másik játékos lapját
+  ---
+  duration_ms: 1.074416
+  type: 'test'
+  ...
+# Subtest: 4 játékosnál egy forduló 4 parti és minden játékos egyszer oszt
+ok 273 - 4 játékosnál egy forduló 4 parti és minden játékos egyszer oszt
+  ---
+  duration_ms: 4.818848
+  type: 'test'
+  ...
+# Subtest: 5 játékosnál az osztó kimarad, és a sorrend körbefordul
+ok 274 - 5 játékosnál az osztó kimarad, és a sorrend körbefordul
+  ---
+  duration_ms: 1.029303
+  type: 'test'
+  ...
+# Subtest: 5 játékosnál is a teljes osztókör zár le egy fordulót
+ok 275 - 5 játékosnál is a teljes osztókör zár le egy fordulót
+  ---
+  duration_ms: 3.881613
+  type: 'test'
+  ...
+# Subtest: érvénytelen fordulószámot elutasít
+ok 276 - érvénytelen fordulószámot elutasít
+  ---
+  duration_ms: 0.360678
+  type: 'test'
+  ...
+# Subtest: v2.14 history retains the latest partner tarokk signal after opening trick
+ok 277 - v2.14 history retains the latest partner tarokk signal after opening trick
+  ---
+  duration_ms: 2.116694
+  type: 'test'
+  ...
+# Subtest: v2.14 repeated partner signal is reinforced
+ok 278 - v2.14 repeated partner signal is reinforced
+  ---
+  duration_ms: 0.314458
+  type: 'test'
+  ...
+# Subtest: v2.14 contradictory later partner signal lowers confidence
+ok 279 - v2.14 contradictory later partner signal lowers confidence
+  ---
+  duration_ms: 0.402707
+  type: 'test'
+  ...
+# Subtest: v2.14 historical signal affects later response without treating it as certainty
+ok 280 - v2.14 historical signal affects later response without treating it as certainty
+  ---
+  duration_ms: 1.044347
+  type: 'test'
+  ...
+# Subtest: v2.14 high trump opening is interpreted as Skíz-drive signal
+ok 281 - v2.14 high trump opening is interpreted as Skíz-drive signal
+  ---
+  duration_ms: 2.219128
+  type: 'test'
+  ...
+# Subtest: v2.14 small trump opening is interpreted as XXI request
+ok 282 - v2.14 small trump opening is interpreted as XXI request
+  ---
+  duration_ms: 0.534618
+  type: 'test'
+  ...
+# Subtest: v2.14 medium trump opening is distinguished from small-trump XXI request
+ok 283 - v2.14 medium trump opening is distinguished from small-trump XXI request
+  ---
+  duration_ms: 0.220679
+  type: 'test'
+  ...
+# Subtest: v2.14 signal is only inferred from the actual taker-partner opening lead
+ok 284 - v2.14 signal is only inferred from the actual taker-partner opening lead
+  ---
+  duration_ms: 0.123853
+  type: 'test'
+  ...
+# Subtest: v2.16 high-trump partner signal can be acknowledged without spending Skíz
+ok 285 - v2.16 high-trump partner signal can be acknowledged without spending Skíz
+  ---
+  duration_ms: 2.504331
+  type: 'test'
+  ...
+# Subtest: v2.16 Skíz played against high-trump drive is treated as an explicit costly response
+ok 286 - v2.16 Skíz played against high-trump drive is treated as an explicit costly response
+  ---
+  duration_ms: 0.228081
+  type: 'test'
+  ...
+# Subtest: v2.16 small-trump signal is acknowledged by XXI
+ok 287 - v2.16 small-trump signal is acknowledged by XXI
+  ---
+  duration_ms: 0.742243
+  type: 'test'
+  ...
+# Subtest: v2.16 acknowledgement is not inferred when partner did not lead the current trick
+ok 288 - v2.16 acknowledgement is not inferred when partner did not lead the current trick
+  ---
+  duration_ms: 0.178829
+  type: 'test'
+  ...
+# Subtest: called tarokk resolves to its unique holder
+ok 289 - called tarokk resolves to its unique holder
+  ---
+  duration_ms: 1.715479
+  type: 'test'
+  ...
+# Subtest: X X self-call resolves to the taker
+ok 290 - X X self-call resolves to the taker
+  ---
+  duration_ms: 0.223169
+  type: 'test'
+  ...
+# Subtest: called tarokk does not resolve to the taker for XIX
+ok 291 - called tarokk does not resolve to the taker for XIX
+  ---
+  duration_ms: 2.22812
+  type: 'test'
+  ...
+# Subtest: when a suit is led, suit must be followed if possible
+ok 292 - when a suit is led, suit must be followed if possible
+  ---
+  duration_ms: 1.578004
+  type: 'test'
+  ...
+# Subtest: when a suit is led and no suit is held, a tarokk must be played if available
+ok 293 - when a suit is led and no suit is held, a tarokk must be played if available
+  ---
+  duration_ms: 1.568819
+  type: 'test'
+  ...
+# Subtest: when tarokk is led, only tarokks may be played
+ok 294 - when tarokk is led, only tarokks may be played
+  ---
+  duration_ms: 0.207139
+  type: 'test'
+  ...
+# Subtest: highest tarokk wins a tarokk-led trick
+ok 295 - highest tarokk wins a tarokk-led trick
+  ---
+  duration_ms: 0.292115
+  type: 'test'
+  ...
+# Subtest: talon distribution is 3/1/1/1 for a three contract
+ok 296 - talon distribution is 3/1/1/1 for a three contract
+  ---
+  duration_ms: 0.956578
+  type: 'test'
+  ...
+# Subtest: round starts in auction phase
+ok 297 - round starts in auction phase
+  ---
+  duration_ms: 0.265845
+  type: 'test'
+  ...
+# Subtest: round to game adapter
+    # Subtest: converts a completed skart state into the common game state
+    ok 1 - converts a completed skart state into the common game state
+      ---
+      duration_ms: 0.625898
+      type: 'test'
+      ...
+    1..1
+ok 298 - round to game adapter
+  ---
+  duration_ms: 0.790724
+  type: 'suite'
+  ...
+# Subtest: round keeps the auction starter as the first-trick leader identity
+ok 299 - round keeps the auction starter as the first-trick leader identity
+  ---
+  duration_ms: 0.467591
+  type: 'test'
+  ...
+# Subtest: ütés pontértéke a lapok pontértékeinek összege
+ok 300 - ütés pontértéke a lapok pontértékeinek összege
+  ---
+  duration_ms: 1.371687
+  type: 'test'
+  ...
+# Subtest: pontok nyertesen játékosonként gyűlnek
+ok 301 - pontok nyertesen játékosonként gyűlnek
+  ---
+  duration_ms: 1.099947
+  type: 'test'
+  ...
+# Subtest: 48 pont a felvevő pár győzelmi küszöbe, 47 az ellenpáré
+ok 302 - 48 pont a felvevő pár győzelmi küszöbe, 47 az ellenpáré
+  ---
+  duration_ms: 0.344081
+  type: 'test'
+  ...
+# Subtest: uhu és királyfigurák aktuális értékei
+ok 303 - uhu és királyfigurák aktuális értékei
+  ---
+  duration_ms: 1.189296
+  type: 'test'
+  ...
+# Subtest: a figura eredménye független a parti eredményétől
+ok 304 - a figura eredménye független a parti eredményétől
+  ---
+  duration_ms: 0.517969
+  type: 'test'
+  ...
+# Subtest: bemondott kettes duplajáték sikeresen 8 pont
+ok 305 - bemondott kettes duplajáték sikeresen 8 pont
+  ---
+  duration_ms: 0.223427
+  type: 'test'
+  ...
+# Subtest: kontrázott egyes játék 60 pont felett 6 pont
+ok 306 - kontrázott egyes játék 60 pont felett 6 pont
+  ---
+  duration_ms: 0.12713
+  type: 'test'
+  ...
+# Subtest: csendes dupla 2x, csendes volát 3x
+ok 307 - csendes dupla 2x, csendes volát 3x
+  ---
+  duration_ms: 0.335332
+  type: 'test'
+  ...
+# Subtest: bemondott dupla és teljesített volát külön is elszámolódik
+ok 308 - bemondott dupla és teljesített volát külön is elszámolódik
+  ---
+  duration_ms: 0.17575
+  type: 'test'
+  ...
+# Subtest: bukott bemondott dupla nem kap külön alapjáték-terhelést
+ok 309 - bukott bemondott dupla nem kap külön alapjáték-terhelést
+  ---
+  duration_ms: 0.166501
+  type: 'test'
+  ...
+# Subtest: a teljes elszámolás megőrzi a parti és figurapontokat
+ok 310 - a teljes elszámolás megőrzi a parti és figurapontokat
+  ---
+  duration_ms: 0.167782
+  type: 'test'
+  ...
+# Subtest: lekötött figura mellett ugyanazon ütésen teljesített másik figura csendes
+ok 311 - lekötött figura mellett ugyanazon ütésen teljesített másik figura csendes
+  ---
+  duration_ms: 3.940142
+  type: 'test'
+  ...
+# Subtest: a lifecycle-ból a bukott védőoldali figura is helyes előjellel kerül az elszámolásba
+ok 312 - a lifecycle-ból a bukott védőoldali figura is helyes előjellel kerül az elszámolásba
+  ---
+  duration_ms: 0.627677
+  type: 'test'
+  ...
+# Subtest: az Uhu-ból keletkező csendes ulti automatikusan bekerül a settlement inputba
+ok 313 - az Uhu-ból keletkező csendes ulti automatikusan bekerül a settlement inputba
+  ---
+  duration_ms: 1.427061
+  type: 'test'
+  ...
+# Subtest: védőpár által bemondott dupla bukása a felvevő párnak jár
+ok 314 - védőpár által bemondott dupla bukása a felvevő párnak jár
+  ---
+  duration_ms: 0.203107
+  type: 'test'
+  ...
+# Subtest: védőpár által bemondott dupla teljesítése a védőpárnak jár
+ok 315 - védőpár által bemondott dupla teljesítése a védőpárnak jár
+  ---
+  duration_ms: 0.125609
+  type: 'test'
+  ...
+# Subtest: védőpár által bemondott volát bukása a felvevő párnak jár
+ok 316 - védőpár által bemondott volát bukása a felvevő párnak jár
+  ---
+  duration_ms: 0.07215
+  type: 'test'
+  ...
+# Subtest: a XXI-fogás bemondva 60, csendben 30 pont
+ok 317 - a XXI-fogás bemondva 60, csendben 30 pont
+  ---
+  duration_ms: 0.221876
+  type: 'test'
+  ...
+# Subtest: csendes Tulétroá és Négykirály 1-1 pontot ér
+ok 318 - csendes Tulétroá és Négykirály 1-1 pontot ér
+  ---
+  duration_ms: 0.066575
+  type: 'test'
+  ...
+# Subtest: csendes Volát csak az összes ütés elvitelétől függ, nem az ütésértéktől
+ok 319 - csendes Volát csak az összes ütés elvitelétől függ, nem az ütésértéktől
+  ---
+  duration_ms: 0.195289
+  type: 'test'
+  ...
+# Subtest: csendes Dupla a védőpár skarttal együtt számított 71 pontjánál teljesül
+ok 320 - csendes Dupla a védőpár skarttal együtt számított 71 pontjánál teljesül
+  ---
+  duration_ms: 0.217004
+  type: 'test'
+  ...
+# Subtest: csendes Dupla nem a skart mező külön értékét adja hozzá kétszer
+ok 321 - csendes Dupla nem a skart mező külön értékét adja hozzá kétszer
+  ---
+  duration_ms: 0.093177
+  type: 'test'
+  ...
+# Subtest: a felvevő saját skartja a felvevő pár Dupla-pontjába számít
+ok 322 - a felvevő saját skartja a felvevő pár Dupla-pontjába számít
+  ---
+  duration_ms: 0.092489
+  type: 'test'
+  ...
+# Subtest: a védőpár Duplájához a felvevő partnerének skartja is a védelemhez tartozik
+ok 323 - a védőpár Duplájához a felvevő partnerének skartja is a védelemhez tartozik
+  ---
+  duration_ms: 0.054868
+  type: 'test'
+  ...
+# Subtest: skart-pontértékek határai a szerződés szerint értelmezhetők
+ok 324 - skart-pontértékek határai a szerződés szerint értelmezhetők
+  ---
+  duration_ms: 0.044665
+  type: 'test'
+  ...
+# Subtest: a 48 pontos felvevőpár a saját skarttal együtt nyeri a partit
+ok 325 - a 48 pontos felvevőpár a saját skarttal együtt nyeri a partit
+  ---
+  duration_ms: 0.079285
+  type: 'test'
+  ...
+# Subtest: 47 pontos felvevőpár nem nyeri meg a partit, a védelem 47 ponttal nyer
+ok 326 - 47 pontos felvevőpár nem nyeri meg a partit, a védelem 47 ponttal nyer
+  ---
+  duration_ms: 0.112807
+  type: 'test'
+  ...
+# Subtest: a 71 pontos Dupla a felvevő saját skartjával együtt teljesül
+ok 327 - a 71 pontos Dupla a felvevő saját skartjával együtt teljesül
+  ---
+  duration_ms: 0.062697
+  type: 'test'
+  ...
+# Subtest: a Volát 90 ponttal is Volát: nincs 94 pontos küszöb
+ok 328 - a Volát 90 ponttal is Volát: nincs 94 pontos küszöb
+  ---
+  duration_ms: 0.068579
+  type: 'test'
+  ...
+# Subtest: a bemondott Dupla saját kontrája szorozza a Duplát, nem a parti kontrája
+ok 329 - a bemondott Dupla saját kontrája szorozza a Duplát, nem a parti kontrája
+  ---
+  duration_ms: 0.069656
+  type: 'test'
+  ...
+# Subtest: a bemondott Volát saját kontrája független a parti kontrájától
+ok 330 - a bemondott Volát saját kontrája független a parti kontrájától
+  ---
+  duration_ms: 0.112976
+  type: 'test'
+  ...
+# Subtest: a Dupla és Volát egyszerre bemondva külön kontra-szorzóval számolódik
+ok 331 - a Dupla és Volát egyszerre bemondva külön kontra-szorzóval számolódik
+  ---
+  duration_ms: 0.069189
+  type: 'test'
+  ...
+# Subtest: XX-as hívásnál trull után a négykirály XIX-et jelez
+ok 332 - XX-as hívásnál trull után a négykirály XIX-et jelez
+  ---
+  duration_ms: 1.668176
+  type: 'test'
+  ...
+# Subtest: XIX-es invitnél a Trull + négykirály a még nem ismert XX-at jelzi
+ok 333 - XIX-es invitnél a Trull + négykirály a még nem ismert XX-at jelzi
+  ---
+  duration_ms: 0.151998
+  type: 'test'
+  ...
+# Subtest: XVIII-as invitnél a Trull + négykirály a XX-at jelzi
+ok 334 - XVIII-as invitnél a Trull + négykirály a XX-at jelzi
+  ---
+  duration_ms: 0.14139
+  type: 'test'
+  ...
+# Subtest: XIX-es hívásnál a Trull + négykirály XVII-et jelez
+ok 335 - XIX-es hívásnál a Trull + négykirály XVII-et jelez
+  ---
+  duration_ms: 0.098942
+  type: 'test'
+  ...
+# Subtest: Centrum után a duplajáték XVII-et jelez
+ok 336 - Centrum után a duplajáték XVII-et jelez
+  ---
+  duration_ms: 1.373012
+  type: 'test'
+  ...
+# Subtest: a jelzés kommunikáció, nem birtoklási állítás
+ok 337 - a jelzés kommunikáció, nem birtoklási állítás
+  ---
+  duration_ms: 0.671246
+  type: 'test'
+  ...
+# Subtest: XIX + Centrum + tulétroá nélkül gazdag partneri következtetést ad
+ok 338 - XIX + Centrum + tulétroá nélkül gazdag partneri következtetést ad
+  ---
+  duration_ms: 1.665846
+  type: 'test'
+  ...
+# Subtest: trull után négykirály hiánya negatív információként kezelhető
+ok 339 - trull után négykirály hiánya negatív információként kezelhető
+  ---
+  duration_ms: 0.233646
+  type: 'test'
+  ...
+# Subtest: Trull nélkül a négykirály általános bíztatás, nem konkrét tarokkjelzés
+ok 340 - Trull nélkül a négykirály általános bíztatás, nem konkrét tarokkjelzés
+  ---
+  duration_ms: 0.41921
+  type: 'test'
+  ...
+# Subtest: Trull nélküli négykirály a partneri következtetésben bíztatásként jelenik meg
+ok 341 - Trull nélküli négykirály a partneri következtetésben bíztatásként jelenik meg
+  ---
+  duration_ms: 0.507399
+  type: 'test'
+  ...
+# Subtest: Trull nélküli négykirály a felvevőnél is bíztatásként értelmezhető
+ok 342 - Trull nélküli négykirály a felvevőnél is bíztatásként értelmezhető
+  ---
+  duration_ms: 0.160823
+  type: 'test'
+  ...
+# Subtest: a partner Trullja is aktiválja a négykirály magas-tarokk jelzését
+ok 343 - a partner Trullja is aktiválja a négykirály magas-tarokk jelzését
+  ---
+  duration_ms: 0.101739
+  type: 'test'
+  ...
+# Subtest: a beszélő saját Trullja ugyanúgy aktiválja a magas-tarokk jelzést
+ok 344 - a beszélő saját Trullja ugyanúgy aktiválja a magas-tarokk jelzést
+  ---
+  duration_ms: 0.345154
+  type: 'test'
+  ...
+# Subtest: Trull + négykirály legalább öt tarokkos erősségre utal, ritka négyes kivétellel
+ok 345 - Trull + négykirály legalább öt tarokkos erősségre utal, ritka négyes kivétellel
+  ---
+  duration_ms: 0.636813
+  type: 'test'
+  ...
+# Subtest: a partner Trullja és a beszélő négykirálya együtt is magas-tarokk jelzés
+ok 346 - a partner Trullja és a beszélő négykirálya együtt is magas-tarokk jelzés
+  ---
+  duration_ms: 0.135827
+  type: 'test'
+  ...
+# Subtest: a partner Trullja esetén a következő kommunikációs jelzés is működik
+ok 347 - a partner Trullja esetén a következő kommunikációs jelzés is működik
+  ---
+  duration_ms: 0.178805
+  type: 'test'
+  ...
+# Subtest: a Trull + négykirály erősségi következtetés akkor is él, ha a Trull a partneré
+ok 348 - a Trull + négykirály erősségi következtetés akkor is él, ha a Trull a partneré
+  ---
+  duration_ms: 0.10461
+  type: 'test'
+  ...
+# Subtest: Centrum -> Kismadár után a Dupla a következő, még ismeretlen tarokkot jelöli
+ok 349 - Centrum -> Kismadár után a Dupla a következő, még ismeretlen tarokkot jelöli
+  ---
+  duration_ms: 0.05817
+  type: 'test'
+  ...
+# Subtest: Centrum -> Kismadár -> Nagymadár után a Dupla már bíztatás, nem XV-jelzés
+ok 350 - Centrum -> Kismadár -> Nagymadár után a Dupla már bíztatás, nem XV-jelzés
+  ---
+  duration_ms: 0.060559
+  type: 'test'
+  ...
+# Subtest: A korábbi Centrum nem írhatja át egy későbbi Four Kings már lezárt jelentését
+ok 351 - A korábbi Centrum nem írhatja át egy későbbi Four Kings már lezárt jelentését
+  ---
+  duration_ms: 0.056869
+  type: 'test'
+  ...
+# Subtest: Trull + négykirály a partneri beliefben növeli az 5+ tarokk valószínűségét és a jelzett tarokkokat
+ok 352 - Trull + négykirály a partneri beliefben növeli az 5+ tarokk valószínűségét és a jelzett tarokkokat
+  ---
+  duration_ms: 0.642729
+  type: 'test'
+  ...
+# Subtest: megfigyelt tarokk kijátszása erős negatív bizonyíték
+ok 353 - megfigyelt tarokk kijátszása erős negatív bizonyíték
+  ---
+  duration_ms: 0.402548
+  type: 'test'
+  ...
+# Subtest: Trull + XVIII-as invit és meghívás után a négykirály XX-at jelez
+ok 354 - Trull + XVIII-as invit és meghívás után a négykirály XX-at jelez
+  ---
+  duration_ms: 0.16257
+  type: 'test'
+  ...
+# Subtest: XVIII-as invit + Trull + négykirály önmagában még nem bizonyítja a XIX hiányát
+ok 355 - XVIII-as invit + Trull + négykirály önmagában még nem bizonyítja a XIX hiányát
+  ---
+  duration_ms: 0.104321
+  type: 'test'
+  ...
+# Subtest: XVIII-as invit után a partner XX-at jelző négykirálya és az invitáló Duplája XIX-hiányt és XVII-et közöl
+ok 356 - XVIII-as invit után a partner XX-at jelző négykirálya és az invitáló Duplája XIX-hiányt és XVII-et közöl
+  ---
+  duration_ms: 0.583914
+  type: 'test'
+  ...
+# Subtest: A későbbi Centrum nem írja át a Trull + négykirály alapjelzését
+ok 357 - A későbbi Centrum nem írja át a Trull + négykirály alapjelzését
+  ---
+  duration_ms: 0.095019
+  type: 'test'
+  ...
+# Subtest: a normál láncban a bemondó XVIII+XVII és legalább 5 tarokk információt ad, Kismadárra bíztat
+ok 358 - a normál láncban a bemondó XVIII+XVII és legalább 5 tarokk információt ad, Kismadárra bíztat
+  ---
+  duration_ms: 0.391889
+  type: 'test'
+  ...
+# Subtest: Ritka XXI-s alternatívát csak explicit XXI-információval és 8 tarokkos partnerjelzéssel erősíti
+ok 359 - Ritka XXI-s alternatívát csak explicit XXI-információval és 8 tarokkos partnerjelzéssel erősíti
+  ---
+  duration_ms: 0.205338
+  type: 'test'
+  ...
+# Subtest: Centrum után a Kismadár elmaradása diszjunktív negatív információ
+ok 360 - Centrum után a Kismadár elmaradása diszjunktív negatív információ
+  ---
+  duration_ms: 0.41782
+  type: 'test'
+  ...
+# Subtest: Kismadár után a Nagymadár elmaradása nem nevezi meg, melyik feltétel hiányzik
+ok 361 - Kismadár után a Nagymadár elmaradása nem nevezi meg, melyik feltétel hiányzik
+  ---
+  duration_ms: 0.427821
+  type: 'test'
+  ...
+# Subtest: XX + Trull után válaszoló négykirály szabályszinten XIX-et és 98%-os 5+ tarokk erőt jelez
+ok 362 - XX + Trull után válaszoló négykirály szabályszinten XIX-et és 98%-os 5+ tarokk erőt jelez
+  ---
+  duration_ms: 0.172759
+  type: 'test'
+  ...
+# Subtest: XX + Trull + négykirály után a Trullt mondó fél Centrumja XVIII-at jelez normál ülésben
+ok 363 - XX + Trull + négykirály után a Trullt mondó fél Centrumja XVIII-at jelez normál ülésben
+  ---
+  duration_ms: 0.106685
+  type: 'test'
+  ...
+# Subtest: XX + Trull + négykirály után ollóban/kör végén a Centrum XVII-et jelez
+ok 364 - XX + Trull + négykirály után ollóban/kör végén a Centrum XVII-et jelez
+  ---
+  duration_ms: 0.095364
+  type: 'test'
+  ...
+# Subtest: Trull + XIX hívás invit nélkül: a négykirály XVII-et jelöl
+ok 365 - Trull + XIX hívás invit nélkül: a négykirály XVII-et jelöl
+  ---
+  duration_ms: 0.066655
+  type: 'test'
+  ...
+# Subtest: Trull + XIX hívás invitnel: a négykirály XX-at jelöl
+ok 366 - Trull + XIX hívás invitnel: a négykirály XX-at jelöl
+  ---
+  duration_ms: 0.060703
+  type: 'test'
+  ...
+# Subtest: Trull + XIX hívás + Centrum után a következő négykirály XVII-et jelöl
+ok 367 - Trull + XIX hívás + Centrum után a következő négykirály XVII-et jelöl
+  ---
+  duration_ms: 0.056428
+  type: 'test'
+  ...
+# Subtest: Trull + négykirály + Centrum után Dupla XVII-et jelöl
+ok 368 - Trull + négykirály + Centrum után Dupla XVII-et jelöl
+  ---
+  duration_ms: 0.111771
+  type: 'test'
+  ...
+# Subtest: Ha Kismadár is azonosította a XXI-et, a Dupla XVI-ot jelöl
+ok 369 - Ha Kismadár is azonosította a XXI-et, a Dupla XVI-ot jelöl
+  ---
+  duration_ms: 0.106839
+  type: 'test'
+  ...
+# Subtest: Trull + négykirály + Dupla Centrum nélkül nem jelöl következő tarokkot
+ok 370 - Trull + négykirály + Dupla Centrum nélkül nem jelöl következő tarokkot
+  ---
+  duration_ms: 1.177763
+  type: 'test'
+  ...
+# Subtest: Trull + négykirály + Dupla Centrum nélkül azt közli, hogy nincs XVIII és lyukas Centrum sem játszható
+ok 371 - Trull + négykirály + Dupla Centrum nélkül azt közli, hogy nincs XVIII és lyukas Centrum sem játszható
+  ---
+  duration_ms: 0.150672
+  type: 'test'
+  ...
+# Subtest: Trull + négykirály + Dupla után Centrum nélkül a következő tarokk pointer nem aktiválódik
+ok 372 - Trull + négykirály + Dupla után Centrum nélkül a következő tarokk pointer nem aktiválódik
+  ---
+  duration_ms: 0.056103
+  type: 'test'
+  ...
+# Subtest: Trull utáni Dupla négykirály nélkül nem jelez XVIII-at
+ok 373 - Trull utáni Dupla négykirály nélkül nem jelez XVIII-at
+  ---
+  duration_ms: 0.064366
+  type: 'test'
+  ...
+# Subtest: Trull utáni Dupla négykirály nélkül XIX-hiányt és további figurára bíztatást közöl
+ok 374 - Trull utáni Dupla négykirály nélkül XIX-hiányt és további figurára bíztatást közöl
+  ---
+  duration_ms: 0.100881
+  type: 'test'
+  ...
+# Subtest: Trull + négykirály + Dupla Centrum nélkül csak bíztatás
+ok 375 - Trull + négykirály + Dupla Centrum nélkül csak bíztatás
+  ---
+  duration_ms: 0.059215
+  type: 'test'
+  ...
+# Subtest: A legacy declarations helper is consistent with the contextual XIX-call chain
+ok 376 - A legacy declarations helper is consistent with the contextual XIX-call chain
+  ---
+  duration_ms: 59.988852
+  type: 'test'
+  ...
+# Subtest: A legacy Centrum helper continues the descending figure chain
+ok 377 - A legacy Centrum helper continues the descending figure chain
+  ---
+  duration_ms: 0.337419
+  type: 'test'
+  ...
+# Subtest: Az olló megjelölése önmagában nem aktiválja a lyukas Centrumot
+ok 378 - Az olló megjelölése önmagában nem aktiválja a lyukas Centrumot
+  ---
+  duration_ms: 0.137547
+  type: 'test'
+  ...
+# Subtest: A lyukas Centrumhoz az explicit XVII + szabad magasabb tarokk feltétel is kell
+ok 379 - A lyukas Centrumhoz az explicit XVII + szabad magasabb tarokk feltétel is kell
+  ---
+  duration_ms: 0.05493
+  type: 'test'
+  ...
+# Subtest: Event chronology preserves repeated Four Kings declarations
+ok 380 - Event chronology preserves repeated Four Kings declarations
+  ---
+  duration_ms: 0.316501
+  type: 'test'
+  ...
+# Subtest: Event chronology does not let a later Centrum rewrite the first Four Kings
+ok 381 - Event chronology does not let a later Centrum rewrite the first Four Kings
+  ---
+  duration_ms: 0.06427
+  type: 'test'
+  ...
+# Subtest: XVIII-as invit + Trull + négykirály csak a XX pozitív információját adja
+ok 382 - XVIII-as invit + Trull + négykirály csak a XX pozitív információját adja
+  ---
+  duration_ms: 0.108456
+  type: 'test'
+  ...
+# Subtest: XVIII-as invit után Kismadár: a Centrum fölé épülve XIX + XVII + XXI kommunikált
+ok 383 - XVIII-as invit után Kismadár: a Centrum fölé épülve XIX + XVII + XXI kommunikált
+  ---
+  duration_ms: 0.156154
+  type: 'test'
+  ...
+# Subtest: XVIII-as invit után Nagymadár: a Centrum fölé épülve XIX + XVII + XVI + Skíz kommunikált
+ok 384 - XVIII-as invit után Nagymadár: a Centrum fölé épülve XIX + XVII + XVI + Skíz kommunikált
+  ---
+  duration_ms: 0.089105
+  type: 'test'
+  ...
+# Subtest: A Kismadár elmaradása több lehetséges feltételt hagy nyitva, nem azonosítja a hiányzó lapot
+ok 385 - A Kismadár elmaradása több lehetséges feltételt hagy nyitva, nem azonosítja a hiányzó lapot
+  ---
+  duration_ms: 0.131901
+  type: 'test'
+  ...
+# Subtest: A Nagymadár elmaradása külön feltételhalmazt őriz meg
+ok 386 - A Nagymadár elmaradása külön feltételhalmazt őriz meg
+  ---
+  duration_ms: 0.087425
+  type: 'test'
+  ...
+# Subtest: Elfogadott invitnél a felvevő Trulljának elmaradása önmagában is negatív információ, de nem bizonyítja keményen a másik nagyhonőr hiányát
+ok 387 - Elfogadott invitnél a felvevő Trulljának elmaradása önmagában is negatív információ, de nem bizonyítja keményen a másik nagyhonőr hiányát
+  ---
+  duration_ms: 0.079787
+  type: 'test'
+  ...
+# Subtest: Az invitált felvevőnél a Trull hiánya nem zárja ki a két nagyhonőrt gyenge lap esetén
+ok 388 - Az invitált felvevőnél a Trull hiánya nem zárja ki a két nagyhonőrt gyenge lap esetén
+  ---
+  duration_ms: 0.110687
+  type: 'test'
+  ...
+# Subtest: XIX-es invit után a felvevő közvetlen Centrumja Négykirály nélkül XVIII-at jelez
+ok 389 - XIX-es invit után a felvevő közvetlen Centrumja Négykirály nélkül XVIII-at jelez
+  ---
+  duration_ms: 0.075175
+  type: 'test'
+  ...
+# Subtest: XIX-es invitnél a közvetlen Centrum kommunikációs rövidítés, nem negatív Négykirály-információ
+ok 390 - XIX-es invitnél a közvetlen Centrum kommunikációs rövidítés, nem negatív Négykirály-információ
+  ---
+  duration_ms: 0.05302
+  type: 'test'
+  ...
+# Subtest: a kommunikációs lehetőség a beszélő saját láncából indul ki
+ok 391 - a kommunikációs lehetőség a beszélő saját láncából indul ki
+  ---
+  duration_ms: 0.044381
+  type: 'test'
+  ...
+# Subtest: Az ellenfél Négykirálya nem lépteti tovább a saját pár kommunikációs láncát
+ok 392 - Az ellenfél Négykirálya nem lépteti tovább a saját pár kommunikációs láncát
+  ---
+  duration_ms: 0.076967
+  type: 'test'
+  ...
+# Subtest: A partner azonos oldali Négykirálya folytathatja a már megnyitott láncot
+ok 393 - A partner azonos oldali Négykirálya folytathatja a már megnyitott láncot
+  ---
+  duration_ms: 0.123683
+  type: 'test'
+  ...
+# Subtest: Trull nélkül a Dupla csak bíztatás, közvetlen XX-as hívás után is
+ok 394 - Trull nélkül a Dupla csak bíztatás, közvetlen XX-as hívás után is
+  ---
+  duration_ms: 0.339473
+  type: 'test'
+  ...
+# Subtest: Trull után Négykirály nélkül a Dupla csak bíztatás
+ok 395 - Trull után Négykirály nélkül a Dupla csak bíztatás
+  ---
+  duration_ms: 0.083885
+  type: 'test'
+  ...
+# Subtest: XVIII-as invit + Trull + Négykirály + Centrum + Dupla XVII-et jelent
+ok 396 - XVIII-as invit + Trull + Négykirály + Centrum + Dupla XVII-et jelent
+  ---
+  duration_ms: 0.053209
+  type: 'test'
+  ...
+# Subtest: XIX-es invit + Trull + Négykirály + Centrum + Dupla szintén XVII-et jelent
+ok 397 - XIX-es invit + Trull + Négykirály + Centrum + Dupla szintén XVII-et jelent
+  ---
+  duration_ms: 0.036459
+  type: 'test'
+  ...
+# Subtest: Trull + Négykirály + Centrum + Kismadár + Dupla XVI-ot jelent
+ok 398 - Trull + Négykirály + Centrum + Kismadár + Dupla XVI-ot jelent
+  ---
+  duration_ms: 0.074042
+  type: 'test'
+  ...
+# Subtest: Kör végén, magasabb le nem kötött tarokkal a Centrum utáni Dupla XVI-ot is jelezhet
+ok 399 - Kör végén, magasabb le nem kötött tarokkal a Centrum utáni Dupla XVI-ot is jelezhet
+  ---
+  duration_ms: 0.058872
+  type: 'test'
+  ...
+# Subtest: Kismadár után ugyanebben a speciális üléshelyzetben a Dupla XV-öt is jelezhet
+ok 400 - Kismadár után ugyanebben a speciális üléshelyzetben a Dupla XV-öt is jelezhet
+  ---
+  duration_ms: 0.154426
+  type: 'test'
+  ...
+# Subtest: A puszta körvégi ülés önmagában nem engedi átugrani a Dupla kommunikációs lépcsőjét
+ok 401 - A puszta körvégi ülés önmagában nem engedi átugrani a Dupla kommunikációs lépcsőjét
+  ---
+  duration_ms: 0.057039
+  type: 'test'
+  ...
+# Subtest: Trull + Négykirály + Centrum + Kismadár + Nagymadár + Dupla ismét bíztatás
+ok 402 - Trull + Négykirály + Centrum + Kismadár + Nagymadár + Dupla ismét bíztatás
+  ---
+  duration_ms: 0.042179
+  type: 'test'
+  ...
+# Subtest: Trull + Négykirály + Centrum után a Dupla nem tér vissza a közvetlen XX-as szabályhoz
+ok 403 - Trull + Négykirály + Centrum után a Dupla nem tér vissza a közvetlen XX-as szabályhoz
+  ---
+  duration_ms: 0.034934
+  type: 'test'
+  ...
+# Subtest: körvégi, magasabb szabad tarokkos Centrum-dupla lyukas Kismadarat jelez: XVI
+ok 404 - körvégi, magasabb szabad tarokkos Centrum-dupla lyukas Kismadarat jelez: XVI
+  ---
+  duration_ms: 0.042553
+  type: 'test'
+  ...
+# Subtest: körvégi, magasabb szabad tarokkos Kismadár-dupla lyukas Nagymadarat jelez: XV
+ok 405 - körvégi, magasabb szabad tarokkos Kismadár-dupla lyukas Nagymadarat jelez: XV
+  ---
+  duration_ms: 0.037585
+  type: 'test'
+  ...
+# Subtest: Nagymadár után a Dupla ismét bíztatás, nem XV-jelzés
+ok 406 - Nagymadár után a Dupla ismét bíztatás, nem XV-jelzés
+  ---
+  duration_ms: 0.037581
+  type: 'test'
+  ...
+# Subtest: honours, XX and kings are never skartable
+ok 407 - honours, XX and kings are never skartable
+  ---
+  duration_ms: 1.293897
+  type: 'test'
+  ...
+# Subtest: invited tarokk is forbidden in addition to the general restrictions
+ok 408 - invited tarokk is forbidden in addition to the general restrictions
+  ---
+  duration_ms: 1.33374
+  type: 'test'
+  ...
+# Subtest: validateSkart rejects forbidden cards
+ok 409 - validateSkart rejects forbidden cards
+  ---
+  duration_ms: 0.395734
+  type: 'test'
+  ...
+# Subtest: 8 tarokk esetén a tarokkszám bemondása önkéntes és nem blokkolja a figurát
+ok 410 - 8 tarokk esetén a tarokkszám bemondása önkéntes és nem blokkolja a figurát
+  ---
+  duration_ms: 1.515495
+  type: 'test'
+  ...
+# Subtest: 9 tarokk kézben a 9-es bejelentés is elérhető
+ok 411 - 9 tarokk kézben a 9-es bejelentés is elérhető
+  ---
+  duration_ms: 0.231061
+  type: 'test'
+  ...
+# Subtest: Pagát ultimó után 8+ tarokknál kötelező a tarokkszám bejelentése
+ok 412 - Pagát ultimó után 8+ tarokknál kötelező a tarokkszám bejelentése
+  ---
+  duration_ms: 0.803037
+  type: 'test'
+  ...
+1..412
+# tests 423
+# suites 6
+# pass 423
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 31338.209305

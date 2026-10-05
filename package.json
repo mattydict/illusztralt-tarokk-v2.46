@@ -1,0 +1,27 @@
+{
+  "name": "illusztralt-tarokk",
+  "version": "2.46.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --import tsx tests/**/*.test.ts",
+    "check": "tsc --noEmit",
+    "dev": "vite src/ui --host 0.0.0.0",
+    "soak": "node scripts/aiSoakParallel.mjs 100 20261005",
+    "soak-fast": "node scripts/aiSoakParallel.mjs 32 20261005 5 --fast",
+    "server": "node server/main.mjs",
+    "test:js": "node --test tests/*.test.js",
+    "build": "node scripts/buildRelease.mjs",
+    "load-test": "node scripts/multiplayerLoadTest.mjs 50",
+    "start": "node server/main.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^7.1.9"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.2.0"
+  }
+}

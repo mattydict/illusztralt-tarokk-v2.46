@@ -1,0 +1,7 @@
+{
+  "rooms": 50,
+  "httpOperations": 250,
+  "elapsedMs": 752,
+  "opsPerSec": 332.2,
+  "readyRooms": 50
+}

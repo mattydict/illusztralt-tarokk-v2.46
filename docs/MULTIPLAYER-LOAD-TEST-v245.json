@@ -1,0 +1,12 @@
+{
+  "version": "2.45.0",
+  "environment": "development container",
+  "cpuWorkers": 5,
+  "rooms": 50,
+  "httpOperations": 250,
+  "elapsedMs": 700,
+  "opsPerSec": 357,
+  "readyRooms": 50,
+  "scope": "room creation + 3 joins per room + status verification",
+  "note": "This is a development load smoke test, not a production capacity limit."
+}

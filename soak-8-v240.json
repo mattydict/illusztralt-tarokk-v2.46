@@ -1,0 +1,52 @@
+{
+  "count": 8,
+  "seedBase": 20261005,
+  "workerCount": 1,
+  "devMode": true,
+  "completedDeals": 8,
+  "failedDeals": 0,
+  "failures": [],
+  "metrics": {
+    "totalDeals": 8,
+    "completedDeals": 8,
+    "failedDeals": 0,
+    "totalPlayMoves": 288,
+    "totalTricks": 72,
+    "overcontrolOpportunities": 14,
+    "overcontrolEvents": 6,
+    "overcontrolRate": 0.42857142857142855,
+    "lowValueOvercontrolPoints": 2,
+    "partnerTransferCount": 18,
+    "partnerTransferRate": 0.6,
+    "declarationAttempts": 10,
+    "declarationDecisionCount": 39,
+    "declarationFallbacks": 10,
+    "declarationPolicyMismatches": 0,
+    "policyMismatchRate": 0,
+    "failedDeclarations": 10,
+    "unresolvedDeclarations": 0,
+    "declarationSuccessRate": 0,
+    "silentFigureSuccesses": 4,
+    "silentFigureFailures": 0,
+    "contraRaises": 50,
+    "redeals": 1,
+    "averageSettlementForTaker": -82.625,
+    "takerWinRate": 0.125,
+    "figures": {
+      "centrum": {
+        "attempts": 9,
+        "fulfilled": 0,
+        "failed": 9,
+        "unresolved": 0,
+        "successRate": 0
+      },
+      "kismadar": {
+        "attempts": 1,
+        "fulfilled": 0,
+        "failed": 1,
+        "unresolved": 0,
+        "successRate": 0
+      }
+    }
+  }
+}

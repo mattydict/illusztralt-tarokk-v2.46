@@ -1,0 +1,5 @@
+v2.44 final JavaScript regression
+Tests: 447
+Pass: 447
+Fail: 0
+Duration: 28.1s

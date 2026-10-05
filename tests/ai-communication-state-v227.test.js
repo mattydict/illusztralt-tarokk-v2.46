@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createDeck } from '../src/engine/cards.js';
+import { createPartnerBeliefState } from '../src/engine/beliefs.js';
+import { assessCommunicationStateMachine } from '../src/engine/aiCommunicationStateMachine.js';
+const deck=createDeck(); const card=id=>deck.find(c=>c.id===id);
+function base(overrides={}) { return {playerCount:4,players:[{id:'A',hand:[card('T21'),card('T15'),card('T10')],score:0,active:true},{id:'B',hand:[card('T18')],score:0,active:true},{id:'C',hand:[card('T19'),card('T17')],score:0,active:true},{id:'D',hand:[card('T12')],score:0,active:true}],dealerIndex:0,phase:'play',talon:[],trick:{leader:'C',cards:[{player:'C',card:card('T18')}]},completedTricks:[],leadSuit:null,nextPlayerIndex:0,lockedCards:[],declarations:{declarations:[],locks:[],events:[],silentFigures:[]},takerId:'A',partnerId:'C',...overrides}; }
+function beliefs(){const b=createPartnerBeliefState(); b.likelyTarokks.find(x=>x.rank===19).score=5; b.likelyTarokks.find(x=>x.rank===21).score=5; return b;}
+test('v2.27 current partner lead creates an acknowledgement stage',()=>{const a=assessCommunicationStateMachine(base(),'A',card('T21'),beliefs()); assert.equal(a.stage,'acknowledged'); assert.ok(a.acknowledgement>0);});
+test('v2.27 repeated compatible public replies become reinforcement',()=>{const tricks=[{leader:'C',cards:[{player:'C',card:card('T18')},{player:'A',card:card('T21')}],winner:'A'},{leader:'C',cards:[{player:'C',card:card('T17')},{player:'A',card:card('T21')}],winner:'A'}]; const a=assessCommunicationStateMachine(base({trick:null,completedTricks:tricks}),'A',card('T15'),beliefs()); assert.equal(a.stage,'reinforced'); assert.ok(a.reinforcement>0);});
+test('v2.27 old signal decays instead of becoming certainty',()=>{const tricks=[{leader:'C',cards:[{player:'C',card:card('T18')},{player:'A',card:card('T19')}],winner:'A'},{leader:'A',cards:[{player:'A',card:card('T15')},{player:'C',card:card('T17')}],winner:'A'},{leader:'A',cards:[{player:'A',card:card('T10')},{player:'C',card:card('T12')}],winner:'A'}]; const a=assessCommunicationStateMachine(base({trick:null,completedTricks:tricks}),'A',card('T15'),beliefs()); assert.equal(a.stage,'decaying'); assert.ok(a.confidence<0.95);});
+test('v2.27 ambiguous response is not rewarded just because it is hard to read',()=>{const a=assessCommunicationStateMachine(base(),'A',card('T22'),beliefs()); assert.ok(a.score<2); assert.ok(a.acknowledgement<0.55);});
+test('v2.27 no public signal means idle',()=>{const a=assessCommunicationStateMachine(base({trick:null}),'A',card('T15'),createPartnerBeliefState()); assert.equal(a.stage,'idle'); assert.equal(a.score,0);});
