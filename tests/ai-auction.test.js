@@ -117,11 +117,15 @@ test('3→2→1 után az eredeti Hármasos Szólója XIX invit, nem sima Szóló
     const { legalAuctionActions, applyAuctionAction } = await import('../src/engine/auction.js');
     const auction = createAuction(['A', 'B', 'C', 'D'], 0);
     let state = auction;
-    state = applyAuctionAction(state, { type: 'bid', contract: 'three' }, { A: [c(19)], B: [], C: [], D: [] });
-    state = applyAuctionAction(state, { type: 'bid', contract: 'two' }, { A: [c(19)], B: [c(21)], C: [], D: [] });
-    state = applyAuctionAction(state, { type: 'bid', contract: 'one' }, { A: [c(19)], B: [c(21)], C: [c(22)], D: [] });
-    state = applyAuctionAction(state, { type: 'pass' }, { A: [c(19)], B: [c(21)], C: [c(22)], D: [] });
-    const actions = legalAuctionActions(state, 'A', { A: [c(19)], B: [c(21)], C: [c(22)], D: [] });
+    const hands = { A: [c(19), c(21), c(20), c(18), c(17), c(16), c(15), c(14)], B: [c(21), c(20), c(18), c(17), c(16), c(15), c(14), c(13)], C: [c(22), c(20), c(18), c(17), c(16), c(15), c(14), c(13)], D: [] };
+    state = applyAuctionAction(state, { type: 'bid', contract: 'three' }, hands);
+    state = applyAuctionAction(state, { type: 'bid', contract: 'two' }, hands);
+    state = applyAuctionAction(state, { type: 'hold', contract: 'two' }, hands);
+    assert.ok(state.seats[state.currentSeat]?.playerId === 'B');
+    assert.ok(legalAuctionActions(state, 'B', hands).some(a => a.type === 'bid' && a.contract === 'one'));
+    state = applyAuctionAction(state, { type: 'bid', contract: 'one' }, hands);
+    // A is the original Hármasos and gets the hold/invite response to B's Egyes.
+    const actions = legalAuctionActions(state, 'A', hands);
     assert.ok(actions.some(a => a.type === 'invite' && a.target === 19));
     assert.ok(!actions.some(a => a.type === 'bid' && a.contract === 'solo'));
 });

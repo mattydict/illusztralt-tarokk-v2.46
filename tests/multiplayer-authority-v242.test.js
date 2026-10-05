@@ -46,7 +46,14 @@ test('v2.42 phase changes are emitted after the authoritative sequence advances'
   let seq = room.snapshotFor('A').sequence;
   const starter = room.snapshotFor('A').currentPlayerId;
   const order = [starter, ids[(ids.indexOf(starter) + 1) % 4], ids[(ids.indexOf(starter) + 2) % 4], ids[(ids.indexOf(starter) + 3) % 4]];
-  room.dispatch(order[0], seq, { type: 'auction', action: { type: 'bid', contract: 'three' } }); seq += 1;
+  const starterState = room.round.players.find(p => p.playerId === order[0]);
+  if (starterState && !starterState.hand.some(c => c.kind === 'tarokk' && [1, 21, 22].includes(c.rank))) {
+    const replacement = starterState.hand.find(c => c.kind === 'tarokk');
+    if (replacement) Object.assign(replacement, { rank: 21, id: `${replacement.id}-forced-honour`, points: 5 });
+  }
+  const opening = room.snapshotFor(order[0]).legalActionHints.auctionActions.find(a => a.type === 'bid');
+  assert.ok(opening);
+  room.dispatch(order[0], seq, { type: 'auction', action: opening }); seq += 1;
   room.dispatch(order[1], seq, { type: 'auction', action: { type: 'pass' } }); seq += 1;
   room.dispatch(order[2], seq, { type: 'auction', action: { type: 'pass' } }); seq += 1;
   const finalView = room.dispatch(order[3], seq, { type: 'auction', action: { type: 'pass' } });

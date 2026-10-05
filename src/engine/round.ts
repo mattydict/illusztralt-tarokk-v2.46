@@ -33,6 +33,8 @@ export interface RoundState {
   auctionOutcome?: AuctionOutcome;
   calledTarokk?: 18|19|20|21|22;
   talon: Card[];
+  /** Multiplayer rooms use simultaneous fektetés; single-player/AI keeps turn-based fektetés. */
+  parallelSkart?: boolean;
 }
 
 export function createRound(playerIds: string[], firstBidder = 0): RoundState {
@@ -120,22 +122,36 @@ export function distributeRoundTalon(state: RoundState, talon: Card[]): RoundSta
       preSkartSuitCounts: suitCounts(hand),
     };
   });
-  const firstSkarter = state.players[(takerIndex + 1) % state.players.length]?.playerId;
-  return firstSkarter ? {...state, players, phase: 'skart', currentPlayerId: firstSkarter, eventLog: [...state.eventLog, 'A talon kiosztva.']} : {...state, players, phase: 'skart', eventLog: [...state.eventLog, 'A talon kiosztva.']};
+  const firstSkarter = nextSkarter(players, state.takerId!);
+  return {
+    ...state,
+    players,
+    phase: 'skart',
+    currentPlayerId: state.parallelSkart ? undefined : firstSkarter,
+    eventLog: [...state.eventLog, state.parallelSkart ? 'A talon kiosztva. A négy játékos párhuzamosan fektethet.' : 'A talon kiosztva; következik a fektetés.'],
+  };
 }
 
 export function skartRoundPlayer(state: RoundState, playerId: string, cards: Card[]): RoundState {
-  if (state.phase !== 'skart') throw new Error('A parti nincs skartolási állapotban.');
-  if (state.currentPlayerId !== playerId) throw new Error('Most nem ennek a játékosnak kell fektetnie.');
+  if (state.phase !== 'skart') throw new Error('A parti nincs fektetési fázisban.');
   const player = state.players.find(p => p.playerId === playerId);
   if (!player) throw new Error('Ismeretlen játékos.');
+  if (!state.parallelSkart && state.currentPlayerId !== playerId) throw new Error('Most nem ennek a játékosnak kell fektetnie.');
+  if (player.skart.length === player.receivedTalon.length) throw new Error('Ez a játékos már befejezte a fektetést.');
   const count = player.receivedTalon.length;
   if (cards.length !== count) throw new Error(`Pontosan ${count} lapot kell fektetni.`);
   const result = applyFektetes(player.hand, cards, count, playerId === state.takerId, state.invitedTarokk);
-  const players = state.players.map(p => p.playerId === playerId ? {...p, hand: result.remainingHand, skart: result.skart, skartTarokkCount: result.tarokkCount, skartRevealed: result.revealSkart, skartAnnounced: false} : p);
+  let players = state.players.map(p => p.playerId === playerId ? {...p, hand: result.remainingHand, skart: result.skart, skartTarokkCount: result.tarokkCount, skartRevealed: state.parallelSkart ? false : result.revealSkart, skartAnnounced: false} : p);
   const allDone = players.every(p => p.skart.length === p.receivedTalon.length);
-  const nextPlayer = allDone ? nextSkartAnnouncer(players, state.takerId) : nextSkarter(players, playerId);
-  return nextPlayer ? {...state, players, phase: 'skart', currentPlayerId: nextPlayer, eventLog: [...state.eventLog, `${playerId} fektetett ${result.tarokkCount} tarokkot.`]} : {...state, players, phase: 'skart', eventLog: [...state.eventLog, `${playerId} fektetett ${result.tarokkCount} tarokkot.`]};
+  if (allDone && state.takerId) players = players.map(p => p.playerId === state.takerId ? {...p, skartRevealed: true} : p);
+  if (!allDone) {
+    const next = state.parallelSkart ? undefined : nextSkarter(players, playerId);
+    return {...state, players, currentPlayerId: next, eventLog: [...state.eventLog, `${playerId} fektetett ${result.tarokkCount} tarokkot.`]};
+  }
+  const announcer = nextSkartAnnouncer(players, state.takerId);
+  return announcer
+    ? {...state, players, phase: 'skart', currentPlayerId: announcer, eventLog: [...state.eventLog, `${playerId} fektetett ${result.tarokkCount} tarokkot.`, 'Minden játékos befejezte a fektetést; következik a fektetés bemondása.']}
+    : {...state, players, phase: 'partner-call', currentPlayerId: state.takerId, eventLog: [...state.eventLog, `${playerId} fektetett ${result.tarokkCount} tarokkot.`, 'Minden játékos befejezte a fektetést; következik a partnerhívás.']};
 }
 
 
@@ -144,6 +160,7 @@ export function announceSkartCount(state: RoundState, playerId: string): RoundSt
   if (state.currentPlayerId !== playerId) throw new Error('Most nem ennek a játékosnak kell bemondania.');
   const player = state.players.find(p => p.playerId === playerId);
   if (!player || player.skart.length !== player.receivedTalon.length) throw new Error('A játékos még nem fejezte be a fektetést.');
+  if (!state.players.every(p => p.skart.length === p.receivedTalon.length)) throw new Error('A fektetés bemondása csak mind a négy játékos fektetése után kezdődhet.');
   if (player.skartAnnounced) throw new Error('A fektetés már be lett mondva.');
   const players = state.players.map(p => p.playerId === playerId ? {...p, skartAnnounced: true} : p);
   const allAnnounced = players.every(p => p.skartAnnounced);

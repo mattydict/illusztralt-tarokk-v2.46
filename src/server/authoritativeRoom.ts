@@ -84,7 +84,7 @@ export class AuthoritativeRoom {
       if (options.persisted.schemaVersion !== 1) throw new Error('Ismeretlen mentett szobaverzió.');
       if (options.persisted.roomId !== this.roomId) throw new Error('A mentett szobaazonosító nem egyezik.');
       if (JSON.stringify(options.persisted.playerIds) !== JSON.stringify(this.playerIds)) throw new Error('A mentett játékoslista nem egyezik.');
-      this.round = options.persisted.round;
+      this.round = { ...options.persisted.round, parallelSkart: true };
       this.game = options.persisted.game;
       this.declarationWindow = options.persisted.declarationWindow;
       this.sequence = options.persisted.sequence;
@@ -95,7 +95,7 @@ export class AuthoritativeRoom {
       return;
     }
     const base = createRound(this.playerIds, (this.dealerIndex + 1) % 4);
-    this.round = dealRound(base, this.random);
+    this.round = { ...dealRound(base, this.random), parallelSkart: true };
     for (const id of this.playerIds) this.connected.add(id);
   }
 
@@ -132,13 +132,14 @@ export class AuthoritativeRoom {
   get currentPlayerId(): string | undefined {
     if (this.game?.phase === 'declarations') return this.round.currentPlayerId;
     if (this.game) return this.game.players[this.game.nextPlayerIndex]?.id;
+    if (this.round.phase === 'skart' && this.round.parallelSkart) return this.round.currentPlayerId;
     return this.round.currentPlayerId ?? this.round.auction.seats[this.round.auction.currentSeat]?.playerId;
   }
 
   dispatch(playerId: string, expectedSequence: number, action: PlayerAction): AuthoritativeView {
     this.assertPlayer(playerId);
     if (!this.connected.has(playerId)) throw new Error('A játékos nincs csatlakoztatva ehhez a szobához.');
-    if (!this.isReady()) throw new Error('A szoba még nem teljes; várd meg mind a négy játékost.');
+    if (phaseOf(this.round, this.game) === 'auction' && !this.isReady()) throw new Error('A szoba még nem teljes; várd meg mind a négy játékost.');
     if (expectedSequence !== this.sequence) throw new Error(`Elavult játékállapot: várt szekvencia ${this.sequence}.`);
     const before = this.exportPersistedState();
     try {
@@ -163,7 +164,7 @@ export class AuthoritativeRoom {
   async dispatchAsync(playerId: string, expectedSequence: number, action: PlayerAction): Promise<AuthoritativeView> {
     this.assertPlayer(playerId);
     if (!this.connected.has(playerId)) throw new Error('A játékos nincs csatlakoztatva ehhez a szobához.');
-    if (!this.isReady()) throw new Error('A szoba még nem teljes; várd meg mind a négy játékost.');
+    if (phaseOf(this.round, this.game) === 'auction' && !this.isReady()) throw new Error('A szoba még nem teljes; várd meg mind a négy játékost.');
     if (expectedSequence !== this.sequence) throw new Error(`Elavult játékállapot: várt szekvencia ${this.sequence}.`);
     const before = this.exportPersistedState();
     try {
@@ -208,9 +209,23 @@ export class AuthoritativeRoom {
 
   legalActionHints(playerId: string): Record<string, unknown> {
     this.assertPlayer(playerId);
-    if (!this.isReady() || !this.connected.has(playerId)) return { types: [] };
-    const current = this.currentPlayerId;
+    const phase = phaseOf(this.round, this.game);
+    if (!this.connected.has(playerId)) return { types: [] };
+    if (phase === 'auction' && !this.isReady()) return { types: [] };
     const result: Record<string, unknown> = { types: this.legalActionTypes(playerId) };
+    if (!this.game && this.round.phase === 'skart' && this.round.parallelSkart) {
+      const p = this.round.players.find(x => x.playerId === playerId);
+      if (p) {
+        const allDone = this.round.players.every(x => x.skart.length === x.receivedTalon.length);
+        result.skartCount = p.receivedTalon.length;
+        result.skartCardIds = allDone ? [] : legalSkartCards(p.hand, this.round.invitedTarokk).map(c => c.id);
+        result.skartComplete = p.skart.length === p.receivedTalon.length;
+        result.skartAllDone = allDone;
+        result.skartAnnounced = p.skartAnnounced;
+      }
+      return result;
+    }
+    const current = this.currentPlayerId;
     if (!current || current !== playerId) {
       const declarationContraIds = this.game?.phase === 'declarations'
         ? this.game.declarations.declarations.filter(d => canRaiseDeclarationContraInGame(this.game!, d.id, playerId)).map(d => d.id)
@@ -267,7 +282,7 @@ export class AuthoritativeRoom {
         ...(own ? { hand: p.hand.map(cloneCard) } : {}),
         ...(own && p.receivedTalon.length ? { receivedTalon: p.receivedTalon.map(cloneCard) } : {}),
         ...(own && p.skart.length ? { ownSkart: p.skart.map(cloneCard) } : {}),
-        ...(p.skart.length ? { skartCount: p.skart.length } : {}),
+        ...(this.round.parallelSkart ? ((p.skartAnnounced || p.skartRevealed) ? { skartCount: p.skart.length } : {}) : { skartCount: p.skart.length }),
         ...(revealed ? { revealedSkart: revealed } : {}),
       } satisfies PublicPlayerView;
     });
@@ -279,6 +294,7 @@ export class AuthoritativeRoom {
       records: [...this.round.auction.records],
       outstandingInvite: this.round.auction.outstandingInvite,
       inviteAcceptedBy: this.round.auction.inviteAcceptedBy,
+      holdOwnerId: this.round.auction.holdOwnerId,
     } satisfies Partial<AuctionState>;
     const game = this.game ? this.publicGameView(this.game) : undefined;
     return {
@@ -313,7 +329,17 @@ export class AuthoritativeRoom {
   }
 
   private legalActionTypes(playerId: string): PlayerAction['type'][] {
-    if (!this.isReady() || !this.connected.has(playerId)) return [];
+    if (!this.connected.has(playerId)) return [];
+    const phase = phaseOf(this.round, this.game);
+    if (phase === 'auction' && !this.isReady()) return [];
+    if (!this.game && this.round.phase === 'skart') {
+      const p = this.round.players.find(x => x.playerId === playerId);
+      if (!p) return [];
+      const allDone = this.round.players.every(x => x.skart.length === x.receivedTalon.length);
+      if (!allDone && p.skart.length < p.receivedTalon.length) return ['skart'];
+      if (allDone && this.currentPlayerId === playerId && !p.skartAnnounced) return ['skart-announce'];
+      return [];
+    }
     const current = this.currentPlayerId;
     if (!current || current !== playerId) {
       if (this.game?.phase === 'declarations' && this.canContraForAny(playerId)) return ['game-contra', 'declaration-contra'];
@@ -363,7 +389,7 @@ export class AuthoritativeRoom {
         return;
     }
     this.round = finishAuction(this.round, this.round.talon);
-    this.round = distributeRoundTalon(this.round, this.round.talon);
+    this.round = distributeRoundTalon({ ...this.round, parallelSkart: true }, this.round.talon);
   }
 
   private applySkart(playerId: string, cardIds: string[]): void {

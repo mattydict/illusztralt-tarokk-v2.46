@@ -1,4 +1,4 @@
-import { isTarokk } from './cards.js';
+import { isHonour, isTarokk } from './cards.js';
 const order = ['three', 'two', 'one', 'solo'];
 const idx = (c) => order.indexOf(c);
 export function createAuction(playerIds, firstSeat = 0) {
@@ -77,122 +77,146 @@ function openingInviteForResponse(state, playerId, hands) {
     const response = openingJumpResponse(state, playerId);
     if (!response || response.target === undefined || !hands)
         return undefined;
-    if (!hands[playerId]?.some(c => isTarokk(c) && c.rank === response.target))
+    if (!canInviteWithHand(hands[playerId], response.target))
         return undefined;
     return response;
+}
+function fullHand(hand) {
+    return Array.isArray(hand) && hand.length >= 8;
+}
+function canBidWithHand(hand) {
+    if (!Array.isArray(hand) || !fullHand(hand))
+        return true;
+    return hand.some(isHonour);
+}
+function canInviteWithHand(hand, target) {
+    if (!Array.isArray(hand) || !fullHand(hand))
+        return Array.isArray(hand) ? hand.some(c => isTarokk(c) && c.rank === target) : true;
+    const tarokks = hand.filter(isTarokk);
+    return tarokks.length >= 5
+        && tarokks.some(c => isTarokk(c) && c.rank === target)
+        && tarokks.some(c => isTarokk(c) && (c.rank === 21 || c.rank === 22));
+}
+function allOtherPlayersPassed(state, playerId) {
+    return state.seats
+        .filter(s => s.playerId !== playerId)
+        .every(s => state.records.some(r => r.playerId === s.playerId && r.action.type === 'pass'));
+}
+function holdOwner(state) {
+    if (state.holdOwnerId && !state.out.includes(state.holdOwnerId)
+        && !(state.inviterLockedOut && state.outstandingInvite?.inviterId === state.holdOwnerId))
+        return state.holdOwnerId;
+    const bids = bidRecords(state);
+    const distinct = [];
+    for (const r of bids) if (!distinct.includes(r.playerId)) distinct.push(r.playerId);
+    return distinct.find(id => !state.out.includes(id)) ?? undefined;
+}
+function nextHoldOwner(state, currentHolder) {
+    const bids = bidRecords(state);
+    const distinct = [];
+    for (const r of bids) if (!distinct.includes(r.playerId)) distinct.push(r.playerId);
+    const index = distinct.indexOf(currentHolder);
+    for (let i = index + 1; i < distinct.length; i++) {
+        const id = distinct[i];
+        if (!state.out.includes(id)) return id;
+    }
+    return undefined;
+}
+function continuationAfterHold(state, holder) {
+    const bids = bidRecords(state);
+    const first = bids[0]?.playerId;
+    const second = bids.find(r => r.playerId !== first)?.playerId;
+    if (second && second !== holder && !state.out.includes(second))
+        return seatOf(state, second);
+    const fallback = bids.find(r => r.playerId !== holder && !state.out.includes(r.playerId))?.playerId;
+    if (fallback) return seatOf(state, fallback);
+    return nextActive(state, seatOf(state, holder));
 }
 export function legalAuctionActions(state, playerId, hands) {
     if (state.finished || state.seats[state.currentSeat]?.playerId !== playerId || state.out.includes(playerId))
         return [];
     const result = [{ type: 'pass' }];
+    const hand = hands?.[playerId];
+    const hasBidAuthority = canBidWithHand(hand);
+    const currentHolder = holdOwner(state);
+
     if (state.inviterLockedOut && state.outstandingInvite?.inviterId === playerId)
         return result;
-    // A low opening bid can be interpreted by the next bidder as an invite.
-    // If the opener really owns the invited tarokk, holding the jumped contract
-    // confirms the invite. If the opener does not own it, that interpretation is
-    // impossible; the normal hold remains available and means a strong opening.
+
+    // A player with a full hand may only bid with a honőr. The sole exception is
+    // a player who is left after the other three players have passed: they may
+    // announce an honourless Hármas, provided the later talon validity check passes.
+    if (!hasBidAuthority) {
+        if (!state.highest && allOtherPlayersPassed(state, playerId)) {
+            result.push({ type: 'bid', contract: 'three', honourless: true });
+        }
+        return result;
+    }
+
+    // Opening low bids can be interpreted as an invitation by the next bidder.
+    // The opener must confirm with the invited tarokk AND the normal invite
+    // prerequisites (>=5 tarokks + big honőr). Without that card, only the
+    // ordinary hold is legal.
     const openingResponse = openingJumpResponse(state, playerId);
     if (openingResponse) {
         const openingInvite = openingInviteForResponse(state, playerId, hands);
         if (openingInvite) {
-            // The lower jump is an invite acceptance. The opener must hold the
-            // jumped contract and thereby confirm the invite.
             return [{ type: 'hold-invite', contract: openingInvite.contract, target: openingInvite.target }];
         }
-        // Without the invited tarokk the opener cannot have made that invite.
-        // The opening bid therefore remains a strong opening and the opener is
-        // obliged to hold the lower contract rather than turn it into a higher bid.
         return [{ type: 'hold', contract: openingResponse.contract }];
     }
+
     const highest = state.highest;
     const outstandingInvite = state.outstandingInvite;
-    // Once an explicit invite is on the table, a player other than the inviter
-    // may only raise the auction if they can actually accept the invited tarokk.
-    // The competition rules make the acceptance mandatory for the eventual
-    // taker; preventing an invalid bidder here is safer than discovering the
-    // violation only after the auction has already finished.
-    // Special Illusztrált pattern: the original Hármas bidder may, after
-    // 2-1 has been bid and the intervening fourth player has passed, use
-    // Szóló as a XIX invite. This is an invite, not an ordinary Solo bid.
-    const inviteRestriction = outstandingInvite && playerId !== outstandingInvite.inviterId && hands
-        ? !(hands[playerId] ?? []).some(c => isTarokk(c) && c.rank === outstandingInvite.target)
-        : false;
-    const bidHistory = bidRecords(state);
-    const opener = bidHistory[0];
-    const isThreeOneXixInvite = !!opener &&
-        opener.playerId === playerId &&
-        opener.action.contract === 'three' &&
-        bidHistory.length >= 3 &&
-        bidHistory[1]?.action.contract === 'two' &&
-        bidHistory[2]?.action.contract === 'one' &&
-        !state.records.some(r => r.action.type === 'invite' || r.action.type === 'hold-invite') &&
-        !state.outstandingInvite &&
-        state.highest?.contract === 'one';
-    if (isThreeOneXixInvite) {
-        // A has already shown Three, B Two, C One. A's Solo announcement here
-        // is the one-step XIX invite convention. It is only offered as an invite
-        // action; a plain bid(Solo) is deliberately not legal in this position.
-        // With visible hands supplied, enforce the formal prerequisites here too:
-        // XIX + at least one big honour + at least five tarokks. If those are not
-        // present, the invalid invite is not offered; A can instead pass and let
-        // the lower contract stand.
-        const hand = hands?.[playerId] ?? [];
-        const hasRealAuctionHand = hands !== undefined && hand.length >= 8;
-        const valid = !hasRealAuctionHand || (hand.filter(c => isTarokk(c)).length >= 5
-            && hand.some(c => isTarokk(c) && c.rank === 19)
-            && hand.some(c => isTarokk(c) && (c.rank === 21 || c.rank === 22)));
-        if (valid) {
-            // After 3-2-1 the original Three bidder may either hold the One or make
-            // the informational XIX invite. A full 9-card hand must satisfy the
-            // actual invite prerequisites; sparse fixtures are treated as symbolic.
-            result.push({ type: 'hold', contract: 'one' });
-            result.push({ type: 'invite', target: 19 });
-        }
-        return result;
+
+    // The first bidder (or the next holder after a pass) is the only player who
+    // may use Tartom. When another player raises, that holder gets the response
+    // immediately; they cannot make a normal higher bid at the same moment.
+    if (currentHolder === playerId && highest && highest.playerId !== playerId) {
+        const resultWithHold = [...result, { type: 'hold', contract: highest.contract }];
+        const isThreeOneXixInvite = !!bidRecords(state)[0]
+            && bidRecords(state)[0].playerId === playerId
+            && bidRecords(state)[0].action.contract === 'three'
+            && bidRecords(state).length >= 3
+            && bidRecords(state)[1]?.action.contract === 'two'
+            && bidRecords(state)[2]?.action.contract === 'one'
+            && !state.records.some(r => r.action.type === 'invite' || r.action.type === 'hold-invite')
+            && !state.outstandingInvite
+            && highest.contract === 'one';
+        if (isThreeOneXixInvite && canInviteWithHand(hand, 19))
+            resultWithHold.push({ type: 'invite', target: 19 });
+        return resultWithHold;
     }
+
     if (!highest) {
+        if (outstandingInvite && hands) {
+            // An outstanding invite is accepted only by a player who actually
+            // holds the invited tarokk and satisfies the invite prerequisites.
+            if (!canInviteWithHand(hand, outstandingInvite.target)) return result;
+        }
         for (const contract of order)
             result.push({ type: 'bid', contract });
         if (!outstandingInvite) {
             for (const target of [20, 19, 18]) {
-                if (!hands) {
-                    result.push({ type: 'invite', target });
-                    continue;
-                }
-                const hand = hands[playerId] ?? [];
-                const tarokks = hand.filter(c => isTarokk(c));
-                const hasRealAuctionHand = hand.length >= 8;
-                const valid = !hasRealAuctionHand || (tarokks.length >= 5
-                    && tarokks.some(c => c.rank === target)
-                    && tarokks.some(c => c.rank === 21 || c.rank === 22));
-                if (valid)
+                if (canInviteWithHand(hand, target))
                     result.push({ type: 'invite', target });
             }
         }
-        return inviteRestriction ? result.filter(a => a.type !== 'bid') : result;
+        return result;
     }
-    const queueMode = state.responseQueue !== undefined;
-    if (queueMode) {
-        // A response to a higher bid is normally Solo; a bidder whose earlier
-        // lower contract is being challenged may hold the current contract.
-        if (highest.contract !== 'solo')
-            result.push({ type: 'bid', contract: 'solo' });
-        const priorBid = [...bidRecords(state)].reverse().find(r => r.playerId === playerId);
-        if (priorBid && idx(priorBid.action.contract) < idx(highest.contract)) {
-            result.push({ type: 'hold', contract: highest.contract });
-        }
-        return inviteRestriction ? result.filter(a => a.type !== 'bid') : result;
-    }
+
+    const inviteRestriction = outstandingInvite && playerId !== outstandingInvite.inviterId && hands
+        ? !canInviteWithHand(hands[playerId], outstandingInvite.target)
+        : false;
+
     const previous = highest.contract;
     const next = order[idx(previous) + 1];
     if (next)
         result.push({ type: 'bid', contract: next });
-    const previousBids = bidRecords(state);
-    const lastBid = previousBids[previousBids.length - 1];
-    if (lastBid && lastBid.playerId !== playerId) {
-        result.push({ type: 'hold', contract: lastBid.action.contract });
-    }
-    return inviteRestriction ? result.filter(a => a.type !== 'bid') : result;
+
+    if (inviteRestriction)
+        return result.filter(a => a.type !== 'bid');
+    return result;
 }
 export function applyAuctionAction(state, action, hands) {
     if (state.finished)
@@ -202,48 +226,60 @@ export function applyAuctionAction(state, action, hands) {
     if (!legal)
         throw new Error('Ez az akció ebben a licithelyzetben nem szabályos.');
     let next = { ...state, records: [...state.records, { playerId, action }] };
+
     if (action.type === 'pass') {
         next.out = Array.from(new Set([...next.out, playerId]));
-        if (state.responseQueue)
-            return nextQueueSeat(next, state.responseQueue);
-        const turnable = nextActive(next, state.currentSeat);
-        if (turnable === undefined && next.highest)
+        const owner = state.holdOwnerId ?? holdOwner(state);
+        let successor;
+        if (owner === playerId) {
+            successor = nextHoldOwner(next, playerId);
+            if (successor) next.holdOwnerId = successor;
+            else delete next.holdOwnerId;
+        }
+        if (state.responseQueue) {
+            const q = state.responseQueue.filter(id => id !== playerId);
+            return q.length ? nextQueueSeat(next, q) : finish(next);
+        }
+        if (next.highest && next.out.includes(next.highest.playerId))
             return finish(next);
         if (activeIds(next).length <= 1 && next.highest)
             return finish(next);
-        if (next.highest && next.out.includes(next.highest.playerId))
-            return finish(next);
-        const ns = nextActive(next, state.currentSeat);
+        const nextFrom = successor ? seatOf(next, successor) : state.currentSeat;
+        const ns = nextActive(next, nextFrom);
         return ns === undefined ? finish(next) : { ...next, currentSeat: ns };
     }
+
     if (action.type === 'bid') {
         next.highest = { playerId, contract: action.contract, seat: state.currentSeat };
-        if (state.records.length === 0 && action.contract !== 'three') {
-            next.openingBid = { playerId, contract: action.contract };
+        if (state.records.length === 0) {
+            next.holdOwnerId = playerId;
+            if (action.contract !== 'three') next.openingBid = { playerId, contract: action.contract };
         }
         if (next.outstandingInvite && playerId !== next.outstandingInvite.inviterId && hands) {
-            const hand = hands[playerId] ?? [];
-            if (hand.some(c => isTarokk(c) && c.rank === next.outstandingInvite.target)) {
+            const target = next.outstandingInvite.target;
+            if (canInviteWithHand(hands[playerId], target)) {
                 next.inviteAcceptedBy = playerId;
                 next.inviterLockedOut = true;
             }
         }
+        const owner = holdOwner(next);
         if (action.contract === 'solo') {
-            // Solo is not automatically final if there are still earlier bidders who
-            // may hold it. In a normal first bid, however, there is no response chain.
-            const earlier = bidRecords(state).filter(r => !next.out.includes(r.playerId) && r.playerId !== playerId);
-            if (state.responseQueue && earlier.length) {
-                const holderCandidates = earlier.filter(r => idx(r.action.contract) < idx('solo'));
-                if (holderCandidates.length) {
-                    const queue = holderCandidates.map(r => r.playerId);
-                    return nextQueueSeat(next, queue);
-                }
+            if (owner && owner !== playerId && !next.out.includes(owner)
+                && !(next.inviterLockedOut && next.outstandingInvite?.inviterId === owner)) {
+                delete next.responseQueue;
+                return { ...next, currentSeat: seatOf(next, owner) };
             }
             return finish(next);
+        }
+        if (owner && owner !== playerId && !next.out.includes(owner)
+            && !(next.inviterLockedOut && next.outstandingInvite?.inviterId === owner)) {
+            delete next.responseQueue;
+            return { ...next, currentSeat: seatOf(next, owner) };
         }
         const ns = nextActive(next, state.currentSeat);
         return ns === undefined ? finish(next) : { ...next, currentSeat: ns };
     }
+
     if (action.type === 'hold-invite') {
         const openingInvite = openingInviteForResponse(next, playerId, hands);
         if (!openingInvite || openingInvite.target !== action.target || openingInvite.contract !== action.contract) {
@@ -253,23 +289,29 @@ export function applyAuctionAction(state, action, hands) {
         next.outstandingInvite = { inviterId: playerId, target: action.target };
         next.inviteAcceptedBy = openingInvite.acceptedBy;
         next.inviterLockedOut = false;
-        // Once the invite has been accepted by the lower bidder, the opener keeps
-        // the contract but remains the responder if a later player jumps to Solo.
-        // The accepted bidder itself is not invited to re-speak merely because it
-        // accepted; the ordinary response ladder continues around the table.
-        const queue = holdResponseQueue(next, playerId, action.contract);
-        return nextQueueSeat(next, queue);
+        delete next.responseQueue;
+        if (action.contract === 'solo') return finish(next);
+        const continuation = continuationAfterHold(next, playerId);
+        return continuation === undefined ? finish(next) : { ...next, currentSeat: continuation };
     }
+
     if (action.type === 'hold') {
+        const owner = holdOwner(state);
+        if (owner !== playerId || !state.highest || state.highest.playerId === playerId) {
+            throw new Error('Tartani csak a tartási jogosult teheti, másik játékos magasabb licitje után.');
+        }
         next.highest = { playerId, contract: action.contract, seat: state.currentSeat };
-        const queue = holdResponseQueue(next, playerId, action.contract);
-        // The holder itself should not be re-added immediately. The next bidder in
-        // the original ladder gets the first response (B in A3/B2/C1).
-        return nextQueueSeat(next, queue);
+        delete next.responseQueue;
+        if (action.contract === 'solo') return finish(next);
+        const continuation = continuationAfterHold(next, playerId);
+        return continuation === undefined ? finish(next) : { ...next, currentSeat: continuation };
     }
+
     if (action.type === 'invite') {
         if (next.outstandingInvite)
             throw new Error('Viszontinvit nem megengedett.');
+        if (!canInviteWithHand(hands?.[playerId], action.target))
+            throw new Error('Az invithez nem állnak fenn a szükséges lapfeltételek.');
         next.outstandingInvite = { inviterId: playerId, target: action.target };
         const ns = nextActive(next, state.currentSeat);
         return ns === undefined ? finish(next) : { ...next, currentSeat: ns };
