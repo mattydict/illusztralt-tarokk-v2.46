@@ -952,7 +952,7 @@ function scoreAuctionAction(action, auction, h, pos, hand = []) {
     // that the same hand can support after the auction. Specialist conventions
     // remain stronger; this layer is deliberately bounded.
     if (action.type === 'bid' || action.type === 'hold' || action.type === 'hold-invite' || action.type === 'invite') {
-        const planContract = action.type === 'invite' ? (auction.highest?.contract ?? 'three') : action.contract;
+        const planContract = action.type === 'invite' ? (action.contract ?? auction.highest?.contract ?? 'three') : action.contract;
         const plan = evaluateDealPlan({ hand, contract: planContract, isTaker: true, partnerSupport: 0.5 });
         const path = evaluateAuctionPath({
             action: 'enter',

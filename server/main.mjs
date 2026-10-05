@@ -72,7 +72,7 @@ export function createServer({ lobby = new LobbyService(), maxBodyBytes = 64 * 1
       if (!stat.isFile()) return false;
       res.statusCode = 200;
       res.setHeader('content-type', contentTypes[path.extname(file).toLowerCase()] ?? 'application/octet-stream');
-      res.setHeader('cache-control', process.env.NODE_ENV === 'production' ? 'public, max-age=300' : 'no-cache');
+      res.setHeader('cache-control', process.env.NODE_ENV === 'production' ? (path.extname(file).toLowerCase() === '.html' ? 'no-cache' : 'public, max-age=300') : 'no-cache');
       if (req.method === 'HEAD') { res.end(); return true; }
       res.end(fs.readFileSync(file));
       return true;
@@ -158,7 +158,7 @@ export function createServer({ lobby = new LobbyService(), maxBodyBytes = 64 * 1
       try {
         const room = lobby.room(peer.session.roomId);
         const view = await room.dispatchAsync(peer.session.playerId, Number(message.expectedSequence), message.action);
-        peer.sendJson({ type: 'action-accepted', snapshot: view });
+        peer.sendJson({ type: 'action-accepted', actionType: message.action?.type, snapshot: view });
       } catch (error) {
         const room = lobby.room(peer.session.roomId);
         peer.sendJson({ type: 'action-rejected', message: error instanceof Error ? error.message : 'Az akció elutasítva.', snapshot: room.snapshotFor(peer.session.playerId) });

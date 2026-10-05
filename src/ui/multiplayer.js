@@ -1,5 +1,5 @@
 const app = document.querySelector('#app');
-const storageKey = 'illusztralt-tarokk-multiplayer-session-v250';
+const storageKey = 'illusztralt-tarokk-multiplayer-session-v252';
 let session = null;
 let socket = null;
 let reconnectTimer = null;
@@ -58,8 +58,14 @@ function scheduleReconnect() {
 }
 function handleServerMessage(msg) {
   if(msg.type === 'welcome' || msg.type === 'resync') { state = msg.snapshot; lobby = msg.status || lobby; notice = msg.resyncRequired ? 'Teljes állapotfrissítés történt.' : 'Kapcsolat létrejött.'; selectedSkart.clear(); render(); return; }
-  if(msg.type === 'event') { state = msg.snapshot; lobby = msg.lobby || lobby; notice = msg.event?.message || ''; render(); return; }
-  if(msg.type === 'action-accepted') { state = msg.snapshot; notice = 'Akció elfogadva.'; render(); return; }
+  if(msg.type === 'event') {
+    if(msg.event?.actionType === 'skart' && msg.event?.playerId === session?.playerId) selectedSkart.clear();
+    state = msg.snapshot; lobby = msg.lobby || lobby; notice = msg.event?.message || ''; render(); return;
+  }
+  if(msg.type === 'action-accepted') {
+    if(msg.actionType === 'skart' && msg.playerId === session?.playerId) selectedSkart.clear();
+    state = msg.snapshot; notice = 'Akció elfogadva.'; render(); return;
+  }
   if(msg.type === 'action-rejected') { state = msg.snapshot || state; notice = msg.message || 'Az akciót a szerver elutasította.'; render(); return; }
   if(msg.type === 'lobby') { lobby = msg.status; render(); return; }
   if(msg.type === 'error') { notice = msg.message || 'Szerverhiba.'; render(); return; }
@@ -74,13 +80,19 @@ function render() {
   const connected = socket?.readyState === WebSocket.OPEN;
   const lobbyPlayers = lobby?.seats ?? [];
   const rawPlayerCards = state?.players?.find(p => p.id === session.playerId)?.hand ?? [];
-  const suitOrder = {hearts: 0, diamonds: 1, clubs: 2, spades: 3};
-  const suitRankOrder = {K: 5, Q: 4, C: 3, J: 2, '10': 1};
-  const playerCards = [...rawPlayerCards].sort((a,b) => {
+  const suitMeta = {
+    hearts: { label: '♥ Kör', order: 0 },
+    diamonds: { label: '♦ Káró', order: 1 },
+    spades: { label: '♠ Pikk', order: 2 },
+    clubs: { label: '♣ Treff', order: 3 },
+  };
+  const suitRankOrder = {K: 6, Q: 5, C: 4, J: 3, '10': 2, A: 1};
+  const sortCard = (a, b) => {
     if (a.kind !== b.kind) return a.kind === 'tarokk' ? -1 : 1;
     if (a.kind === 'tarokk') return b.rank - a.rank;
-    return (suitOrder[a.suit] - suitOrder[b.suit]) || (suitRankOrder[b.rank] - suitRankOrder[a.rank]);
-  });
+    return (suitMeta[a.suit].order - suitMeta[b.suit].order) || (suitRankOrder[b.rank] - suitRankOrder[a.rank]);
+  };
+  const playerCards = [...rawPlayerCards].sort(sortCard);
   const me = lobbyPlayers.find(p => p.playerId === session.playerId);
   const ready = lobby?.ready === true;
   if(!state || !ready) {
@@ -100,27 +112,42 @@ function render() {
   const skartPhase = state.phase === 'skart';
   const skartAnnouncementPhase = state.phase === 'skart-announcement';
   const canSkart = skartPhase && hints.skartComplete === false && hints.skartAllDone === false;
-  const hand = playerCards.map(c => {
-    const legal = new Set(hints.playCardIds || []);
-    const skartable = new Set(hints.skartCardIds || []);
-    const active = state.phase === 'play' ? legal.has(c.id) : skartPhase ? canSkart && skartable.has(c.id) : false;
+  const legal = new Set(hints.playCardIds || []);
+  const skartable = new Set(hints.skartCardIds || []);
+  const renderCard = c => {
+    const playable = state.phase === 'play' && legal.has(c.id);
+    const selectable = skartPhase && canSkart && skartable.has(c.id);
+    const active = playable || selectable;
     const selected = selectedSkart.has(c.id);
     const suitClass = c.kind === 'suit' ? `suit-${c.suit}` : 'tarokk';
-    return `<button class="card ${suitClass} ${active?'active':'disabled'} ${selected?'selected':''}" data-card="${esc(c.id)}" ${active ? '' : 'disabled'}><strong>${esc(cardName(c))}</strong><small>${c.points} pont</small></button>`;
-  }).join('');
+    // In the parallel skart phase cards are intentionally NOT rendered with the
+    // native HTML disabled attribute: this keeps browser input independent from
+    // simultaneous server state updates. The server remains authoritative.
+    const nativeDisabled = state.phase === 'skart' ? '' : (active ? '' : 'disabled');
+    const aria = active ? '' : ' aria-disabled="true"';
+    return `<button type="button" class="card ${suitClass} ${active?'active':'disabled'} ${selectable?'skartable':''} ${selected?'selected':''}" data-card="${esc(c.id)}"${nativeDisabled}${aria}><strong>${esc(cardName(c))}</strong><small>${c.points} pont</small></button>`;
+  };
+  const groupOrder = ['hearts','diamonds','spades','clubs'];
+  const cardGroups = [
+    { key: 'tarokk', label: 'Tarokkok', cards: playerCards.filter(c => c.kind === 'tarokk').sort(sortCard) },
+    ...groupOrder.map(suit => ({ key: suit, label: suitMeta[suit].label, cards: playerCards.filter(c => c.kind === 'suit' && c.suit === suit).sort(sortCard) })),
+  ].filter(group => group.cards.length);
+  const hand = cardGroups.map(group => `<div class="hand-group hand-group-${group.key}"><h3>${esc(group.label)}</h3><div class="hand-grid">${group.cards.map(renderCard).join('')}</div></div>`).join('');
   const playButtons = state.phase === 'play' && isMyTurn ? playerCards.filter(c => (hints.playCardIds || []).includes(c.id)).map(c => `<button data-action="play" data-card-id="${esc(c.id)}">Kijátszás: ${esc(cardName(c))}</button>`).join('') : '';
   const auctionButtons = hints.auctionActions?.map((a,i) => `<button data-auction-index="${i}">${esc(auctionLabel(a, state.auction))}</button>`).join('') || '';
   const partnerButtons = hints.partnerRanks?.map(r => `<button data-partner="${r}">${r}. tarokk</button>`).join('') || '';
   const declButtons = (hints.declarationActions || []).map((a,i) => `<button data-decl-index="${i}">${esc(a.type==='pass'?'Passz':a.type==='tarokkCount'?`${a.count} tarokk`:`${labels[a.declaration] || a.declaration}${a.targetCardId ? ` · ${a.targetCardId}` : ''}`)}</button>`).join('');
   const selectedCount = selectedSkart.size;
   const skartButton = canSkart ? `<button id="submit-skart" ${selectedCount === (hints.skartCount ?? -1) ? '' : 'disabled'}>Fektetés (${selectedCount}/${hints.skartCount ?? '?'})</button>` : '';
-  const skartAnnouncementButton = skartAnnouncementPhase && hints.skartNeedsAnnouncement === true && hints.types?.includes('skart-announce') ? '<button data-skart-announce>Bejelentem: tarokkot fektettem</button>' : '';
+  const ownSkartTarokkCount = (state.players?.find(p => p.id === session.playerId)?.ownSkart || []).filter(c => c.kind === 'tarokk').length;
+  const skartAnnouncementButton = skartAnnouncementPhase && hints.skartNeedsAnnouncement === true && hints.types?.includes('skart-announce')
+    ? `<button data-skart-announce>Bejelentem: ${ownSkartTarokkCount} tarokkot fektettem</button>` : '';
   const contra = [];
   if(hints.gameContra) contra.push('<button data-contra-game>Kontra a játékra</button>');
   (hints.declarationContraIds || []).forEach(id => contra.push(`<button data-contra="${esc(id)}">Kontra a bemondásra</button>`));
   const status = connected ? '● Real-time kapcsolat aktív' : '○ Reconnecting…';
   const turnText = canSkart
-    ? 'Fektetés: te is fektethetsz.'
+    ? 'Fektetés: minden játékos párhuzamosan fektethet.'
     : skartAnnouncementPhase && hints.skartNeedsAnnouncement === true
       ? 'Fektetés közlése: jelezd, hogy tarokkot fektettél.'
       : skartAnnouncementPhase
@@ -147,13 +174,20 @@ function render() {
   document.querySelector('#resync')?.addEventListener('click', () => { if(socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'resync', since:state.sequence})); });
   document.querySelectorAll('[data-card]').forEach(btn => btn.addEventListener('click', () => {
     const id = btn.dataset.card;
-    if(state.phase === 'skart' && hints.skartComplete === false && hints.skartAllDone === false && (hints.skartCardIds || []).includes(id)) { if(selectedSkart.has(id)) selectedSkart.delete(id); else selectedSkart.add(id); render(); }
+    const legalSkart = state.phase === 'skart' && canSkart && (hints.skartCardIds || []).includes(id);
+    if(legalSkart) {
+      if(selectedSkart.has(id)) selectedSkart.delete(id);
+      else if(selectedSkart.size < Number(hints.skartCount || 0)) selectedSkart.add(id);
+      render();
+    }
   }));
   document.querySelectorAll('[data-auction-index]').forEach(btn => btn.addEventListener('click', () => { const a = hints.auctionActions[Number(btn.dataset.auctionIndex)]; if(a) sendAction({type:'auction', action:a}); }));
   document.querySelectorAll('[data-partner]').forEach(btn => btn.addEventListener('click', () => sendAction({type:'partner-call', rank:Number(btn.dataset.partner)})));
   document.querySelector('[data-skart-announce]')?.addEventListener('click', () => sendAction({type:'skart-announce'}));
   document.querySelectorAll('[data-decl-index]').forEach(btn => btn.addEventListener('click', () => { const a = hints.declarationActions[Number(btn.dataset.declIndex)]; if(a) { sendAction({type:'declaration', action:a}); } }));
-  document.querySelector('#submit-skart')?.addEventListener('click', () => { if(selectedSkart.size === hints.skartCount) { sendAction({type:'skart', cardIds:[...selectedSkart]}); selectedSkart.clear(); } });
+  document.querySelector('#submit-skart')?.addEventListener('click', () => {
+    if(selectedSkart.size === Number(hints.skartCount || 0)) sendAction({type:'skart', cardIds:[...selectedSkart]});
+  });
   document.querySelectorAll('[data-action="play"]').forEach(btn => btn.addEventListener('click', () => sendAction({type:'play-card', cardId:btn.dataset.cardId})));
   document.querySelector('[data-contra-game]')?.addEventListener('click', () => sendAction({type:'game-contra'}));
   document.querySelectorAll('[data-contra]').forEach(btn => btn.addEventListener('click', () => sendAction({type:'declaration-contra', declarationId:btn.dataset.contra})));
@@ -167,14 +201,15 @@ function auctionLabel(a, auction) {
   if(a.type === 'hold') return `Tartom: ${labels[a.contract] || a.contract}`;
   if(a.type === 'hold-invite') return `Tartom: ${labels[a.contract] || a.contract} (${inviteTargetLabel(a.target)} invit)`;
   if(a.type === 'invite') {
-    const contract = a.contract || auction?.highest?.contract;
-    return contract ? `${labels[contract] || contract} (${inviteTargetLabel(a.target)} invit)` : `${inviteTargetLabel(a.target)} invit`;
+    if(a.target === 20) return 'Engedés (XX invit)';
+    const contract = a.contract || auction?.highest?.contract || 'solo';
+    return `${labels[contract] || contract} (${inviteTargetLabel(a.target)} invit)`;
   }
   return a.type;
 }
 async function renderLanding() {
   app.innerHTML = `
-    <div class="hero"><span class="badge">v2.50 multiplayer</span><h2>Online Illusztrált Tarokk</h2><p class="muted">Szobaalapú lobby, szerveroldali szabályellenőrzés és valós idejű játék.</p></div>
+    <div class="hero"><span class="badge">v2.52 multiplayer</span><h2>Online Illusztrált Tarokk</h2><p class="muted">Szobaalapú lobby, szerveroldali szabályellenőrzés és valós idejű játék.</p></div>
     <section class="panel forms"><div><h3>Új szoba</h3><label>Név<input id="createName" maxlength="28" placeholder="Játékos neve"></label><button id="create">Szoba létrehozása</button></div><div><h3>Csatlakozás</h3><label>Szobakód<input id="roomCode" maxlength="6" placeholder="ABC123"></label><label>Név<input id="joinName" maxlength="28" placeholder="Játékos neve"></label><button id="join">Csatlakozás</button></div></section><p class="server">Szerver: ${esc(apiBase)}</p>${notice ? `<div class="status">${esc(notice)}</div>`:''}`;
   document.querySelector('#create')?.addEventListener('click', async () => { try { notice='Szoba létrehozása…'; render(); const r=await jsonFetch('/lobby/rooms',{method:'POST',body:JSON.stringify({displayName:document.querySelector('#createName').value})}); session={roomId:r.roomId,playerId:r.playerId,token:r.token}; state=r.snapshot; lobby=r.status; saveSession(); notice='Szoba létrehozva.'; render(); connectSocket(); } catch(e){ notice=e.message; render(); } });
   document.querySelector('#join')?.addEventListener('click', async () => { try { const room=String(document.querySelector('#roomCode').value).trim().toUpperCase(); const r=await jsonFetch(`/lobby/rooms/${encodeURIComponent(room)}/join`,{method:'POST',body:JSON.stringify({displayName:document.querySelector('#joinName').value})}); session={roomId:r.roomId,playerId:r.playerId,token:r.token}; state=r.snapshot; lobby=r.status; saveSession(); notice='Csatlakozva a szobához.'; render(); connectSocket(); } catch(e){ notice=e.message; render(); } });

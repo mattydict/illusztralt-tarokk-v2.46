@@ -423,6 +423,8 @@ export class AuthoritativeRoom {
 
   private applyAuction(playerId: string, action: AuctionAction): void {
     if (this.round.phase !== 'auction') throw new Error('Most nincs licitfázis.');
+    const currentBidder = this.round.auction.seats[this.round.auction.currentSeat]?.playerId;
+    if (currentBidder !== playerId) throw new Error('Most nem ennek a játékosnak kell licitálnia.');
     this.round = { ...this.round, auction: applyAuctionAction(this.round.auction, action, handsMap(this.round)) };
     if (!this.round.auction.finished) {
       this.round = { ...this.round, currentPlayerId: this.round.auction.seats[this.round.auction.currentSeat]?.playerId };

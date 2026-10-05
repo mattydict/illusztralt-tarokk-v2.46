@@ -7,7 +7,7 @@ export type AuctionAction =
   | { type: 'bid'; contract: Contract; honourless?: boolean }
   | { type: 'hold'; contract: Contract }
   | { type: 'hold-invite'; contract: 'one' | 'solo'; target: 19 | 18 }
-  | { type: 'invite'; target: 20 | 19 | 18 };
+  | { type: 'invite'; target: 20 | 19 | 18; contract?: Contract };
 
 export interface AuctionSeat { playerId: PlayerId; seat: number; }
 export interface AuctionState {
@@ -33,6 +33,60 @@ export interface AuctionState {
 
 const order: Contract[] = ['three', 'two', 'one', 'solo'];
 const idx = (c: Contract) => order.indexOf(c);
+
+export function inviteTargetForJump(previous: Contract | undefined, announced: Contract): 19 | 18 | undefined {
+  if (!previous) return undefined;
+  const from = idx(previous);
+  const to = idx(announced);
+  const jumps = to - from - 1;
+  if (jumps === 1) return 19;
+  if (jumps === 2) return 18;
+  return undefined;
+}
+
+function inviteContractForTarget(state: AuctionState, target: 20 | 19 | 18): Contract | undefined {
+  const highest = state.highest?.contract;
+  if (!highest) return target === 18 || target === 19 || target === 20 ? 'solo' : undefined;
+  if (target === 20) return highest;
+  if (target === 19 && highest === 'three') return 'one';
+  if (target === 18 && highest === 'three') return 'solo';
+  if (target === 19 && highest === 'two') return 'solo';
+  return undefined;
+}
+
+function sameAuctionAction(state: AuctionState, expected: AuctionAction, actual: AuctionAction): boolean {
+  if (expected.type !== 'invite' || actual.type !== 'invite') return JSON.stringify(expected) === JSON.stringify(actual);
+  if (expected.target !== actual.target) return false;
+  const expectedContract = expected.contract ?? inviteContractForTarget(state, expected.target);
+  const actualContract = actual.contract ?? inviteContractForTarget(state, actual.target);
+  return expectedContract === actualContract;
+}
+
+function canInviteWithHand(hand: Card[] | undefined, target: 20 | 19 | 18): boolean {
+  // Unit-level callers sometimes provide no/full-hand information. The live
+  // multiplayer authority always supplies the complete hand, where the strict
+  // prerequisites below are enforced. With partial hands we can safely require
+  // only presence of the invited tarokk because the remaining prerequisites are
+  // genuinely unknown.
+  if (!Array.isArray(hand)) return true;
+  const tarokks = hand.filter(isTarokk);
+  const hasTarget = tarokks.some(c => c.rank === target);
+  if (hand.length < 8) return hasTarget;
+  const hasBigHonour = tarokks.some(c => c.rank === 21 || c.rank === 22);
+  if (tarokks.length < 5 || !hasBigHonour || !hasTarget) return false;
+  // XX-invit / engedés is not available with Pagát: it is the XX + big honour
+  // + 5 tarokk structural invite used to release the game to a partner.
+  if (target === 20 && tarokks.some(c => c.rank === 1)) return false;
+  return true;
+}
+
+function hasBidOfPlayer(state: AuctionState, playerId: PlayerId): boolean {
+  return bidRecords(state).some(r => r.playerId === playerId);
+}
+
+function hasInviteCard(hand: Card[] | undefined, target: 20 | 19 | 18): boolean {
+  return Array.isArray(hand) && hand.some(c => isTarokk(c) && c.rank === target);
+}
 
 export function createAuction(playerIds: PlayerId[], firstSeat = 0): AuctionState {
   return { seats: playerIds.map((playerId, seat) => ({ playerId, seat })), currentSeat: firstSeat, records: [], finished: false, out: [] };
@@ -129,13 +183,6 @@ function canBidWithHand(hand?: Card[]): boolean {
   if (!fullHand(hand)) return true;
   return hand!.some(isHonour);
 }
-function canInviteWithHand(hand: Card[] | undefined, target: 20 | 19 | 18): boolean {
-  if (!Array.isArray(hand) || !fullHand(hand)) return Array.isArray(hand) ? hand.some(c => isTarokk(c) && c.rank === target) : true;
-  const tarokks = hand.filter(isTarokk);
-  return tarokks.length >= 5
-    && tarokks.some(c => isTarokk(c) && c.rank === target)
-    && tarokks.some(c => isTarokk(c) && (c.rank === 21 || c.rank === 22));
-}
 function allOtherPlayersPassed(state: AuctionState, playerId: PlayerId): boolean {
   return state.seats.filter(s => s.playerId !== playerId)
     .every(s => state.records.some(r => r.playerId === s.playerId && r.action.type === 'pass'));
@@ -192,10 +239,15 @@ export function legalAuctionActions(state: AuctionState, playerId: PlayerId, han
 
   const highest = state.highest;
   const outstandingInvite = state.outstandingInvite;
+  const history = bidRecords(state);
+  const alreadyBid = hasBidOfPlayer(state, playerId);
 
+  // The only player entitled to Tartom is the current hold-owner. It does not
+  // suppress legal invite signals that the same player can make after having
+  // already entered the auction: XX/XIX/XVIII invits are information actions,
+  // not higher ordinary bids.
   if (currentHolder === playerId && highest && highest.playerId !== playerId) {
     const resultWithHold: AuctionAction[] = [...result, { type: 'hold', contract: highest.contract }];
-    const history = bidRecords(state);
     const isThreeOneXixInvite = !!history[0]
       && history[0].playerId === playerId
       && history[0].action.contract === 'three'
@@ -205,28 +257,60 @@ export function legalAuctionActions(state: AuctionState, playerId: PlayerId, han
       && !state.records.some(r => r.action.type === 'invite' || r.action.type === 'hold-invite')
       && !state.outstandingInvite
       && highest.contract === 'one';
-    if (isThreeOneXixInvite && canInviteWithHand(hand, 19)) resultWithHold.push({ type: 'invite', target: 19 });
+    if (isThreeOneXixInvite && canInviteWithHand(hand, 19)) resultWithHold.push({ type: 'invite', target: 19, contract: 'one' });
+
+    // XX-invit / engedés is available after the player has already entered
+    // the auction, regardless of whether the player currently owns Tartom.
+    if (!outstandingInvite && alreadyBid && highest.contract !== 'solo' && canInviteWithHand(hand, 20)) {
+      resultWithHold.push({ type: 'invite', target: 20, contract: highest.contract });
+    }
     return resultWithHold;
   }
 
   if (!highest) {
-    if (outstandingInvite && hands && !canInviteWithHand(hand, outstandingInvite.target)) return result;
+    if (outstandingInvite && hands && !hasInviteCard(hand, outstandingInvite.target)) return result;
     for (const contract of order) result.push({ type: 'bid', contract });
-    if (!outstandingInvite) for (const target of [20, 19, 18] as const) if (canInviteWithHand(hand, target)) result.push({ type: 'invite', target });
+    if (!outstandingInvite) {
+      for (const target of [20, 19, 18] as const) {
+        if (canInviteWithHand(hand, target)) result.push({ type: 'invite', target, contract: 'solo' });
+      }
+    }
     return result;
   }
 
+  // An outstanding invite can only be accepted by the player who actually owns
+  // the invited tarokk. Acceptance itself does NOT require that player to have
+  // the inviter's full 5-tarokk + big-honour structure.
   const inviteRestriction = outstandingInvite && playerId !== outstandingInvite.inviterId && hands
-    ? !canInviteWithHand(hands[playerId], outstandingInvite.target) : false;
+    ? !hasInviteCard(hands[playerId], outstandingInvite.target) : false;
+
   const next = order[idx(highest.contract) + 1];
   if (next) result.push({ type: 'bid', contract: next });
+
+  if (!outstandingInvite) {
+    // Jump over exactly one/two contracts = XIX/XVIII invite respectively.
+    for (const announced of order.slice(idx(highest.contract) + 2)) {
+      const target = inviteTargetForJump(highest.contract, announced);
+      if (target !== undefined && canInviteWithHand(hand, target)) {
+        result.push({ type: 'invite', target, contract: announced });
+      }
+    }
+
+    // XX-invit / engedés: only after this player has already bid. It keeps the
+    // current contract intact and invites the XX holder to become partner if
+    // somebody else takes the game.
+    if (alreadyBid && highest.contract !== 'solo' && canInviteWithHand(hand, 20)) {
+      result.push({ type: 'invite', target: 20, contract: highest.contract });
+    }
+  }
+
   return inviteRestriction ? result.filter(a => a.type !== 'bid') : result;
 }
 
 export function applyAuctionAction(state: AuctionState, action: AuctionAction, hands?: Record<PlayerId, Card[]>): AuctionState {
   if (state.finished) throw new Error('Az aukció már lezárult.');
   const playerId = state.seats[state.currentSeat]!.playerId;
-  const legal = legalAuctionActions(state, playerId, hands).some(a => JSON.stringify(a) === JSON.stringify(action));
+  const legal = legalAuctionActions(state, playerId, hands).some(a => sameAuctionAction(state, a, action));
   if (!legal) throw new Error('Ez az akció ebben a licithelyzetben nem szabályos.');
   let next: AuctionState = { ...state, records: [...state.records, { playerId, action }] };
 
@@ -244,8 +328,11 @@ export function applyAuctionAction(state: AuctionState, action: AuctionAction, h
     }
     if (next.highest && next.out.includes(next.highest.playerId)) return finish(next);
     if (activeIds(next).length <= 1 && next.highest) return finish(next);
-    const nextFrom = successor ? seatOf(next, successor) : state.currentSeat;
-    const ns = nextActive(next, nextFrom);
+    // When the holder passes, the Tartom right moves directly to the next
+    // bidder; that player must be given the next speaking turn. Do not skip
+    // the new holder by applying nextActive() from their seat.
+    if (successor) return { ...next, currentSeat: seatOf(next, successor) };
+    const ns = nextActive(next, state.currentSeat);
     return ns === undefined ? finish(next) : { ...next, currentSeat: ns };
   }
 
@@ -256,7 +343,7 @@ export function applyAuctionAction(state: AuctionState, action: AuctionAction, h
       if (action.contract !== 'three') next.openingBid = { playerId, contract: action.contract };
     }
     if (next.outstandingInvite && playerId !== next.outstandingInvite.inviterId && hands) {
-      if (canInviteWithHand(hands[playerId], next.outstandingInvite.target)) {
+      if (hasInviteCard(hands[playerId], next.outstandingInvite.target)) {
         next.inviteAcceptedBy = playerId; next.inviterLockedOut = true;
       }
     }
@@ -304,7 +391,17 @@ export function applyAuctionAction(state: AuctionState, action: AuctionAction, h
   if (action.type === 'invite') {
     if (next.outstandingInvite) throw new Error('Viszontinvit nem megengedett.');
     if (!canInviteWithHand(hands?.[playerId], action.target)) throw new Error('Az invithez nem állnak fenn a szükséges lapfeltételek.');
+    const contract = action.contract ?? inviteContractForTarget(state, action.target);
+    if (state.highest && action.target !== 20 && !contract) throw new Error('Ehhez a licithelyzethez nem tartozik szabályos ugró-invit.');
+    if (state.highest && action.target !== 20 && contract !== inviteContractForTarget(state, action.target)) throw new Error('Az ugró-invit szerződésértéke nem egyezik a licitlépcsővel.');
     next.outstandingInvite = { inviterId: playerId, target: action.target };
+    // A XIX/XVIII jump invite is the announced higher contract itself. XX-invit
+    // is deliberately an engedés: the existing highest contract remains intact.
+    if (state.highest && action.target !== 20 && contract) {
+      next.highest = { playerId, contract, seat: state.currentSeat };
+    }
+    const recordedAction: AuctionAction = contract ? { ...action, contract } : action;
+    next.records[next.records.length - 1] = { playerId, action: recordedAction };
     const ns = nextActive(next, state.currentSeat);
     return ns === undefined ? finish(next) : { ...next, currentSeat: ns };
   }

@@ -36,15 +36,19 @@ function fullHand({honour=22, tarokks=[20,19,18,17,16]}={}) {
   assert.equal(a.highest?.contract,'solo');
 }
 {
-  // A passes after opening; B becomes the holder. After C raises to 1, B can hold.
+  // A passes after opening; B becomes the holder and gets the next speaking turn.
+  // B may raise to One; C then speaks, and B can hold only if C raises further.
   const hands={A:fullHand(),B:fullHand({honour:21}),C:fullHand(),D:fullHand()};
   let a=createAuction(['A','B','C','D'],0);
   a=applyAuctionAction(a,{type:'bid',contract:'three'},hands);
   a=applyAuctionAction(a,{type:'bid',contract:'two'},hands);
   a=applyAuctionAction(a,{type:'pass'},hands);
-  a=applyAuctionAction(a,{type:'bid',contract:'one'},hands);
   assert.equal(a.seats[a.currentSeat].playerId,'B');
-  assert.ok(legalAuctionActions(a,'B',hands).some(x=>x.type==='hold'&&x.contract==='one'));
+  a=applyAuctionAction(a,{type:'bid',contract:'one'},hands);
+  assert.equal(a.seats[a.currentSeat].playerId,'C');
+  a=applyAuctionAction(a,{type:'bid',contract:'solo'},hands);
+  assert.equal(a.seats[a.currentSeat].playerId,'B');
+  assert.ok(legalAuctionActions(a,'B',hands).some(x=>x.type==='hold'&&x.contract==='solo'));
 }
 {
   // If A holds 1 and B says Solo, A may hold/pass; C cannot speak again because it passed earlier.
