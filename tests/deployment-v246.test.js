@@ -76,7 +76,7 @@ test('v2.46 Render deployment files are present and production client is same-or
   assert.match(env, /DATABASE_URL=/);
   assert.match(client, /\$\{location\.protocol\}\/\/\$\{location\.host\}/);
   assert.doesNotMatch(client, /location\.hostname.*:8787/);
-  assert.equal(pkg.version, '2.63.0');
+  assert.equal(pkg.version, '2.64.0');
 });
 
 test('v2.46 server serves health through the release surface', async () => {

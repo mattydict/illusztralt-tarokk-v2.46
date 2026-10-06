@@ -544,15 +544,34 @@ export function applyAuctionAction(state, action, hands) {
         }
         if (owner && owner !== playerId && !next.out.includes(owner)
             && !(next.inviterLockedOut && next.outstandingInvite?.inviterId === owner)) {
-            // For an opening XIX/XVIII invitation, intervening players still have
-            // to pass before the original bidder can confirm the invitation.
+            // Normally the current holder responds directly after the new bid.
+            // Exception: if a player who is sitting between the holder and the
+            // new bidder has already passed, the still-unspoken seats between
+            // the new bidder and the holder must get their own explicit turn.
+            // Example: A:3, B:Pass, C:2 => D must press Passz before A can
+            // respond. We never skip D merely because D has no honour.
             const openingInvite = openingInviteForResponse(next, owner, hands);
             if (openingInvite && openingInvite.acceptedBy === playerId) {
                 const queue = responseQueueUntilHolder(next, playerId, owner);
                 if (queue.length)
                     return { ...next, currentSeat: seatOf(next, queue[0]), responseQueue: queue.slice(1) };
             }
-            delete next.responseQueue;
+            const ownerSeat = seatOf(next, owner);
+            const bidderSeat = seatOf(next, playerId);
+            const passedBetween = (() => {
+                let s = (ownerSeat + 1) % next.seats.length;
+                while (s !== bidderSeat) {
+                    const id = next.seats[s].playerId;
+                    if (next.out.includes(id)) return true;
+                    s = (s + 1) % next.seats.length;
+                }
+                return false;
+            })();
+            if (passedBetween) {
+                const queue = responseQueueUntilHolder(next, playerId, owner);
+                if (queue.length)
+                    return { ...next, currentSeat: seatOf(next, queue[0]), responseQueue: queue.slice(1) };
+            }
             return { ...next, currentSeat: seatOf(next, owner) };
         }
         const ns = nextActive(next, state.currentSeat);

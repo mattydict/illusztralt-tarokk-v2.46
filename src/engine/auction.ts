@@ -569,14 +569,27 @@ export function applyAuctionAction(state: AuctionState, action: AuctionAction, h
     }
     if (owner && owner !== playerId && !next.out.includes(owner)
       && !(next.inviterLockedOut && next.outstandingInvite?.inviterId === owner)) {
-      // For an opening XIX/XVIII invitation, intervening players still have
-      // to pass before the original bidder can confirm the invitation.
+      // Normally the current holder responds directly after the new bid.
+      // Exception: if a player sitting between the holder and the new bidder
+      // has already passed, the still-unspoken seats between bidder and holder
+      // must get their own explicit turn. Example: A:3, B:Pass, C:2 => D
+      // must press Passz before A responds.
       const openingInvite = openingInviteForResponse(next, owner, hands);
       if (openingInvite && openingInvite.acceptedBy === playerId) {
         const queue = responseQueueUntilHolder(next, playerId, owner);
         if (queue.length) return { ...next, currentSeat: seatOf(next, queue[0]!), responseQueue: queue.slice(1) };
       }
-      delete next.responseQueue;
+      const ownerSeat = seatOf(next, owner);
+      const bidderSeat = seatOf(next, playerId);
+      let passedBetween = false;
+      for (let s = (ownerSeat + 1) % next.seats.length; s !== bidderSeat; s = (s + 1) % next.seats.length) {
+        const id = next.seats[s]!.playerId;
+        if (next.out.includes(id)) { passedBetween = true; break; }
+      }
+      if (passedBetween) {
+        const queue = responseQueueUntilHolder(next, playerId, owner);
+        if (queue.length) return { ...next, currentSeat: seatOf(next, queue[0]!), responseQueue: queue.slice(1) };
+      }
       return { ...next, currentSeat: seatOf(next, owner) };
     }
     const ns = nextActive(next, state.currentSeat);

@@ -62,3 +62,49 @@ test('dealRound preserves cumulative player scores', () => {
   const next = dealRound(r, () => 0);
   assert.deepEqual(next.players.map(p => p.score), [0,7,14,21]);
 });
+
+test('A3 BPass C2 gives D a real Pass turn instead of skipping D', () => {
+  const hands = {
+    A: [{ kind:'tarokk', rank:22, id:'A22', points:5 }, ...Array.from({length:8},(_,i)=>({kind:'suit',suit:'hearts',rank:'Q',id:`Ah${i}`,points:4}))],
+    B: [{ kind:'tarokk', rank:21, id:'B21', points:5 }, ...Array.from({length:8},(_,i)=>({kind:'suit',suit:'diamonds',rank:'Q',id:`Bd${i}`,points:4}))],
+    C: [{ kind:'tarokk', rank:22, id:'C22', points:5 }, ...Array.from({length:8},(_,i)=>({kind:'suit',suit:'clubs',rank:'Q',id:`Cc${i}`,points:4}))],
+    D: [{ kind:'suit',suit:'spades',rank:'Q',id:'Dq0',points:4 }, ...Array.from({length:8},(_,i)=>({kind:'suit',suit:'spades',rank:'J',id:`Ds${i}`,points:3}))],
+  };
+  let a = createAuction(['A','B','C','D'],0);
+  a = bid(a,'A',{type:'bid',contract:'three'},hands);
+  a = bid(a,'B',{type:'pass'},hands);
+  a = bid(a,'C',{type:'bid',contract:'two'},hands);
+  assert.equal(a.seats[a.currentSeat].playerId,'D');
+  assert.deepEqual(legalAuctionActions(a,'D',hands),[{type:'pass'}]);
+});
+
+test('simple Hármas reaches finished auction only after the fourth player manually passes', () => {
+  const makeHand = (id, honour) => [{kind:'tarokk',rank:honour,id:`${id}${honour}`,points:5}, ...Array.from({length:8},(_,i)=>({kind:'suit',suit:'hearts',rank:'Q',id:`${id}h${i}`,points:4}))];
+  const hands = {A:makeHand('A',22),B:makeHand('B',21),C:makeHand('C',22),D:makeHand('D',22)};
+  let a=createAuction(['A','B','C','D'],0);
+  a=bid(a,'A',{type:'bid',contract:'three'},hands);
+  a=bid(a,'B',{type:'pass'},hands);
+  a=bid(a,'C',{type:'pass'},hands);
+  a=bid(a,'D',{type:'pass'},hands);
+  assert.equal(a.finished,true);
+});
+
+test('auction closure immediately distributes the talon in the authoritative multiplayer room', async () => {
+  const { AuthoritativeRoom } = await import('../src/server/authoritativeRoom.js');
+  const room = new AuthoritativeRoom({ roomId:'talon-regression', playerIds:['A','B','C','D'], dealerIndex:3, random:()=>0 });
+  const makeHand = (id, honour) => [{kind:'tarokk',rank:honour,id:`${id}T${honour}`,points:5}, ...Array.from({length:8},(_,i)=>({kind:'suit',suit:'hearts',rank:'Q',id:`${id}H${i}`,points:4}))];
+  room.round.players = room.round.players.map((p,i) => ({...p, hand: makeHand(p.playerId,[22,21,22,22][i]), receivedTalon: [], skart: []}));
+  let seq = room.exportPersistedState().sequence;
+  for (const [playerId, action] of [
+    ['A',{type:'auction',action:{type:'bid',contract:'three'}}],
+    ['B',{type:'auction',action:{type:'pass'}}],
+    ['C',{type:'auction',action:{type:'pass'}}],
+    ['D',{type:'auction',action:{type:'pass'}}],
+  ]) {
+    const snapshot = room.dispatch(playerId, seq, action);
+    seq = snapshot.sequence;
+  }
+  assert.equal(room.round.phase, 'skart');
+  assert.deepEqual(room.round.players.map(p => p.receivedTalon.length), [3,1,1,1]);
+  assert.deepEqual(room.round.players.map(p => p.hand.length), [12,10,10,10]);
+});
