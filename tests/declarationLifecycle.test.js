@@ -170,3 +170,34 @@ test('csendes Pagátultimó nincs Uhuhoz kötve: az AI tájképe Uhu nélkül is
     assert.ok(pagat.probability > 0);
     assert.match(pagat.reasons.join(' '), /Uhu nem szükséges/);
 });
+
+test('XXI-fogás csak az ellenfél XXI-jének Skízzel való elfogásakor teljesül', () => {
+    const p = declareFigure(initialDeclarationProgress(), 'xxiFogas', 'A', 1, undefined, 'taker:A');
+    const partnerXXI = [figureTrick('A', [
+        { player: 'B', id: 'T21' },
+        { player: 'A', id: 'T22' },
+    ])];
+    const wrong = evaluateDeclarations(p, partnerXXI, id => (id === 'A' || id === 'B') ? 'taker' : 'defence', 2);
+    assert.notEqual(wrong.declarations[0]?.status, 'fulfilled');
+    const opponentXXI = [figureTrick('A', [
+        { player: 'C', id: 'T21' },
+        { player: 'A', id: 'T22' },
+    ])];
+    const right = evaluateDeclarations(p, opponentXXI, id => (id === 'A' || id === 'B') ? 'taker' : 'defence', 2);
+    assert.equal(right.declarations[0]?.status, 'fulfilled');
+});
+
+test('a partner XXI-jének Skízzel való elfogása csendben sem számít XXI-fogásnak', () => {
+    const tricks = [figureTrick('A', [
+        { player: 'B', id: 'T21' },
+        { player: 'A', id: 'T22' },
+    ])];
+    const p = evaluateDeclarations(initialDeclarationProgress(), tricks, id => (id === 'A' || id === 'B') ? 'taker' : 'defence', 2);
+    assert.equal(p.silentFigures.some(s => s.type === 'xxiFogas'), false);
+    const opponentTricks = [figureTrick('A', [
+        { player: 'C', id: 'T21' },
+        { player: 'A', id: 'T22' },
+    ])];
+    const right = evaluateDeclarations(initialDeclarationProgress(), opponentTricks, id => (id === 'A' || id === 'B') ? 'taker' : 'defence', 2);
+    assert.ok(right.silentFigures.some(s => s.type === 'xxiFogas' && s.ownerId === 'A'));
+});

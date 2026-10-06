@@ -56,7 +56,15 @@ export function evaluateDeclaration(d: ActiveDeclaration, ctx: FigureEvaluationC
       return tricks.some(x => ctx.sideOf(x.winner) !== side) ? 'failed' : (tricks.length >= 9 ? 'fulfilled' : undefined);
     }
     case 'xxiFogas': {
-      const success = tricks.some(x => x.cards.some(e => e.card.id === 'T21') && x.cards.some(e => e.card.id === 'T22') && x.winner === x.cards.find(e => e.card.id === 'T22')?.player && sideWon(x, side, ctx));
+      const success = tricks.some(x => {
+        const xxi = x.cards.find(e => e.card.id === 'T21');
+        const skiz = x.cards.find(e => e.card.id === 'T22');
+        if (!xxi || !skiz) return false;
+        // XXI-fogás is only valid when the Skíz captures the OPPONENT'S XXI.
+        // Capturing the partner's XXI is an ordinary trick and must not score.
+        const opponentXxi = ctx.sideOf(xxi.player) !== ctx.sideOf(skiz.player);
+        return opponentXxi && x.winner === skiz.player && sideWon(x, side, ctx);
+      });
       return success ? 'fulfilled' : (tricks.length >= 9 ? 'failed' : undefined);
     }
     case 'centrum': return birdLock(tricks, 5, 'T20', side, ctx);

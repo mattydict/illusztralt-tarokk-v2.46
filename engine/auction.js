@@ -303,6 +303,24 @@ function responseQueueUntilHolder(state, speaker, holder) {
         result.push(holder);
     return result;
 }
+function honourlessResponseQueueUntilHolder(state, speaker, holder, hands) {
+    if (!hands)
+        return [];
+    const result = [];
+    const speakerSeat = seatOf(state, speaker);
+    const holderSeat = seatOf(state, holder);
+    for (let step = 1; step <= state.seats.length; step++) {
+        const s = (speakerSeat + step) % state.seats.length;
+        if (s === holderSeat)
+            break;
+        const id = state.seats[s].playerId;
+        if (state.out.includes(id) || result.includes(id))
+            continue;
+        if (!canBidWithHand(hands[id]))
+            result.push(id);
+    }
+    return result;
+}
 function allActiveExcept(state, except) {
     const result = [];
     const exceptSeat = seatOf(state, except);
@@ -588,6 +606,13 @@ export function applyAuctionAction(state, action, hands) {
                 const queue = responseQueueUntilHolder(next, playerId, owner);
                 if (queue.length && queue[0] !== owner)
                     return { ...next, currentSeat: seatOf(next, queue[0]), responseQueue: queue.slice(1) };
+            }
+            // A player without a honőr cannot raise, but that does NOT mean
+            // the engine may silently skip that player. Surface an explicit
+            // Passz turn before the current holder responds.
+            const honourlessQueue = honourlessResponseQueueUntilHolder(next, playerId, owner, hands);
+            if (honourlessQueue.length) {
+                return { ...next, currentSeat: seatOf(next, honourlessQueue[0]), responseQueue: [...honourlessQueue.slice(1), owner] };
             }
             return { ...next, currentSeat: seatOf(next, owner) };
         }

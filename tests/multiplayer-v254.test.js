@@ -81,11 +81,13 @@ test('v2.55: 3-2-Tartom után a második passza esetén a harmadik megszólaló 
   let a = createAuction(['A','B','C','D']);
   a = applyAuctionAction(a, {type:'bid', contract:'three'}, hands);
   a = applyAuctionAction(a, {type:'bid', contract:'two'}, hands);
-  a = applyAuctionAction(a, {type:'hold', contract:'two'}, hands);
-  assert.equal(a.seats[a.currentSeat].playerId, 'B');
-  a = applyAuctionAction(a, {type:'pass'}, hands);
+  // C has no honőr, so C must receive an explicit Passz turn before A can hold.
   assert.equal(a.seats[a.currentSeat].playerId, 'C');
   assert.deepEqual(legalAuctionActions(a, 'C', hands), [{type:'pass'}]);
+  a = applyAuctionAction(a, {type:'pass'}, hands);
+  assert.equal(a.seats[a.currentSeat].playerId, 'A');
+  a = applyAuctionAction(a, {type:'hold', contract:'two'}, hands);
+  assert.equal(a.seats[a.currentSeat].playerId, 'B');
   a = applyAuctionAction(a, {type:'pass'}, hands);
   assert.equal(a.seats[a.currentSeat].playerId, 'D');
   assert.ok(legalAuctionActions(a, 'D', hands).some(x => x.type === 'bid' && x.contract === 'one'));

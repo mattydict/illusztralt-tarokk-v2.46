@@ -336,11 +336,14 @@ export function evaluateDeclarations(progress: DeclarationProgress, tricks: Figu
   if (!hasFulfilledDeclaredXxi) {
     const silentXxiAlreadyRecorded = progress.silentFigures.some(s => s.type === 'xxiFogas');
     if (!silentXxiAlreadyRecorded) {
-      const xxiTrickIndex = tricks.findIndex(t =>
-        t.cards.some(e => e.card.id === 'T21') &&
-        t.cards.some(e => e.card.id === 'T22') &&
-        t.winner === t.cards.find(e => e.card.id === 'T22')?.player
-      );
+      const xxiTrickIndex = tricks.findIndex(t => {
+        const xxi = t.cards.find(e => e.card.id === 'T21');
+        const skiz = t.cards.find(e => e.card.id === 'T22');
+        if (!xxi || !skiz) return false;
+        // Silent XXI-fogás also requires the captured XXI to belong to the
+        // opposing side. Partner XXI + own Skíz is not a XXI-fogás.
+        return sideOf(xxi.player) !== sideOf(skiz.player) && t.winner === skiz.player;
+      });
       if (xxiTrickIndex >= 0) {
         const skizPlayer = tricks[xxiTrickIndex]!.cards.find(e => e.card.id === 'T22')!.player;
         silentFigures.push({

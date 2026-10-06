@@ -328,6 +328,32 @@ function responseQueueUntilHolder(state: AuctionState, speaker: PlayerId, holder
   return result;
 }
 
+/**
+ * Honourless players cannot make a normal bid, but they still have to be
+ * given their explicit Passz turn before the current hold-owner responds.
+ * Do not broaden this queue to honour-holding players: the ordinary auction
+ * flow intentionally preserves its existing response order for them.
+ */
+function honourlessResponseQueueUntilHolder(
+  state: AuctionState,
+  speaker: PlayerId,
+  holder: PlayerId,
+  hands?: Record<PlayerId, Card[]>,
+): PlayerId[] {
+  if (!hands) return [];
+  const result: PlayerId[] = [];
+  const speakerSeat = seatOf(state, speaker);
+  const holderSeat = seatOf(state, holder);
+  for (let step = 1; step <= state.seats.length; step++) {
+    const s = (speakerSeat + step) % state.seats.length;
+    if (s === holderSeat) break;
+    const id = state.seats[s]!.playerId;
+    if (state.out.includes(id) || result.includes(id)) continue;
+    if (!canBidWithHand(hands[id])) result.push(id);
+  }
+  return result;
+}
+
 function allActiveExcept(state: AuctionState, except: PlayerId): PlayerId[] {
   const result: PlayerId[] = [];
   const exceptSeat = seatOf(state, except);
@@ -589,6 +615,15 @@ export function applyAuctionAction(state: AuctionState, action: AuctionAction, h
       if (passedBetween) {
         const queue = responseQueueUntilHolder(next, playerId, owner);
         if (queue.length) return { ...next, currentSeat: seatOf(next, queue[0]!), responseQueue: queue.slice(1) };
+      }
+      // A player without a honőr cannot raise, but that does NOT mean the
+      // engine may silently skip that player. Surface an explicit Passz turn
+      // before the current holder responds. This is especially important in
+      // four-player auctions where one or more seats between bidder and holder
+      // may have no honőr at all.
+      const honourlessQueue = honourlessResponseQueueUntilHolder(next, playerId, owner, hands);
+      if (honourlessQueue.length) {
+        return { ...next, currentSeat: seatOf(next, honourlessQueue[0]!), responseQueue: [...honourlessQueue.slice(1), owner] };
       }
       return { ...next, currentSeat: seatOf(next, owner) };
     }

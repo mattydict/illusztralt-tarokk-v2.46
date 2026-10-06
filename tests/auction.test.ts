@@ -1,6 +1,32 @@
 import assert from 'node:assert/strict';
 import { createAuction, applyAuctionAction, legalAuctionActions } from '../src/engine/auction.js';
 
+
+function noHonourHand() {
+  return [20,19,18,17,16,15,14,13].map(rank => ({kind:'tarokk' as const, rank, id:`T${rank}`, points:1}));
+}
+
+// Honőr nélküli C és D nem maradhat ki a licitből: egy későbbi licit után
+// mindkettőnek ténylegesen meg kell kapnia a Passz lehetőséget.
+{
+  const aHand = noHonourHand();
+  aHand[0] = {kind:'tarokk', rank:22, id:'T22', points:5};
+  const bHand = noHonourHand();
+  bHand[0] = {kind:'tarokk', rank:21, id:'T21', points:5};
+  const hands = {A:aHand, B:bHand, C:noHonourHand(), D:noHonourHand()};
+  let a = createAuction(['A','B','C','D']);
+  a = applyAuctionAction(a, {type:'bid', contract:'three'}, hands);
+  a = applyAuctionAction(a, {type:'bid', contract:'two'}, hands);
+  assert.equal(a.seats[a.currentSeat].playerId, 'C');
+  assert.deepEqual(legalAuctionActions(a, 'C', hands), [{type:'pass'}]);
+  a = applyAuctionAction(a, {type:'pass'}, hands);
+  assert.equal(a.seats[a.currentSeat].playerId, 'D');
+  assert.deepEqual(legalAuctionActions(a, 'D', hands), [{type:'pass'}]);
+  a = applyAuctionAction(a, {type:'pass'}, hands);
+  assert.equal(a.seats[a.currentSeat].playerId, 'A');
+}
+
+
 {
   // A=3, B=2, C=1. A holds the 1; B may Solo or pass. If B passes, C may
   // still say Solo; C's Solo can then be held/passed by A.
