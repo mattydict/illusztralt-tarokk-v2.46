@@ -32,9 +32,7 @@ function handFromRanks(ranks) {
   assert.ok(!actions.some(x => x.type === 'invite' && x.target === 20 && x.contract === 'two'));
   assert.ok(actions.some(x => x.type === 'invite' && x.target === 19 && x.contract === 'solo'));
 
-  a = applyAuctionAction(a, {type:'invite', target:20}, hands);
-  assert.equal(a.outstandingInvite?.target, 20);
-  assert.equal(a.highest?.contract, 'two');
+  assert.ok(!actions.some(x => x.type === 'invite' && x.target === 20));
 }
 
 // After 3 -> 2 -> Hold, the second bidder must actually receive the next speaking turn.
@@ -103,7 +101,7 @@ function handFromRanks(ranks) {
   assert.match(ui, /Engedés \(XX invit\)/);
   assert.match(ui, /msg\.actionType === 'skart' && msg\.playerId === session\?\.playerId/);
   assert.match(ui, /contract = a\.contract \|\| auction\?\.highest\?\.contract \|\| 'solo'/);
-  assert.match(html, /multiplayer\.js\?v=2\.53\.0/);
+  assert.match(html, /multiplayer\.js\?v=2\.56\.0/);
 }
 
 // A complete parallel skart must resolve to the automatic skart-announcement

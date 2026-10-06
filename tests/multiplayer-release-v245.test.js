@@ -78,6 +78,11 @@ test('v2.52 full multiplayer lifecycle runs from lobby to completed scoring with
       const c = await openWs(base, { roomId: created.body.roomId, playerId: p.id, token: p.token });
       sockets.push(c.ws); clients.set(p.id, c);
     }
+    // Existing sockets receive a resync when a later player connects; refresh the test snapshots explicitly.
+    for (const p of players) {
+      const fresh = await json(base, `/rooms/${created.body.roomId}?playerId=${encodeURIComponent(p.id)}&token=${encodeURIComponent(p.token)}`);
+      clients.get(p.id).snapshot = fresh.body;
+    }
     let guard = 220;
     let sawPlay = false;
     while (guard-- > 0) {
@@ -126,7 +131,7 @@ test('v2.52 release static build exposes versioned single-player and multiplayer
   await access(path.join(root, 'dist', 'main.js'));
   await access(path.join(root, 'dist', 'multiplayer.js'));
   const index = await readFile(path.join(root, 'dist', 'index.html'), 'utf8');
-  assert.match(index, /v2\.55/);
+  assert.match(index, /v2\.56/);
   assert.match(index, /\.\/main\.js/);
 });
 

@@ -32,6 +32,7 @@ test('v2.44 persists the authoritative state and restores it without restoring c
     const room = lobby.room(created.roomId);
     const starter = room.currentPlayerId;
     const before = room.snapshotFor(starter);
+    for (const p of players) room.connect(p.id);
     room.dispatch(starter, before.sequence, { type: 'auction', action: { type: 'pass' } });
     const persistedFile = path.join(dir, `${created.roomId}.json`);
     assert.equal(fs.existsSync(persistedFile), true);
@@ -49,6 +50,8 @@ test('v2.44 persists the authoritative state and restores it without restoring c
     for (const p of players) {
       restoredLobby.join(created.roomId, { playerId: p.id, token: p.token, displayName: p.id });
     }
+    assert.equal(restoredLobby.status(created.roomId).connectedCount, 0);
+    for (const p of players) restored.connect(p.id);
     assert.equal(restoredLobby.status(created.roomId).connectedCount, 4);
     assert.equal(restored.currentPlayerId, room.currentPlayerId);
     assert.deepEqual(restored.snapshotFor('P1').auction, room.snapshotFor('P1').auction);

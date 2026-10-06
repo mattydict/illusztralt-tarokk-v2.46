@@ -57,9 +57,11 @@ test('v2.43 lobby assigns four seats and only becomes ready at four joined playe
     }
     assert.deepEqual(ids, ['P1','P2','P3','P4']);
     const status = await json(base, `/lobby/rooms/${created.body.roomId}`);
-    assert.equal(status.body.ready, true);
+    assert.equal(status.body.ready, false);
     assert.equal(status.body.joinedCount, 4);
-    assert.equal(status.body.connectedCount, 4);
+    // HTTP join reserves seats; realtime presence is established by WebSocket hello.
+    assert.equal(status.body.connectedCount, 1);
+    assert.equal(status.body.seats.filter(s => s.connected).length, 1);
     assert.ok(!Object.values(status.body.seats[0]).some(v => typeof v === 'string' && v === created.body.token));
   } finally { await app.close(); }
 });
@@ -79,11 +81,18 @@ test('v2.43 WebSocket welcome and lobby presence updates are real-time and playe
     const p1 = players[0], p2 = players[1];
     const a = await openWs(base, { roomId: created.body.roomId, playerId: p1.id, token: p1.token }); sockets.push(a.ws);
     assert.equal(a.welcome.snapshot.players.find(p => p.id === 'P2')?.hand, undefined);
+    const beforeLastWs = await json(base, `/lobby/rooms/${created.body.roomId}`);
+    assert.equal(beforeLastWs.body.joinedCount, 4);
+    assert.equal(beforeLastWs.body.seats.find(s => s.playerId === 'P4')?.joined, true);
+    assert.equal(beforeLastWs.body.seats.find(s => s.playerId === 'P4')?.connected, false);
     const b = await openWs(base, { roomId: created.body.roomId, playerId: p2.id, token: p2.token }); sockets.push(b.ws);
     const lobbyUpdate = await waitForMessage(a.ws, m => m.type === 'lobby' && m.status.seats.some(s => s.playerId === 'P2' && s.connected));
-    assert.equal(lobbyUpdate.status.ready, true);
+    assert.equal(lobbyUpdate.status.ready, false);
+    const c = await openWs(base, { roomId: created.body.roomId, playerId: players[2].id, token: players[2].token }); sockets.push(c.ws);
+    const d = await openWs(base, { roomId: created.body.roomId, playerId: players[3].id, token: players[3].token }); sockets.push(d.ws);
     const room = await json(base, `/lobby/rooms/${created.body.roomId}`);
     assert.equal(room.body.connectedCount, 4);
+    assert.equal(room.body.ready, true);
     // A closes; the other live client sees the presence change without polling.
     a.ws.close();
     const offline = await waitForMessage(b.ws, m => m.type === 'lobby' && m.status.seats.some(s => s.playerId === 'P1' && !s.connected));
@@ -107,7 +116,9 @@ test('v2.43 WebSocket action fan-out and reconnect resync use the authoritative 
     }
     const a = await openWs(base, { roomId: created.body.roomId, playerId: players[0].id, token: players[0].token });
     const b = await openWs(base, { roomId: created.body.roomId, playerId: players[1].id, token: players[1].token });
-    sockets.push(a.ws, b.ws);
+    const c = await openWs(base, { roomId: created.body.roomId, playerId: players[2].id, token: players[2].token });
+    const d = await openWs(base, { roomId: created.body.roomId, playerId: players[3].id, token: players[3].token });
+    sockets.push(a.ws, b.ws, c.ws, d.ws);
     let starter = a.welcome.snapshot.currentPlayerId;
     const starterCred = players.find(p => p.id === starter);
     assert.ok(starterCred);
@@ -152,4 +163,43 @@ test('v2.43 private room HTTP endpoints require the seat reconnect token', async
     assert.equal(allowed.res.status, 200);
     assert.equal(allowed.body.players.find(p => p.id === 'P1')?.hand?.length, 9);
   } finally { await app.close(); }
+});
+
+
+
+test('v2.56: a későn csatlakozó játékos HTTP join után láthatóvá válik, de csak WebSocket hello után lesz online/ready', async () => {
+  const { app, base } = await start();
+  const sockets = [];
+  try {
+    const created = await json(base, '/lobby/rooms', { method: 'POST', body: JSON.stringify({ displayName: 'Asztali' }) });
+    const a = await openWs(base, { roomId: created.body.roomId, playerId: created.body.playerId, token: created.body.token });
+    sockets.push(a.ws);
+    const joinedPlayers = [];
+    for (const name of ['Mobil 2','Mobil 3','Mobil 4']) {
+      const joined = await json(base, `/lobby/rooms/${created.body.roomId}/join`, { method:'POST', body:JSON.stringify({displayName:name}) });
+      joinedPlayers.push(joined.body);
+    }
+    const status = await json(base, `/lobby/rooms/${created.body.roomId}`);
+    assert.equal(status.body.joinedCount, 4);
+    assert.equal(status.body.connectedCount, 1);
+    assert.equal(status.body.seats.find(s => s.playerId === 'P4')?.displayName, 'Mobil 4');
+    assert.equal(status.body.seats.find(s => s.playerId === 'P4')?.connected, false);
+    const last = { playerId:'P4', token: joinedPlayers.find(p => p.playerId === 'P4')?.token };
+    const p4 = await openWs(base, { roomId:created.body.roomId, playerId:last.playerId, token:last.token });
+    sockets.push(p4.ws);
+    const update = await waitForMessage(a.ws, m => m.type === 'lobby' && m.status.seats.some(s => s.playerId === 'P4' && s.connected));
+    assert.equal(update.status.ready, false); // P2/P3 still have no realtime connection.
+    assert.equal(update.status.seats.find(s => s.playerId === 'P4')?.connected, true);
+  } finally { for (const ws of sockets) { try { ws.close(); } catch {} } await app.close(); }
+});
+
+
+test('v2.56 multiplayer UI: lobby nézetben látható a Szinkronizálás és a reconnect polling', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const ui = fs.readFileSync(path.resolve('src/ui/multiplayer.js'), 'utf8');
+  assert.match(ui, /button id=\"resync\">Szinkronizálás/);
+  assert.match(ui, /syncNow\(\)/);
+  assert.match(ui, /ensureLobbyRefreshPolling\(\)/);
+  assert.match(ui, /lobbyRefreshTimer/);
 });

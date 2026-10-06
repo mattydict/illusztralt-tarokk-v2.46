@@ -18,22 +18,24 @@ test('v2.42 server snapshot never exposes another player hand or the raw talon',
 
 test('v2.42 authoritative room rejects illegal and stale actions', () => {
   const room = createAuthoritativeRoom({ roomId: 'r2', playerIds: ids, random: fixedRandom });
-  const initial = room.snapshotFor('A');
+  const starter = room.currentPlayerId;
+  const initial = room.snapshotFor(starter);
   assert.equal(initial.sequence, 0);
-  assert.throws(() => room.dispatch('A', initial.sequence, { type: 'auction', action: { type: 'hold', contract: 'three' } }), /nem szabályos|nem ennek a játékosnak kell licitálnia/i);
-  const afterReject = room.snapshotFor('A');
+  assert.throws(() => room.dispatch(starter, initial.sequence, { type: 'auction', action: { type: 'hold', contract: 'three' } }), /nem szabályos|nem ennek a játékosnak kell licitálnia/i);
+  const afterReject = room.snapshotFor(starter);
   assert.equal(afterReject.sequence, 0);
-  room.dispatch('A', 0, { type: 'auction', action: { type: 'pass' } });
-  assert.equal(room.snapshotFor('B').sequence, 1);
-  assert.throws(() => room.dispatch('B', 0, { type: 'auction', action: { type: 'pass' } }), /Elavult/i);
+  room.dispatch(starter, 0, { type: 'auction', action: { type: 'pass' } });
+  assert.equal(room.snapshotFor(room.currentPlayerId).sequence, 1);
+  assert.throws(() => room.dispatch(room.currentPlayerId, 0, { type: 'auction', action: { type: 'pass' } }), /Elavult/i);
 });
 
 test('v2.42 action bus emits only public event metadata', () => {
   const room = createAuthoritativeRoom({ roomId: 'r3', playerIds: ids, random: fixedRandom });
   const events = [];
   const off = room.subscribe(event => events.push(event));
-  const a = room.snapshotFor('A');
-  room.dispatch('A', a.sequence, { type: 'auction', action: { type: 'pass' } });
+  const starter = room.currentPlayerId;
+  const a = room.snapshotFor(starter);
+  room.dispatch(starter, a.sequence, { type: 'auction', action: { type: 'pass' } });
   off();
   assert.ok(events.some(e => e.type === 'action-accepted'));
   const accepted = events.find(e => e.type === 'action-accepted');

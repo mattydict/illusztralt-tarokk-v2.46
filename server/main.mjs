@@ -107,6 +107,12 @@ export function createServer({ lobby = new LobbyService(), maxBodyBytes = 64 * 1
     broadcastRoom(roomId, () => ({ type: 'lobby', status }));
   }
 
+  function broadcastRoomResync(roomId) {
+    const room = lobby.room(roomId);
+    const status = publicLobby(lobby.get(roomId));
+    broadcastRoom(roomId, session => ({ type: 'resync', snapshot: room.snapshotFor(session.playerId), status }));
+  }
+
   function cleanupSession(session) {
     if (!session || session.cleaned) return;
     session.cleaned = true;
@@ -114,7 +120,7 @@ export function createServer({ lobby = new LobbyService(), maxBodyBytes = 64 * 1
     if (session.peer?.helloTimer) clearTimeout(session.peer.helloTimer);
     sessions.delete(session.peer);
     if (session.roomId && session.playerId) {
-      try { lobby.room(session.roomId).disconnect(session.playerId); broadcastLobby(session.roomId); } catch { /* room already gone */ }
+      try { lobby.room(session.roomId).disconnect(session.playerId); broadcastLobby(session.roomId); broadcastRoomResync(session.roomId); } catch { /* room already gone */ }
     }
   }
 
@@ -143,6 +149,7 @@ export function createServer({ lobby = new LobbyService(), maxBodyBytes = 64 * 1
       peer.session.playerId = playerId;
       peer.sendJson({ type: 'welcome', roomId, playerId, snapshot: meta.room.snapshotFor(playerId), events: missed, status, resyncRequired: missed.length === 0 && since > 0 && meta.room.snapshotFor(playerId).sequence > since });
       broadcastLobby(roomId);
+      broadcastRoomResync(roomId);
       return true;
     } catch (error) {
       peer.sendJson({ type: 'error', code: 'AUTH_FAILED', message: error instanceof Error ? error.message : 'Sikertelen hitelesítés.' });

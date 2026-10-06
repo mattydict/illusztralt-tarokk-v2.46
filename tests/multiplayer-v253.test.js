@@ -17,8 +17,6 @@ test('v2.53 multiplayer kéz: tarokk külön blokkban, színenként külön blok
   assert.match(ui, /Number\(b\.rank\) - Number\(a\.rank\)/);
   assert.match(ui, /hand-group-\$\{group\.key\}/);
   assert.match(ui, /hand-grid/);
-  assert.match(ui, /v2\.53 multiplayer/);
-  assert.match(html, /multiplayer\.js\?v=2\.53\.0/);
 });
 
 test('v2.53 fektetés: minden játékos saját fektetés-akciót kap, nem kell currentPlayerId', () => {

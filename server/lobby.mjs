@@ -120,9 +120,10 @@ export class LobbyService {
       presentedToken = makeToken();
       meta.tokens[seat] = presentedToken;
       meta.tokenHashes[seat] = hashToken(presentedToken);
-      meta.room.connect(seat);
+      // HTTP join reserves the seat but does not count as a live realtime connection.
+      // The WebSocket hello is the single source of truth for connected presence.
     } else {
-      meta.room.connect(seat);
+      // A reconnecting/resuming player is marked connected only after WebSocket hello.
       if (displayName) meta.seats[seat].displayName = cleanName(displayName, meta.seats[seat].displayName);
     }
     meta.updatedAt = this.clock();

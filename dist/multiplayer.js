@@ -1,5 +1,5 @@
 const app = document.querySelector('#app');
-const storageKey = 'illusztralt-tarokk-multiplayer-session-v255';
+const storageKey = 'illusztralt-tarokk-multiplayer-session-v256';
 let session = null;
 let socket = null;
 let reconnectTimer = null;
@@ -8,6 +8,8 @@ let state = null;
 let lobby = null;
 let selectedSkart = new Set();
 let notice = '';
+let lobbyRefreshTimer = null;
+let lobbyRefreshInFlight = false;
 
 const apiBase = new URLSearchParams(location.search).get('server') || `${location.protocol}//${location.host}`;
 const wsBase = apiBase.replace(/^http/, 'ws');
@@ -23,12 +25,54 @@ function cardName(c) { return c.kind === 'tarokk' ? `${c.rank}. tarokk` : `${({h
 function phaseLabel(p) { return ({auction:'Licit','skart':'Fektetés','skart-announcement':'Fektetés közlése','partner-call':'Bemondás',declarations:'Bemondás',play:'Lejátszás',scoring:'Elszámolás',complete:'Lezárva'})[p] ?? p; }
 function saveSession() { try { localStorage.setItem(storageKey, JSON.stringify(session)); } catch {} }
 function loadSession() { try { const raw = localStorage.getItem(storageKey); if(raw) session = JSON.parse(raw); } catch {} }
-function clearSession() { try { localStorage.removeItem(storageKey); } catch {} session = null; state = null; lobby = null; disconnectSocket(false); render(); }
+function clearSession() { try { localStorage.removeItem(storageKey); } catch {} if(lobbyRefreshTimer){ clearInterval(lobbyRefreshTimer); lobbyRefreshTimer=null; } session = null; state = null; lobby = null; disconnectSocket(false); render(); }
 async function jsonFetch(path, options = {}) {
   const res = await fetch(`${apiBase}${path}`, { ...options, headers: {'content-type':'application/json', ...(options.headers || {})} });
   const body = await res.json().catch(() => ({}));
   if(!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
   return body;
+}
+
+async function syncNow() {
+  if (!session || lobbyRefreshInFlight) return;
+  lobbyRefreshInFlight = true;
+  try {
+    const [status, snapshot] = await Promise.all([
+      jsonFetch(`/lobby/rooms/${encodeURIComponent(session.roomId)}`),
+      jsonFetch(`/rooms/${encodeURIComponent(session.roomId)}?playerId=${encodeURIComponent(session.playerId)}&token=${encodeURIComponent(session.token)}`),
+    ]);
+    lobby = status;
+    state = snapshot;
+    selectedSkart.clear();
+    notice = 'Állapot szinkronizálva.';
+    if (lobby?.ready && socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type:'resync', since:state.sequence }));
+    }
+    render();
+  } catch (e) {
+    notice = e instanceof Error ? e.message : 'A szinkronizálás sikertelen.';
+    render();
+  } finally {
+    lobbyRefreshInFlight = false;
+  }
+}
+async function refreshLobbyStatus() {
+  if (!session || lobbyRefreshInFlight) return;
+  lobbyRefreshInFlight = true;
+  try {
+    const next = await jsonFetch(`/lobby/rooms/${encodeURIComponent(session.roomId)}`);
+    lobby = next;
+    render();
+  } catch {} finally {
+    lobbyRefreshInFlight = false;
+  }
+}
+function ensureLobbyRefreshPolling() {
+  if (lobbyRefreshTimer || !session) return;
+  lobbyRefreshTimer = setInterval(() => {
+    if (!session) return;
+    if (!lobby?.ready || !socket || socket.readyState !== WebSocket.OPEN) refreshLobbyStatus();
+  }, 2000);
 }
 function connectSocket() {
   if(!session || socket || reconnectTimer) return;
@@ -98,12 +142,14 @@ function render() {
   const ready = lobby?.ready === true;
   if(!state || !ready) {
     app.innerHTML = `
-      <div class="top"><div><strong>Szobakód:</strong> <span class="room-code">${esc(session.roomId)}</span></div><button id="copy">Szobakód másolása</button><button id="leave">Kilépés</button></div>
+      <div class="top"><div><strong>Szobakód:</strong> <span class="room-code">${esc(session.roomId)}</span></div><button id="copy">Szobakód másolása</button><button id="resync">Szinkronizálás</button><button id="leave">Kilépés</button></div>
       <div class="status ${connected ? 'ok':''}">${connected ? '● Real-time kapcsolat aktív' : '○ Kapcsolódás…'} ${esc(notice)}</div>
       <section class="panel"><h2>Lobby</h2><p>${lobby?.joinedCount ?? 0}/4 játékos csatlakozott. A játék akkor indulhat, ha mind a négy hely foglalt és minden játékos kapcsolódva van.</p>
       <div class="players">${lobbyPlayers.map(p => `<div class="player ${p.playerId===session.playerId?'me':''}"><strong>${esc(p.displayName)}</strong><span>${p.joined ? (p.connected ? '● online' : '○ offline') : 'Üres hely'}</span></div>`).join('')}</div></section>`;
     document.querySelector('#copy')?.addEventListener('click', async () => { try { await navigator.clipboard.writeText(session.roomId); notice='A szobakód a vágólapra került.'; render(); } catch { notice=`Szobakód: ${session.roomId}`; render(); } });
+    document.querySelector('#resync')?.addEventListener('click', syncNow);
     document.querySelector('#leave')?.addEventListener('click', clearSession);
+    ensureLobbyRefreshPolling();
     return;
   }
   const current = state.currentPlayerId;
@@ -112,6 +158,11 @@ function render() {
   const trick = state.game?.trick;
   const skartPhase = state.phase === 'skart';
   const skartAnnouncementPhase = state.phase === 'skart-announcement';
+  const myPlayer = state.players.find(p => p.id === session.playerId);
+  const receivedTalon = myPlayer?.receivedTalon || [];
+  const talonCount = Number(myPlayer?.receivedTalonCount ?? receivedTalon.length);
+  const skartCount = Number(hints.skartCount ?? talonCount);
+  const canSkart = skartPhase && skartCount > 0 && hints.skartComplete !== true;
   // During the parallel skart phase every player acts independently.
   // Prefer the authoritative action type over secondary hint flags so a stale
   // snapshot cannot accidentally disable the whole hand.
@@ -166,23 +217,18 @@ function render() {
   const declarations = state.game?.declarations?.map(d => `${esc(labels[d.type] || d.type)} — ${esc(d.ownerId)}${d.contra && d.contra !== 'none' ? ` · ${esc(d.contra)}` : ''}`).join('<br>') || 'Nincs';
   const trickHtml = trick ? trick.cards.map(x => `<div class="played"><b>${esc(x.player)}</b><span>${esc(cardName(x.card))}</span></div>`).join('') : '<span class="muted">Nincs aktív ütés.</span>';
   const publicSkartInfo = state.players.filter(p => p.revealedSkart?.length).map(p => `<span class="public-skart"><strong>${esc(p.id)} fektetett tarokkjai:</strong> ${p.revealedSkart.map(cardName).map(esc).join(', ')}</span>`).join('');
-  const myPlayer = state.players.find(p => p.id === session.playerId);
-  const receivedTalon = myPlayer?.receivedTalon || [];
-  const talonCount = Number(myPlayer?.receivedTalonCount ?? receivedTalon.length);
-  const skartCount = Number(hints.skartCount ?? talonCount);
-  const canSkart = skartPhase && skartCount > 0 && hints.skartComplete !== true;
   const talonInfo = state.phase === 'skart' && talonCount > 0 ? `<div class="talon-info"><strong>Talont kaptál:</strong> ${receivedTalon.length ? `${receivedTalon.map(cardName).map(esc).join(', ')} · ` : ''}${talonCount} lap</div>` : '';
   app.innerHTML = `
     <div class="top"><div><strong>${esc(me?.displayName || session.playerId)}</strong> · szoba <span class="room-code">${esc(session.roomId)}</span></div><span class="connection ${connected?'good':''}">${status}</span><button id="resync">Szinkronizálás</button><button id="leave">Kilépés</button></div>
     <div class="matchbar"><strong>${esc(phaseLabel(state.phase))}</strong> · ${turnText}<span>${scores}</span></div>
     <div class="status">${esc(notice)}</div>
-    <section class="panel"><h2>Játékosok</h2><div class="players">${state.players.map(p => `<div class="player ${p.id===session.playerId?'me':''}"><strong>${esc((lobby?.seats?.find(x=>x.playerId===p.id)?.displayName) || p.id)}</strong><span>${p.connected ? '● online' : '○ offline'} · ${p.cardCount} lap</span></div>`).join('')}</div></section>
+    <section class="panel"><h2>Játékosok</h2><div class="players">${state.players.map(p => { const seat = lobby?.seats?.find(x=>x.playerId===p.id); const online = seat ? seat.connected : p.connected; return `<div class="player ${p.id===session.playerId?'me':''}"><strong>${esc(seat?.displayName || p.id)}</strong><span>${online ? '● online' : '○ offline'} · ${p.cardCount} lap</span></div>`; }).join('')}</div></section>
     <section class="panel"><h2>Akciók</h2><div class="actions">${auctionButtons}${partnerButtons}${declButtons}${skartAnnouncementButton}${skartButton}${playButtons}${contra.join('') || (hints.types?.length ? '' : '<span class="muted">Most nem te cselekszel.</span>')}</div></section>
     <section class="panel hand-panel"><h2>Saját kéz (${playerCards.length})</h2>${talonInfo}${canSkart ? `<div class="skart-active"><strong>Fektetés aktív</strong> · ${hints.skartCount} lapot kell kijelölnöd. A lapok megmaradnak a képernyőn, amíg a Fektetés gombra nem kattintasz.</div>` : ''}<div class="hand">${hand}</div></section>
     <section class="panel"><h2>Ütés</h2><div class="trick">${trickHtml}</div>${publicSkartInfo ? `<div class="public-skart-wrap">${publicSkartInfo}</div>` : ''}</section>
     <section class="panel"><h2>Bemondások</h2><p>${declarations}</p></section>`;
   document.querySelector('#leave')?.addEventListener('click', clearSession);
-  document.querySelector('#resync')?.addEventListener('click', () => { if(socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'resync', since:state.sequence})); });
+  document.querySelector('#resync')?.addEventListener('click', syncNow);
   document.querySelectorAll('[data-card]').forEach(btn => btn.addEventListener('click', () => {
     const id = btn.dataset.card;
     const legalSkart = state.phase === 'skart' && canSkart && (hints.skartCardIds || []).includes(id);
@@ -220,7 +266,7 @@ function auctionLabel(a, auction) {
 }
 async function renderLanding() {
   app.innerHTML = `
-    <div class="hero"><span class="badge">v2.55 multiplayer</span><h2>Online Illusztrált Tarokk</h2><p class="muted">Szobaalapú lobby, szerveroldali szabályellenőrzés és valós idejű játék.</p></div>
+    <div class="hero"><span class="badge">v2.56 multiplayer</span><h2>Online Illusztrált Tarokk</h2><p class="muted">Szobaalapú lobby, szerveroldali szabályellenőrzés és valós idejű játék.</p></div>
     <section class="panel forms"><div><h3>Új szoba</h3><label>Név<input id="createName" maxlength="28" placeholder="Játékos neve"></label><button id="create">Szoba létrehozása</button></div><div><h3>Csatlakozás</h3><label>Szobakód<input id="roomCode" maxlength="6" placeholder="ABC123"></label><label>Név<input id="joinName" maxlength="28" placeholder="Játékos neve"></label><button id="join">Csatlakozás</button></div></section><p class="server">Szerver: ${esc(apiBase)}</p>${notice ? `<div class="status">${esc(notice)}</div>`:''}`;
   document.querySelector('#create')?.addEventListener('click', async () => { try { notice='Szoba létrehozása…'; render(); const r=await jsonFetch('/lobby/rooms',{method:'POST',body:JSON.stringify({displayName:document.querySelector('#createName').value})}); session={roomId:r.roomId,playerId:r.playerId,token:r.token}; state=r.snapshot; lobby=r.status; saveSession(); notice='Szoba létrehozva.'; render(); connectSocket(); } catch(e){ notice=e.message; render(); } });
   document.querySelector('#join')?.addEventListener('click', async () => { try { const room=String(document.querySelector('#roomCode').value).trim().toUpperCase(); const r=await jsonFetch(`/lobby/rooms/${encodeURIComponent(room)}/join`,{method:'POST',body:JSON.stringify({displayName:document.querySelector('#joinName').value})}); session={roomId:r.roomId,playerId:r.playerId,token:r.token}; state=r.snapshot; lobby=r.status; saveSession(); notice='Csatlakozva a szobához.'; render(); connectSocket(); } catch(e){ notice=e.message; render(); } });
