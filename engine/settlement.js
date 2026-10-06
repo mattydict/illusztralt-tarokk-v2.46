@@ -173,9 +173,9 @@ export function settlementLines(input) {
             continue;
         const multiplier = figure.multiplier ?? 1;
         const silentBase = figure.silent ? silentFigureValue(figure.type) : undefined;
-        const effectivePoints = figure.silent
-            ? (silentBase !== undefined && figure.points <= silentBase ? figure.points : Math.floor(figure.points / 2))
-            : figure.points;
+    const effectivePoints = figure.silent
+      ? (silentBase !== undefined && figure.points <= silentBase ? figure.points : Math.floor(figure.points / 2))
+      : figure.points;
         lines.push({
             kind: 'figure',
             type: figure.type,

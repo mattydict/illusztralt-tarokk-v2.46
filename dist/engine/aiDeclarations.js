@@ -36,11 +36,98 @@ export function chooseAIDeclaration(hand, context, beliefs = { tarokk: {}, tarok
             base.score += portfolioFit;
             base.reasons.push(`Közös parti-portfólió: ${plan.gameExpectedValue.toFixed(1)} játékérték, ${declarationOptionalValue.toFixed(1)} opcionális figuraérték, ${portfolio.netExpectedValue.toFixed(1)} bemondási útérték.`);
         }
-        return base;
+        return { ...base, estimate: strategic.estimate };
     });
     scored.sort((a, b) => b.score - a.score);
     const best = scored[0];
+    const feasibility = declarationFeasibilityGate(best.option.type, hand, context);
+    if (!feasibility.allowed) {
+        return {
+            action: { type: 'pass', reason: feasibility.reason },
+            score: 0,
+            reasons: [feasibility.reason, ...best.reasons.slice(0, 4)],
+        };
+    }
+    const gate = declarationRiskGate(best.option.type, best.estimate.success, best.estimate.communication, context);
+    if (!gate.allowed) {
+        return {
+            action: { type: 'pass', reason: gate.reason },
+            score: 0,
+            reasons: [gate.reason, ...best.reasons.slice(0, 4)],
+        };
+    }
     return { action: best.option, score: best.score, reasons: best.reasons };
+}
+/**
+ * AI-only structural feasibility filter. The formal rules intentionally keep
+ * many declarations available even when a player is taking a speculative line;
+ * the expert AI should nevertheless avoid repeatedly selecting figures with no
+ * credible card structure or public communication support. Human controls remain
+ * fully permissive.
+ */
+function declarationFeasibilityGate(type, hand, context) {
+    const t = tarokkCount(hand);
+    const has = (rank) => hasTarokk(hand, rank);
+    const big = has(21) || has(22);
+    const chain = context.trullDeclared === true || context.trullOmittedByTaker === true || context.previousDeclarations.includes('fourKings');
+    if (type === 'centrum') {
+        const strongXixCentrumChain = chain && has(20) && t >= 5 && (has(21) || has(22));
+        const baseCore = has(20) && (has(21) || has(22)) && t >= 5;
+        if (!baseCore && !strongXixCentrumChain)
+            return { allowed: false, reason: 'Centrum: az AI-nál hiányzik a saját XX + nagyhonőr mag; a kommunikáció önmagában nem elég.' };
+    }
+    if (type === 'kismadar' && (t < 5 || (!has(21) && !(has(22) && t >= 6))) && !chain)
+        return { allowed: false, reason: 'Kismadár: nincs elegendő tarokk- és XXI/Skíz-alap; az AI nem vállalja vakon.' };
+    if (type === 'nagymadar' && (t < 6 || !has(22)) && !chain)
+        return { allowed: false, reason: 'Nagymadár: nincs legalább hat tarokkos Skíz-alap; az AI nem vállalja vakon.' };
+    if (type === 'fourKings' && kingCount(hand) < 2 && !chain)
+        return { allowed: false, reason: 'Négykirály: túl kevés saját király és nincs kommunikációs lánc; az AI passzol.' };
+    if (type === 'xxiFogas' && !has(22))
+        return { allowed: false, reason: 'XXI-fogás: a Skíz hiányzik a saját kézből; az AI nem deklarál fogást.' };
+    if ((type === 'pagatUltimo' || type === 'pagatUhu') && !has(1))
+        return { allowed: false, reason: `${type}: Pagát nincs a saját kézben; az AI passzol.` };
+    if ((type === 'sasUltimo' || type === 'sasUhu') && !has(2))
+        return { allowed: false, reason: `${type}: Sas nincs a saját kézben; az AI passzol.` };
+    if (type === 'kingUltimo' || type === 'kingUhu') {
+        const kings = kingCount(hand);
+        if (!kings)
+            return { allowed: false, reason: `${type}: nincs saját király-célkártya; az AI passzol.` };
+    }
+    if (type === 'tuletroa' && (!big || t < 3) && !chain)
+        return { allowed: false, reason: 'Tulétroá: nincs nagyhonőr- vagy kommunikációs alap; az AI passzol.' };
+    return { allowed: true, reason: 'A kéz szerkezete legalább minimális alapot ad a bemondáshoz.' };
+}
+function declarationRiskGate(type, success, communication, context) {
+    const communicationCredit = communication >= 1.15 ? 0.10 : communication >= 0.75 ? 0.05 : 0;
+    const thresholds = {
+        xxiFogas: 0.78,
+        nagymadar: 0.72,
+        kismadar: 0.65,
+        centrum: 0.62,
+        volat: 0.52,
+        pagatUltimo: 0.56,
+        sasUltimo: 0.56,
+        kingUltimo: 0.55,
+        pagatUhu: 0.62,
+        sasUhu: 0.62,
+        kingUhu: 0.60,
+        doubleGame: 0.42,
+        tuletroa: 0.50,
+        fourKings: 0.45,
+    };
+    const threshold = thresholds[type];
+    if (threshold === undefined)
+        return { allowed: true, reason: 'A bemondás kockázati kapuja nem korlátozza ezt a jelet.' };
+    // Explicit communication chains are allowed to justify a modestly riskier
+    // declaration. A Trull + Négykirály chain is a particularly strong example.
+    const chainCredit = context.trullDeclared || context.trullOmittedByTaker || context.previousDeclarations.includes('fourKings') ? 0.05 : 0;
+    const effectiveThreshold = Math.max(0.15, threshold - communicationCredit - chainCredit);
+    if (success >= effectiveThreshold)
+        return { allowed: true, reason: 'A bemondás teljesítési esélye eléri a kalibrált AI-küszöböt.' };
+    return {
+        allowed: false,
+        reason: `A kalibrált AI-kapu visszafogja a ${type} bemondását: becsült teljesítési esély ${(success * 100).toFixed(0)}%, küszöb ${(effectiveThreshold * 100).toFixed(0)}%.`,
+    };
 }
 function scoreDeclaration(option, hand, context, beliefs) {
     let score = 0;

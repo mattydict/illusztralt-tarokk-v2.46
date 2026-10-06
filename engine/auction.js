@@ -564,6 +564,12 @@ export function applyAuctionAction(state, action, hands) {
             // holder must receive their own explicit turns; never infer a
             // pass from the contents of their hand.
             const hasPassedGap = (() => {
+                // In a 4-player auction, a previously passed opener changes the
+                // return path. Example: A:Pass, B:3, C:2. D has not spoken yet
+                // and must press Passz before B can receive the holding right.
+                // Never infer D's pass from the hand.
+                const openerPassed = next.seats.length === 4 && state.records[0]?.action?.type === 'pass';
+                if (openerPassed) return true;
                 for (let step = 1; step < next.seats.length; step++) {
                     const s = (bidderSeat + step) % next.seats.length;
                     if (s === ownerSeat) break;
@@ -580,7 +586,7 @@ export function applyAuctionAction(state, action, hands) {
             })();
             if (hasPassedGap) {
                 const queue = responseQueueUntilHolder(next, playerId, owner);
-                if (queue.length)
+                if (queue.length && queue[0] !== owner)
                     return { ...next, currentSeat: seatOf(next, queue[0]), responseQueue: queue.slice(1) };
             }
             return { ...next, currentSeat: seatOf(next, owner) };

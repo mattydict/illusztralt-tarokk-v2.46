@@ -226,10 +226,10 @@ export function evaluateDeclarations(progress, tricks, sideOf, currentTrickNumbe
     if (!hasDeclaredFigure('tuletroa') && !silentFigures.some(s => s.type === 'tuletroa')) {
         const targets = ['T20', 'T21', 'T22'];
         const completed = targets.every(cardId => tricks.some(t => t.cards.some(e => e.card.id === cardId) &&
-            t.winner === t.cards.find(e => e.card.id === cardId)?.player));
+            sideOf(t.winner) !== 'unknown' && sideOf(t.winner) === sideOf(t.cards.find(e => e.card.id === cardId)?.player)));
         if (completed) {
             const targetTricks = targets.map(cardId => tricks.find(t => t.cards.some(e => e.card.id === cardId) &&
-                t.winner === t.cards.find(e => e.card.id === cardId)?.player));
+                sideOf(t.winner) !== 'unknown' && sideOf(t.winner) === sideOf(t.cards.find(e => e.card.id === cardId)?.player)));
             const owners = targetTricks.map(t => t && sideOf(t.winner));
             if (owners.every(s => s !== 'unknown') && owners.every(s => s === owners[0])) {
                 const ownerTrick = targetTricks[targetTricks.length - 1];
@@ -246,7 +246,7 @@ export function evaluateDeclarations(progress, tricks, sideOf, currentTrickNumbe
     if (!hasDeclaredFigure('fourKings') && !silentFigures.some(s => s.type === 'fourKings')) {
         const targets = ['hearts-K', 'diamonds-K', 'spades-K', 'clubs-K'];
         const targetTricks = targets.map(cardId => tricks.find(t => t.cards.some(e => e.card.id === cardId) &&
-            t.winner === t.cards.find(e => e.card.id === cardId)?.player));
+            sideOf(t.winner) !== 'unknown' && sideOf(t.winner) === sideOf(t.cards.find(e => e.card.id === cardId)?.player)));
         if (targetTricks.every(Boolean)) {
             const sides = targetTricks.map(t => sideOf(t.winner));
             if (sides.every(s => s !== 'unknown') && sides.every(s => s === sides[0])) {
@@ -286,8 +286,8 @@ export function evaluateDeclarations(progress, tricks, sideOf, currentTrickNumbe
         }
     }
     // Silent Pagát/Sas Ultimó is earned only when the target card is won by its
-    // holder in the ninth (last) trick. Merely playing Pagát/Sas earlier does
-    // not create a failed silent figure.
+    // holder in the ninth (last) trick. Playing Pagát/Sas earlier does not create
+    // a failed silent figure.
     if (tricks.length === 9) {
         const finalTrick = tricks[8];
         if (finalTrick) {

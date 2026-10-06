@@ -16,13 +16,16 @@ import { evaluateDealPortfolio } from './aiDealPortfolio.js';
 import { evaluateTrickEconomy } from './aiTrickEconomy.js';
 import { assessSilentFigureLandscape, assessSilentFigurePlay } from './aiSilentFigures.js';
 import { assessFigurePortfolioPlay } from './aiFigurePortfolio.js';
-/**
- * Conservative, explainable play policy.
- *
- * It deliberately uses only information available to the player: own hand,
- * public tricks/declarations and the known partnership. It never inspects an
- * opponent's hidden hand.
- */
+import { evaluateMultiTrickPlan } from './aiMultiTrickPlanner.js';
+import { assessPartnerMetaCommunication } from './aiPartnerMetaCommunication.js';
+import { assessDualCommunication } from './aiDualCommunication.js';
+import { assessCommunicationLine } from './aiCommunicationLine.js';
+import { assessCommunicationStateMachine } from './aiCommunicationStateMachine.js';
+import { assessDeclarationPlayCommunication } from './aiDeclarationPlayCommunication.js';
+import { assessCommunicationErrorCorrection } from './aiCommunicationErrorCorrection.js';
+import { assessCommunicationRecovery } from './aiCommunicationRecovery.js';
+import { assessFigureInteractions } from './aiFigureVerification.js';
+import { assessPublicCardControl } from './aiPublicCardMemory.js';
 function selectStrategicRolloutCard(simulatedState, playerId, legalCards) {
     const beliefs = deriveBeliefsFromPublicDeclarations(simulatedState);
     const scored = legalCards.map(card => scoreCard(simulatedState, playerId, card, beliefs));
@@ -35,18 +38,30 @@ function selectStrategicRolloutCard(simulatedState, playerId, legalCards) {
     });
     return scored[0]?.card;
 }
-
-export function chooseAICard(state, playerId, beliefs) {
+/**
+ * Conservative, explainable play policy.
+ *
+ * It deliberately uses only information available to the player: own hand,
+ * public tricks/declarations and the known partnership. It never inspects an
+ * opponent's hidden hand.
+ */
+export function chooseAICard(state, playerId, beliefs, options = {}) {
     const legal = legalCardsForPlay(state, playerId);
     if (!legal.length)
         throw new Error('Az AI-nak nincs szabályosan kijátszható lapja.');
     const partnerBeliefs = beliefs ?? deriveBeliefsFromPublicDeclarations(state);
+    const rolloutSamples = options.rolloutSamples ?? 48;
+    const terminalRolloutSamples = options.terminalRolloutSamples ?? 24;
+    const birdSamples = options.birdSamples ?? 32;
+    const multiTrickSamples = options.multiTrickSamples ?? 20;
+    const multiTrickDepth = options.multiTrickDepth ?? 28;
     let rolloutByCard = new Map();
     let birdPlanByCard = new Map();
     let hardFigureByCard = new Map();
     let birdDefenseByCard = new Map();
     let silentFigureByCard = new Map();
     let figurePortfolioByCard = new Map();
+    let multiTrickByCard = new Map();
     try {
         const snapshot = buildAIBeliefSnapshot(state, playerId);
         const hypotheses = buildHandHypotheses(state, playerId, snapshot);
@@ -55,11 +70,11 @@ export function chooseAICard(state, playerId, beliefs) {
             const defensiveBird = activeOppositionBird(state, playerId);
             const silentLandscape = assessSilentFigureLandscape(state, playerId, hypotheses);
             for (const card of legal) {
-                const rollout = evaluateCardContinuation(state, playerId, hypotheses, card, 2, 48, undefined, selectStrategicRolloutCard);
+                const rollout = evaluateCardContinuation(state, playerId, hypotheses, card, 2, rolloutSamples, undefined, selectStrategicRolloutCard);
                 // A second, terminal rollout values the same candidate in actual deal
                 // settlement points when the simulated line reaches all nine tricks.
                 const remainingTricks = Math.max(1, 9 - state.completedTricks.length);
-                const terminal = evaluateCardContinuation(state, playerId, hypotheses, card, remainingTricks, 24, undefined, selectStrategicRolloutCard);
+                const terminal = evaluateCardContinuation(state, playerId, hypotheses, card, remainingTricks, terminalRolloutSamples, undefined, selectStrategicRolloutCard);
                 rolloutByCard.set(card.id, {
                     score: rollout.expectedValue,
                     reasons: rollout.reasons,
@@ -72,7 +87,7 @@ export function chooseAICard(state, playerId, beliefs) {
                 // so the AI can sacrifice a short-term gain when that materially
                 // improves the pair's target-trick probability.
                 if (bird) {
-                    const plan = evaluateBirdFigureCandidate(state, playerId, hypotheses, card, 32);
+                    const plan = evaluateBirdFigureCandidate(state, playerId, hypotheses, card, birdSamples);
                     if (plan) {
                         birdPlanByCard.set(card.id, {
                             score: plan.score,
@@ -116,10 +131,19 @@ export function chooseAICard(state, playerId, beliefs) {
                 // this layer resolves conflicts and captures positive multi-figure
                 // synergies without granting hidden information.
                 const portfolio = assessFigurePortfolioPlay(state, playerId, card, hypotheses, silentLandscape);
+                const figureVerification = assessFigureInteractions(state, playerId, card);
                 figurePortfolioByCard.set(card.id, {
-                    score: portfolio.score,
-                    reasons: portfolio.reasons,
+                    score: portfolio.score + figureVerification.score,
+                    reasons: [...portfolio.reasons, ...figureVerification.reasons].slice(0, 5),
                 });
+                // v2.19: do not stop at the immediate two-trick outlook. A candidate
+                // can be deliberately good because it opens the right third-trick
+                // continuation, especially for partner figures and communicated
+                // tarokk lines. This remains bounded below hard locks and settlement.
+                const multiTrick = evaluateMultiTrickPlan(state, playerId, hypotheses, card, multiTrickDepth, multiTrickSamples);
+                if (multiTrick) {
+                    multiTrickByCard.set(card.id, multiTrick);
+                }
             }
         }
     }
@@ -131,6 +155,41 @@ export function chooseAICard(state, playerId, beliefs) {
     const oppositionBirdContext = activeOppositionBird(state, playerId);
     const scored = legal.map(card => {
         const tactical = scoreCard(state, playerId, card, partnerBeliefs);
+        const metaCommunication = assessPartnerMetaCommunication(state, playerId, card, partnerBeliefs);
+        tactical.score += metaCommunication.score * 0.65;
+        const dualCommunication = assessDualCommunication(state, playerId, card, partnerBeliefs);
+        tactical.score += dualCommunication.score * 0.45;
+        const communicationLine = assessCommunicationLine(state, playerId, card, partnerBeliefs, multiTrickByCard.get(card.id));
+        tactical.score += communicationLine.score * 0.32;
+        const communicationState = assessCommunicationStateMachine(state, playerId, card, partnerBeliefs);
+        const declarationPlayCommunication = assessDeclarationPlayCommunication(state, playerId, card);
+        const communicationCorrection = assessCommunicationErrorCorrection(state, playerId, card);
+        const communicationRecovery = assessCommunicationRecovery(state, playerId, card);
+        tactical.score += declarationPlayCommunication.score * 0.38;
+        tactical.score += communicationState.score * 0.28;
+        tactical.score += communicationCorrection.score * 0.24;
+        tactical.score += communicationRecovery.score * 0.28;
+        if (Math.abs(declarationPlayCommunication.score) >= 1.0 && declarationPlayCommunication.reasons.length) {
+            tactical.reasons.push(`Bemondás → játék kommunikáció: ${declarationPlayCommunication.reasons[0]}`);
+        }
+        if (Math.abs(communicationState.score) >= 1.0 && communicationState.reasons.length) {
+            tactical.reasons.push(`Kommunikációs állapot: ${communicationState.reasons[0]}`);
+        }
+        if (Math.abs(communicationCorrection.score) >= 0.45 && communicationCorrection.reasons.length) {
+            tactical.reasons.push(`Kommunikáció javítása: ${communicationCorrection.reasons[0]}`);
+        }
+        if (Math.abs(communicationRecovery.score) >= 0.45 && communicationRecovery.reasons.length) {
+            tactical.reasons.push(`Kommunikáció helyreállítása: ${communicationRecovery.reasons[0]}`);
+        }
+        if (Math.abs(communicationLine.score) >= 1.0 && communicationLine.reasons.length) {
+            tactical.reasons.push(`Kommunikációs vonal: ${communicationLine.reasons[0]}`);
+        }
+        if (Math.abs(metaCommunication.score) >= 1.0 && metaCommunication.reasons.length) {
+            tactical.reasons.push(`Partneri meta-kommunikáció: ${metaCommunication.reasons[0]}`);
+        }
+        if (Math.abs(dualCommunication.score) >= 0.8 && dualCommunication.reasons.length) {
+            tactical.reasons.push(`Kettős kommunikáció: ${dualCommunication.reasons[0]}`);
+        }
         const rollout = rolloutByCard.get(card.id);
         if (rollout) {
             const continuationScore = Math.max(-8, Math.min(8, rollout.score));
@@ -156,6 +215,14 @@ export function chooseAICard(state, playerId, beliefs) {
                     const sign = rollout.settlement > 0 ? 'nyereség' : 'veszteség';
                     tactical.reasons.push(`Partiérték: a teljes leosztás várható ${sign}hatása ${rollout.settlement.toFixed(1)} pont a saját párnak.`);
                 }
+            }
+        }
+        const multiTrick = multiTrickByCard.get(card.id);
+        if (multiTrick) {
+            const multiScore = Math.max(-8, Math.min(8, multiTrick.score));
+            tactical.score += multiScore * 0.75;
+            if (Math.abs(multiScore) >= 1.0) {
+                tactical.reasons.push(...multiTrick.reasons.slice(0, 1).map(r => `Többütéses terv: ${r}`));
             }
         }
         const hardFigure = hardFigureByCard.get(card.id);
@@ -247,8 +314,48 @@ export function chooseAICard(state, playerId, beliefs) {
         }
         return tactical;
     });
-    scored.sort((a, b) => b.score - a.score);
-    return scored[0];
+    scored.sort((a, b) => {
+        if (b.score !== a.score)
+            return b.score - a.score;
+        if (a.card.points !== b.card.points)
+            return a.card.points - b.card.points;
+        return a.card.id.localeCompare(b.card.id);
+    });
+    const best = scored[0];
+    return {
+        ...best,
+        alternatives: scored.slice(0, 4).map(item => ({ card: item.card, score: item.score, reasons: [...item.reasons] })),
+    };
+}
+function difficultyJitter(state, playerId, difficulty) {
+    if (difficulty === 'expert')
+        return 0;
+    const trick = state.completedTricks.length;
+    const cards = state.players.find(p => p.id === playerId)?.hand.length ?? 0;
+    let hash = 2166136261;
+    const input = `${playerId}|${trick}|${cards}|${state.trick?.cards.map(x => `${x.player}:${x.card.id}`).join(',') ?? ''}`;
+    for (let i = 0; i < input.length; i += 1) {
+        hash ^= input.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0) / 4294967296;
+}
+export function chooseAICardAtDifficulty(state, playerId, beliefs, difficulty = 'expert') {
+    const decision = chooseAICard(state, playerId, beliefs);
+    if (difficulty === 'expert' || !decision.alternatives || decision.alternatives.length < 2)
+        return decision;
+    const jitter = difficultyJitter(state, playerId, difficulty);
+    const index = difficulty === 'casual'
+        ? (jitter < 0.65 ? Math.min(1, decision.alternatives.length - 1) : Math.min(2, decision.alternatives.length - 1))
+        : (jitter < 0.3 ? Math.min(1, decision.alternatives.length - 1) : 0);
+    const selected = decision.alternatives[index] ?? decision.alternatives[0];
+    const prefix = difficulty === 'casual' ? 'Gyakorló AI' : 'Normál AI';
+    return {
+        ...decision,
+        card: selected.card,
+        score: selected.score,
+        reasons: [`${prefix}: a stratégiai jelöltek közül ezt a vonalat választotta.`, ...selected.reasons].slice(0, 6),
+    };
 }
 function partnerIdForPlayer(state, playerId) {
     const side = pairOf(playerId, state.takerId ?? '', state.partnerId);
@@ -403,6 +510,10 @@ function scoreCard(state, playerId, card, beliefs) {
                 reasons.push(`A ${bird.name} célütése most esedékes.`);
             }
         }
+        const publicControl = assessPublicCardControl(state, playerId, card);
+        score += publicControl.score;
+        if (publicControl.reasons.length)
+            reasons.push(...publicControl.reasons);
         const leadConvention = scoreOpeningLeadConvention(state, playerId, card, beliefs);
         score += leadConvention.score;
         reasons.push(...leadConvention.reasons);
@@ -413,6 +524,10 @@ function scoreCard(state, playerId, card, beliefs) {
     const currentWinnerSide = pairOf(currentWinner, state.takerId ?? '', state.partnerId);
     const candidateWinner = determineWinner([...trick.cards.map(toTrickCard), { playerId, card }], lead);
     const candidateWins = candidateWinner === playerId;
+    const publicControl = assessPublicCardControl(state, playerId, card, candidateWins);
+    score += publicControl.score;
+    if (publicControl.reasons.length)
+        reasons.push(...publicControl.reasons);
     const trickEconomy = evaluateTrickEconomy(state, playerId, card, candidateWinner);
     score += trickEconomy.score;
     if (Math.abs(trickEconomy.score) >= 2 && trickEconomy.reasons.length) {

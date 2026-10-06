@@ -2,7 +2,7 @@ function sideWon(trick, side, ctx) {
     return side !== 'unknown' && ctx.sideOf(trick.winner) === side;
 }
 function cardWonBySide(trick, cardId, side, ctx) {
-    return sideWon(trick, side, ctx) && trick.winner === trick.cards.find(x => x.card.id === cardId)?.player;
+    return sideWon(trick, side, ctx) && trick.cards.some(x => x.card.id === cardId);
 }
 function hasCardWonBySide(tricks, cardId, side, ctx) {
     return tricks.some(t => cardWonBySide(t, cardId, side, ctx));

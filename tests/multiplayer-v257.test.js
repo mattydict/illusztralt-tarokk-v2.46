@@ -80,6 +80,8 @@ test('v2.59 declarations are serial, allow multiple declarations per turn, and c
   w = applyDeclarationAction(w, {type:'pass', playerId:'C'}, hand);
   assert.equal(currentDeclarer(w), 'D');
   w = applyDeclarationAction(w, {type:'pass', playerId:'D'}, hand);
+  assert.equal(w.finished, false);
+  w = applyDeclarationAction(w, {type:'pass', playerId:'A'}, hand);
   assert.equal(w.finished, true);
 });
 

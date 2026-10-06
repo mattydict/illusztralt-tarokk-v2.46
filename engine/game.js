@@ -75,7 +75,8 @@ export function legalCardsForPlay(state, playerId) {
         }
     }
     const trickNumber = state.completedTricks.length + 1;
-    return applyDeclaredFigureLocks(legal, player.hand, state.declarations, trickNumber, playerId);
+    const playerSide = (id) => pairOf(id, state.takerId ?? '', state.partnerId);
+    return applyDeclaredFigureLocks(legal, player.hand, state.declarations, trickNumber, playerId, playerSide);
 }
 export function canRaiseGameContraInGame(state, byPlayer) {
     if (state.phase !== 'declarations' || !state.takerId)

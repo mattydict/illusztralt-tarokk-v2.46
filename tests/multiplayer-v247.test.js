@@ -74,7 +74,7 @@ function chooseCards(room, playerId, count) {
   assert.equal(room.snapshotFor(taker).legalActionTypes.includes('declaration'), true);
 
   // Three consecutive passes in the actual declaration phase start the play phase.
-  const declOrder=[taker,...room.playerIds.filter(id=>id!==taker)];
+  const declOrder=[...room.declarationWindow.order];
   for (const id of declOrder.slice(0,3)) {
     assert.equal(room.snapshotFor(id).legalActionHints.declarationActions.some(a=>a.type==='pass'), true);
     room.dispatch(id,room.sequence,{type:'declaration',action:{type:'pass'}});

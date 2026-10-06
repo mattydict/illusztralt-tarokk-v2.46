@@ -11,9 +11,15 @@ test('bemondási passz nem végleges és három egymást követő passz lezár',
     assert.equal(currentDeclarer(w), 'B');
     w = applyDeclarationAction(w, { type: 'pass', playerId: 'B' });
     assert.equal(currentDeclarer(w), 'C');
+    // B declared something before pressing Passz, so B's closing Passz is not
+    // a pure pass and does not count toward the three-pure-pass closure.
     w = applyDeclarationAction(w, { type: 'pass', playerId: 'C' });
     assert.equal(w.finished, false);
+    assert.equal(w.consecutivePasses, 1);
     w = applyDeclarationAction(w, { type: 'pass', playerId: 'D' });
+    assert.equal(w.finished, false);
+    assert.equal(w.consecutivePasses, 2);
+    w = applyDeclarationAction(w, { type: 'pass', playerId: 'A' });
     assert.equal(w.consecutivePasses, 3);
     assert.equal(w.finished, true);
 });

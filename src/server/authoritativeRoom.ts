@@ -6,8 +6,8 @@ import {
   getPlayer, type GameState,
 } from '../engine/index.js';
 import { legalAuctionActions, applyAuctionAction, type AuctionAction, type AuctionState } from '../engine/auction.js';
-import { resolveCalledPartner } from '../engine/partnership.js';
-import { createDeclarationWindow, currentDeclarer, legalDeclarationActions, applyDeclarationAction, type DeclarationWindowState } from '../engine/declarationWindow.js';
+import { resolveCalledPartner, pairOf as pairOfEngine } from '../engine/partnership.js';
+import { createDeclarationWindow, currentDeclarer, legalDeclarationActions, applyDeclarationAction, markDeclarationTurnAction, type DeclarationWindowState } from '../engine/declarationWindow.js';
 import type { Card } from '../engine/cards.js';
 import { legalCardsForPlay } from '../engine/game.js';
 import { legalSkartCards } from '../engine/skart.js';
@@ -19,6 +19,7 @@ export interface RoomOptions {
   roomId: string;
   playerIds: string[];
   dealerIndex?: number;
+  matchRounds?: 1 | 2 | 4;
   random?: () => number;
   persisted?: PersistedRoomState;
   onCommit?: (state: PersistedRoomState) => void | Promise<void>;
@@ -29,6 +30,7 @@ export interface PersistedRoomState {
   roomId: string;
   playerIds: string[];
   dealerIndex: number;
+  matchRounds: 1 | 2 | 4;
   round: RoundState;
   game: GameState | null;
   declarationWindow: DeclarationWindowState | null;
@@ -60,6 +62,8 @@ function phaseOf(round: RoundState, game: GameState | null): string {
 }
 
 function statePlayerIds(round: RoundState): string[] { return round.players.map(p => p.playerId); }
+function declarationOrderFor(playerId: string, playerIds: string[]): string[] { const start = playerIds.indexOf(playerId); if (start < 0) return [playerId, ...playerIds.filter(id => id !== playerId)]; return playerIds.map((_, i) => playerIds[(start + i) % playerIds.length]); }
+function pairOfId(playerId: string, takerId: string | undefined, partnerId: string | undefined): 'taker' | 'defence' | 'unknown' { return pairOfEngine(playerId, takerId ?? '', partnerId); }
 function sameDeclarationAction(expected: any, actual: any): boolean {
   if (!expected || !actual || expected.type !== actual.type || expected.playerId !== actual.playerId) return false;
   if (expected.type === 'pass') return true;
@@ -112,6 +116,7 @@ export class AuthoritativeRoom {
   private publicEvents: PublicEvent[] = [];
   private onCommit?: (state: PersistedRoomState) => void;
   private lastActionAt = Date.now();
+  private matchRounds: 1 | 2 | 4;
   private matchScores: Record<string, number>;
   private settlementHistory: any[];
   private lastSettlement?: any;
@@ -123,6 +128,7 @@ export class AuthoritativeRoom {
     this.roomId = options.roomId;
     this.playerIds = [...options.playerIds];
     this.dealerIndex = options.dealerIndex ?? 0;
+    this.matchRounds = ([1, 2, 4] as const).includes(options.matchRounds ?? 4) ? (options.matchRounds ?? 4) : 4;
     this.random = options.random ?? Math.random;
     this.onCommit = options.onCommit;
     this.matchScores = structuredClone(options.persisted?.matchScores ?? Object.fromEntries(this.playerIds.map(id => [id, 0])));
@@ -178,6 +184,7 @@ export class AuthoritativeRoom {
   exportPersistedState(): PersistedRoomState {
     return structuredClone({
       schemaVersion: 1 as const,
+      matchRounds: this.matchRounds,
       roomId: this.roomId,
       playerIds: this.playerIds,
       dealerIndex: this.dealerIndex,
@@ -545,19 +552,24 @@ export class AuthoritativeRoom {
     const takerIndex = game.players.findIndex(p => p.id === playerId);
     game = startDeclarations(game, takerIndex);
     this.game = game;
-    this.declarationWindow = createDeclarationWindow([playerId, ...this.playerIds.filter(id => id !== playerId)], true);
+    this.declarationWindow = createDeclarationWindow(declarationOrderFor(playerId, this.playerIds), true);
     this.round = { ...this.round, phase: 'declarations', currentPlayerId: playerId, calledTarokk: rank };
   }
 
   private declarationContext(playerId: string): DeclarationContext {
     if (!this.game || !this.round) throw new Error('Nincs aktív játék.');
     const gp = getPlayer(this.game, playerId);
+    const side = pairOfId(playerId, this.game.takerId, this.game.partnerId);
+    const pairDeclaredTypes = this.game.declarations.declarations
+      .filter(d => pairOfId(d.ownerId, this.game!.takerId, this.game!.partnerId) === side)
+      .map(d => d.type);
     return {
       isTaker: playerId === this.game.takerId,
       invited: this.round.auctionOutcome?.calledTarokk !== undefined,
       ...(this.round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: this.round.auctionOutcome.calledTarokk as 18 | 19 | 20 } : {}),
       ...(this.round.contract ? { contract: this.round.contract } : {}),
       previousDeclarations: this.game.declarations.declarations.map(d => d.type),
+      pairDeclaredTypes,
       firstRound: this.declarationWindow?.firstRound ?? true,
       partnersKnown: true,
       ...(playerId === this.game.partnerId ? { isPartner: true } : {}),
@@ -566,6 +578,7 @@ export class AuthoritativeRoom {
       ...(playerId === this.game.takerId && this.round.calledTarokk === 19 && !this.game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}),
       xxiThreatScore: this.game.declarations.declarations.some(d => d.type === 'fourKings') ? 6 : 0,
       skizCapturePressure: gp.hand.some(c => c.kind === 'tarokk' && c.rank === 22) ? 5 : 0,
+
     };
   }
 
@@ -600,11 +613,13 @@ export class AuthoritativeRoom {
   private applyGameContra(playerId: string): void {
     if (!this.game || !canRaiseGameContraInGame(this.game, playerId)) throw new Error('Most nem mondhatsz kontrát a játékra.');
     this.game = raiseGameContraInGame(this.game, playerId);
+    if (this.declarationWindow) this.declarationWindow = markDeclarationTurnAction(this.declarationWindow, playerId);
   }
 
   private applyDeclarationContra(playerId: string, declarationId: string): void {
     if (!this.game || !canRaiseDeclarationContraInGame(this.game, declarationId, playerId)) throw new Error('Most nem mondhatsz kontrát erre a bemondásra.');
     this.game = raiseDeclarationContraInGame(this.game, declarationId, playerId);
+    if (this.declarationWindow) this.declarationWindow = markDeclarationTurnAction(this.declarationWindow, playerId);
   }
 
   private applyPlayCard(playerId: string, cardId: string): void {
@@ -648,6 +663,7 @@ export class AuthoritativeRoom {
     this.round.parallelSkart = true;
     this.game = null;
     this.declarationWindow = null;
+  }
 
   private recordInstantTarokkScore(playerId: string, count: 8|9): void {
     const pointsEach = count === 9 ? 2 : 1;

@@ -2,7 +2,7 @@ import { availableDeclarations, declarationRequiresTarokkCount } from './declara
 export function createDeclarationWindow(order, firstRound = true) {
     if (order.length !== 4)
         throw new Error('A bemondási körhöz 4 játékos szükséges.');
-    return { order: [...order], currentIndex: 0, consecutivePasses: 0, finished: false, records: [], roundNumber: 1, firstRound: true, announcedTarokkCounts: {} };
+    return { order: [...order], currentIndex: 0, consecutivePasses: 0, turnHadAction: false, finished: false, records: [], roundNumber: 1, firstRound, announcedTarokkCounts: {} };
 }
 export function currentDeclarer(window) {
     return window.finished ? undefined : window.order[window.currentIndex];
@@ -58,24 +58,30 @@ export function applyDeclarationAction(window, action, hand) {
             throw new Error('A 8 tarokkos jelzés csak 9 tarokkra pontosítható.');
         const announcedTarokkCounts = { ...window.announcedTarokkCounts, [action.playerId]: action.count };
         const { pendingTarokkCountPlayerId: _pending, ...withoutPending } = window;
-        // A player may continue making declarations until they pass. This is
-        // important for the taker: after the mandatory partner call, the taker
-        // may immediately make further declarations in the same turn.
-        return { ...withoutPending, records, announcedTarokkCounts, consecutivePasses: 0 };
+        // A tarokk-count announcement is a factual disclosure inside the speaker's
+        // current turn. It does not itself end the turn; the speaker may continue
+        // with further declarations or pass.
+        return { ...withoutPending, records, announcedTarokkCounts, consecutivePasses: 0, turnHadAction: true };
     }
     if (action.type === 'pass') {
         if (window.pendingTarokkCountPlayerId === action.playerId) {
             throw new Error('A kötelező tarokkszám-bemondást előbb meg kell tenni.');
         }
-        const passes = window.consecutivePasses + 1;
+        // Only a COMPLETELY empty speaking turn counts towards the three-pass
+        // closing condition. A player may make one or more declarations (or an
+        // informational tarokk-count action / kontra) and then press Passz to
+        // finish that turn; that closing Passz does NOT increment the streak.
+        const purePass = window.turnHadAction !== true;
+        const passes = purePass ? window.consecutivePasses + 1 : 0;
         if (passes >= 3)
-            return { ...window, records, consecutivePasses: passes, finished: true };
+            return { ...window, records, consecutivePasses: passes, turnHadAction: false, finished: true };
         const nextIndex = (window.currentIndex + 1) % window.order.length;
         const wrapped = nextIndex === 0;
         return {
             ...window,
             records,
             consecutivePasses: passes,
+            turnHadAction: false,
             currentIndex: nextIndex,
             ...(wrapped ? { roundNumber: (window.roundNumber ?? 1) + 1, firstRound: false } : {}),
         };
@@ -83,9 +89,16 @@ export function applyDeclarationAction(window, action, hand) {
     if (action.type === 'declare' && hand && declarationRequiresTarokkCount(action.declaration)) {
         const count = hand.filter(c => c.kind === 'tarokk').length;
         if (count >= 8 && window.announcedTarokkCounts[action.playerId] === undefined) {
-            return { ...window, records, consecutivePasses: 0, pendingTarokkCountPlayerId: action.playerId };
+            return { ...window, records, consecutivePasses: 0, turnHadAction: true, pendingTarokkCountPlayerId: action.playerId };
         }
     }
-    // A declaration does not end the speaker's turn. Passing does.
-    return { ...window, records, consecutivePasses: 0 };
+    // A player may make any number of declarations during the same speaking turn.
+    // Only a pass hands the speaking right to the next player. This is what creates
+    // a genuine second declaration round after the first speaker returns to the turn.
+    return { ...window, records, consecutivePasses: 0, turnHadAction: true, currentIndex: window.currentIndex };
+}
+
+export function markDeclarationTurnAction(window, playerId) {
+    if (window.finished || currentDeclarer(window) !== playerId) throw new Error('Most nem ennek a játékosnak van bemondási joga.');
+    return { ...window, consecutivePasses: 0, turnHadAction: true };
 }

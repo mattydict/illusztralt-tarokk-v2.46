@@ -457,6 +457,9 @@ function candidateEffect(state, observerId, candidate, candidateWinner, candidat
     const target = threat.type === 'pagatUltimo' ? 'T1' : threat.type === 'sasUltimo' ? 'T2' : undefined;
     const hasTarget = target ? trick.cards.some(x => x.card.id === target) : false;
     if (!closes) {
+        if ((threat.type === 'pagatUltimo' || threat.type === 'sasUltimo') && candidate.id === targetForSilentUltimo(state, observerId, threat) && trickNumber < 9) {
+            return -1.25;
+        }
         if (threat.type === 'doubleGame' && candidateSide === desiredSide && candidate.points <= 5)
             return 0.04;
         return 0;

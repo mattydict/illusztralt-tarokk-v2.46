@@ -21,9 +21,9 @@ export function legalPlayCards(hand, trick) {
  * rules leave that target as the only playable card, the obligation is
  * necessarily released and the card may be played earlier.
  */
-export function applyDeclaredFigureLocks(legallyPlayable, hand, declarations, trickNumber, ownerId) {
+export function applyDeclaredFigureLocks(legallyPlayable, hand, declarations, trickNumber, ownerId, sideOf) {
     const restrictedTargets = declarations.declarations
-        .filter(d => d.status !== 'failed' && d.status !== 'fulfilled' && d.targetCardId && (ownerId === undefined || d.ownerId === ownerId))
+        .filter(d => d.status !== 'failed' && d.status !== 'fulfilled' && d.targetCardId && (ownerId === undefined || d.ownerId === ownerId || (typeof sideOf === 'function' && sideOf(d.ownerId) === sideOf(ownerId))))
         .map(d => ({ targetCardId: d.targetCardId, deadline: declaredFigureDeadline(d.type) }))
         .filter((x) => x.deadline !== undefined && trickNumber < x.deadline);
     if (!restrictedTargets.length)

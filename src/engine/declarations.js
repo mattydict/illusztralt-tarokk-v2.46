@@ -11,6 +11,7 @@ export function kingCount(hand) { return hand.filter(c => c.kind === 'suit' && c
  */
 export function availableDeclarations(hand, context) {
     const previous = new Set(context.previousDeclarations);
+  const pairDeclared = new Set(context.pairDeclaredTypes ?? []);
     const result = [];
     const t = tarokkCount(hand);
     // IMPORTANT: in Illustrated Tarokk, a declaration is not a promise that the
@@ -47,7 +48,7 @@ export function availableDeclarations(hand, context) {
     // same-trick pair restrictions, Ultimo -> Uhu) remain in declarationRules.
     // They are genuine announcement-order rules, not tests of whether a figure
     // is theoretically makeable from the hidden cards.
-    return dedupeDeclarations(result);
+    return dedupeDeclarations(result).filter(item => !pairDeclared.has(item.type));
 }
 function dedupeDeclarations(items) {
     const seen = new Set();

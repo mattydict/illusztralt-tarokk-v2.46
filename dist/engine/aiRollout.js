@@ -288,8 +288,7 @@ function simulateCardContinuation(state, observerId, partnerId, hidden, candidat
         const legal = rolloutLegal(hands[pid] ?? [], trickCards, target?.cardId, state.completedTricks.length + horizonTricks + 1, target?.deadline);
         if (!legal.length)
             return { value: -12, sideWin: false, partnerWin: false, targetSuccess: false, settlementNetForTakerPair: undefined, settlementForObserverSide: undefined };
-        const card = chooseSimulatedCard(state, hands, trickCards, lead, legal, pid, observerId, partnerId,
-            state.completedTricks.length + horizonTricks + 1, target, strategySelector);
+        const card = chooseSimulatedCard(state, hands, trickCards, lead, legal, pid, observerId, partnerId, state.completedTricks.length + horizonTricks + 1, target, strategySelector);
         hands[pid].splice(hands[pid].findIndex(c => c.id === card.id), 1);
         trickCards.push({ playerId: pid, card });
         if (!lead)
@@ -308,8 +307,16 @@ function simulateCardContinuation(state, observerId, partnerId, hidden, candidat
             const legal = rolloutLegal(hands[pid] ?? [], trickCards, target?.cardId, state.completedTricks.length + horizonTricks + 1, target?.deadline);
             if (!legal.length)
                 return { value: value - 10, sideWin, partnerWin, targetSuccess, settlementNetForTakerPair: undefined, settlementForObserverSide: undefined };
-            const card = chooseSimulatedCard(state, hands, trickCards, lead, legal, pid, observerId, partnerId,
-                state.completedTricks.length + horizonTricks + 1, target, strategySelector);
+            const card = chooseRolloutCard(legal, trickCards, lead, {
+                declaration: target?.name ?? 'doubleGame',
+                playerId: pid,
+                observerId,
+                hands,
+                trickNumber: state.completedTricks.length + horizonTricks + 1,
+                ...(partnerId !== undefined ? { partnerId } : {}),
+                declaringSide: new Set([observerId, ...(partnerId ? [partnerId] : [])]),
+                ...(target ? { targetDeadline: target.deadline, target: target.cardId, deadline: target.deadline } : {}),
+            });
             hands[pid].splice(hands[pid].findIndex(c => c.id === card.id), 1);
             trickCards.push({ playerId: pid, card });
             if (!lead)
@@ -503,8 +510,7 @@ function simulateRemainingTricks(state, observerId, partnerId, hidden, declarati
             const legal = rolloutLegal(hands[pid] ?? [], trickCards, target, tricks + 1, deadline);
             if (!legal.length)
                 return { success: false, tricks, failureMode: 'Szabályos rollout-lépés nem állítható elő.' };
-            const card = chooseSimulatedCard(state, hands, trickCards, lead, legal, pid, observerId, partnerId,
-                tricks + 1, target ? { name: declaration, cardId: target, deadline } : undefined, strategySelector);
+            const card = chooseSimulatedCard(state, hands, trickCards, lead, legal, pid, observerId, partnerId, tricks + 1, target ? { name: declaration, cardId: target, deadline: deadline } : undefined, strategySelector);
             const index = hands[pid].findIndex(c => c.id === card.id);
             hands[pid].splice(index, 1);
             trickCards.push({ playerId: pid, card });
@@ -572,21 +578,16 @@ function rolloutLegal(hand, trick, target, trickNumber = 1, deadline) {
 function filterTarget(cards, target, trickNumber = 1, deadline) { if (!target || !deadline || trickNumber >= deadline)
     return cards; const non = cards.filter(c => c.id !== target); return non.length ? non : cards; }
 function chooseSimulatedCard(baseState, hands, trickCards, lead, legal, playerId, observerId, partnerId, trickNumber, target, strategySelector) {
-    if (typeof strategySelector === 'function') {
-        const simulatedState = buildSimulationState(baseState, hands, trickCards, playerId, trickNumber);
+    if (strategySelector) {
+        const simulatedState = buildSimulationState(baseState, hands, trickCards, playerId);
         try {
-            const selected = strategySelector(simulatedState, playerId, legal, {
-                observerId,
-                partnerId,
-                target,
-                trickNumber,
-            });
+            const selected = strategySelector(simulatedState, playerId, legal, { observerId, ...(partnerId !== undefined ? { partnerId } : {}), target, trickNumber });
             if (selected && legal.some(c => c.id === selected.id))
                 return selected;
         }
         catch {
-            // Fall back to the bounded rollout policy if the full strategic
-            // evaluator cannot score a synthetic state consistently.
+            // Fall back to the bounded rollout policy if the full strategic evaluator
+            // cannot score a synthetic state consistently.
         }
     }
     return chooseRolloutCard(legal, trickCards, lead, {
@@ -600,12 +601,11 @@ function chooseSimulatedCard(baseState, hands, trickCards, lead, legal, playerId
         ...(target ? { targetDeadline: target.deadline, target: target.cardId, deadline: target.deadline } : {}),
     });
 }
-function buildSimulationState(baseState, hands, trickCards, playerId, trickNumber) {
-    const players = baseState.players.map(p => ({
-        ...p,
-        hand: [...(hands[p.id] ?? p.hand ?? [])],
-    }));
-    const trickLeader = trickCards[0]?.playerId ?? baseState.trick?.leader ?? baseState.startingPlayerId;
+function buildSimulationState(baseState, hands, trickCards, playerId) {
+    const players = baseState.players.map(p => ({ ...p, hand: [...(hands[p.id] ?? p.hand ?? [])] }));
+    const trickLeader = trickCards[0]?.playerId ?? baseState.trick?.leader ?? baseState.startingPlayerId ?? players[0]?.id;
+    if (!trickLeader)
+        throw new Error('A rollout-szimulációhoz nincs elérhető játékos.');
     return {
         ...baseState,
         players,
