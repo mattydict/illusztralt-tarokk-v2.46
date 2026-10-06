@@ -34,11 +34,11 @@ export function resolveAuctionOutcome(
 ): AuctionOutcome {
   if (!auction.finished || !auction.highest) throw new Error('Az aukció még nem zárult le.');
   const highest = auction.highest;
-  const inviter = [...auction.records].reverse().find(r => r.action.type === 'invite' || r.action.type === 'hold-invite');
+  const inviter = [...auction.records].reverse().find(r => r.action.type === 'invite' || r.action.type === 'hold-invite' || (r.action.type === 'pass' && r.action.inviteTarget !== undefined));
 
   let requiredPartnerCallId: PlayerId | undefined;
-  if (inviter && (inviter.action.type === 'invite' || inviter.action.type === 'hold-invite') && inviter.playerId !== highest.playerId) {
-    const target = inviter.action.target;
+  if (inviter && (inviter.action.type === 'invite' || inviter.action.type === 'hold-invite' || (inviter.action.type === 'pass' && inviter.action.inviteTarget !== undefined)) && inviter.playerId !== highest.playerId) {
+    const target = inviter.action.target ?? inviter.action.inviteTarget;
     // Engedés / XX-invit is special: the inviter is the guaranteed partner
     // of the Kettő bidder, so no further acceptance is needed.
     if (target === 20 && highest.contract === 'two' && auction.engedes) {
@@ -64,7 +64,7 @@ export function resolveAuctionOutcome(
     contract: highest.contract,
     talonCount: talonCountByContract[highest.contract],
     ...(requiredPartnerCallId ? { requiredPartnerCallId } : {}),
-    ...(inviter && (inviter.action.type === 'invite' || inviter.action.type === 'hold-invite') && requiredPartnerCallId ? { calledTarokk: inviter.action.target } : {}),
+    ...(inviter && (inviter.action.type === 'invite' || inviter.action.type === 'hold-invite' || (inviter.action.type === 'pass' && inviter.action.inviteTarget !== undefined)) && requiredPartnerCallId ? { calledTarokk: inviter.action.target ?? inviter.action.inviteTarget } : {}),
     honourless,
   };
 }

@@ -113,7 +113,7 @@ test('3→2 nem azonosítja automatikusan a Kettesest Skízként', async () => {
     // C remains a live later-seat candidate for the Skíz/fogás role.
     assert.ok(c.likelySkiz > 0.10);
 });
-test('3→2→1 után az eredeti Hármasos Szólója XIX invit, nem sima Szóló', async () => {
+test('3→2→1 után az eredeti Hármasosnál nincs hamis XIX-invit: az Egyesről a Szóló a következő rendes licit', async () => {
     const { legalAuctionActions, applyAuctionAction } = await import('../src/engine/auction.js');
     const auction = createAuction(['A', 'B', 'C', 'D'], 0);
     let state = auction;
@@ -124,10 +124,11 @@ test('3→2→1 után az eredeti Hármasos Szólója XIX invit, nem sima Szóló
     assert.ok(state.seats[state.currentSeat]?.playerId === 'B');
     assert.ok(legalAuctionActions(state, 'B', hands).some(a => a.type === 'bid' && a.contract === 'one'));
     state = applyAuctionAction(state, { type: 'bid', contract: 'one' }, hands);
-    // A is the original Hármasos and gets the hold/invite response to B's Egyes.
+    // At current Egyes the next ordinary bid is Szóló, so no invite can be attached
+    // merely to that next step. A genuine XIX-invit requires one skipped contract.
     const actions = legalAuctionActions(state, 'A', hands);
-    assert.ok(actions.some(a => a.type === 'invite' && a.target === 19));
-    assert.ok(!actions.some(a => a.type === 'bid' && a.contract === 'solo'));
+    assert.equal(actions.some(a => a.type === 'invite' && a.target === 19), false);
+    assert.equal(actions.some(a => a.type === 'pass' && a.inviteTarget !== undefined), false);
 });
 test('3→2→1→2 szabálytalan: Kettesre nincs visszalépési lehetőség', async () => {
     const { legalAuctionActions } = await import('../src/engine/auction.js');

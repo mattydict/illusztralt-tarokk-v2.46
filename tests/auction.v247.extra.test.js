@@ -58,13 +58,36 @@ function noHonourHand() {
   assert.equal(a.engedes,true);
 }
 
-// Az invithez kell a cél-tarokk, legalább 5 tarokk és nagyhonőr (XXI vagy Skíz).
+// Plain opening bids are not invites. An XIX/XVIII opening invite is created
+// by the original speaker PASSING after the immediate higher response; holding
+// that response is a strong opening instead.
 {
-  const valid19 = hand({honour:22,include:[19]});
-  const noBig = hand({honour:1,include:[19]});
-  const missing19 = hand({honour:22,include:[18,17,16,15]});
+  const valid19 = hand({honour:22,include:[19,18,17,16]});
+  const bHands = {A:valid19,B:hand({honour:21,include:[19]}),C:hand(),D:hand()};
   let a = createAuction(['A','B','C','D']);
-  assert.ok(legalAuctionActions(a,'A',{A:valid19,B:hand(),C:hand(),D:hand()}).some(x => x.type==='invite' && x.target===19));
-  assert.equal(legalAuctionActions(a,'A',{A:noBig,B:hand(),C:hand(),D:hand()}).some(x => x.type==='invite'),false);
-  assert.equal(legalAuctionActions(a,'A',{A:missing19,B:hand(),C:hand(),D:hand()}).some(x => x.type==='invite' && x.target===19),false);
+  a = applyAuctionAction(a,{type:'bid',contract:'two'},bHands);
+  a = applyAuctionAction(a,{type:'bid',contract:'one'},bHands);
+  a = applyAuctionAction(a,{type:'pass'},bHands);
+  a = applyAuctionAction(a,{type:'pass'},bHands);
+  const actions = legalAuctionActions(a,'A',bHands);
+  assert.ok(actions.some(x => x.type==='pass' && x.inviteTarget===19));
+  assert.ok(actions.some(x => x.type==='hold' && x.contract==='one'));
+  a = applyAuctionAction(a,{type:'pass',inviteTarget:19},bHands);
+  assert.deepEqual(a.outstandingInvite,{inviterId:'A',target:19});
+  assert.equal(a.inviteAcceptedBy,'B');
+}
+{
+  const valid18 = hand({honour:22,include:[18,17,16,15]});
+  const bHands = {A:valid18,B:hand({honour:21,include:[18]}),C:hand(),D:hand()};
+  let a = createAuction(['A','B','C','D']);
+  a = applyAuctionAction(a,{type:'bid',contract:'one'},bHands);
+  a = applyAuctionAction(a,{type:'bid',contract:'solo'},bHands);
+  a = applyAuctionAction(a,{type:'pass'},bHands);
+  a = applyAuctionAction(a,{type:'pass'},bHands);
+  const actions = legalAuctionActions(a,'A',bHands);
+  assert.ok(actions.some(x => x.type==='pass' && x.inviteTarget===18));
+  assert.ok(actions.some(x => x.type==='hold' && x.contract==='solo'));
+  a = applyAuctionAction(a,{type:'pass',inviteTarget:18},bHands);
+  assert.deepEqual(a.outstandingInvite,{inviterId:'A',target:18});
+  assert.equal(a.inviteAcceptedBy,'B');
 }

@@ -78,3 +78,13 @@ The declaration lifecycle models ITVB 7.6 together with 8.3: when an Uhu's locke
 
 A fektetés továbbra is a szabályos `isForbiddenSkart`/`legalSkartCards` ellenőrzés alatt marad. Az AI erre épülő stratégiai rétege a lehetséges lapok között értékel: elsősorban a pontértékes, de kevésbé értékes kontrolllapokat választja, miközben óvja a tarokk-kontrollt és figyelembe veszi a skart előtti színhosszokat. Ez döntési konvenció, nem új szabályi korlátozás.
 
+
+
+### v2.62 – teljesebb XIX/XVIII invit rendszer
+
+A licitmotor a Tarokk Akadémia elsődlegessége mellett a szakirodalomban dokumentált invithelyzeteket külön kezeli. Az első Szóló önmagában nem invit; a Kettő→Egy XIX-invit, Egy→Szóló XVIII-invit, illetve a Három→Egy és Három→Szóló közvetlen ugrások mellett a későbbi 3–2–1 visszajelzési láncok is felismerhetők. Az A:3 B:2 C:Szóló A:Tartom esetet XVIII-invitként kezeljük, összhangban a Tarokk-őr által preferált hagyománnyal; az eltérő helyi együtthatású értelmezést nem engedjük párhuzamosan futni.
+
+Forrási elv: Tarokk Akadémia / ITVB az elsődleges döntési keret; a Tarokk-Őr példatára a teljes mintakészlet és a történeti különesetek kiegészítésére szolgál.
+
+## v2.63 invite-system refinement
+The auction engine recognizes the later XIX/XVIII invitation family described in Tarokk-őr (including A:3 B:2 A:1 B:Tartom A:Passz and A:3 B:2 A:1 B:Szóló A:Passz), while direct first Solo remains an ordinary Solo. The implementation follows the specialist invitation interpretation used in the project, with Tarokk Akadémia as the preferred reference where systems differ.

@@ -13,13 +13,14 @@ export interface DeclarationWindowState {
   finished: boolean;
   records: DeclarationAction[];
   firstRound: boolean;
+  roundNumber: number;
   announcedTarokkCounts: Record<string, 8 | 9>;
   pendingTarokkCountPlayerId?: string;
 }
 
 export function createDeclarationWindow(order: string[], firstRound = true): DeclarationWindowState {
   if (order.length !== 4) throw new Error('A bemondási körhöz 4 játékos szükséges.');
-  return { order: [...order], currentIndex: 0, consecutivePasses: 0, finished: false, records: [], firstRound, announcedTarokkCounts: {} };
+  return { order: [...order], currentIndex: 0, consecutivePasses: 0, finished: false, records: [], roundNumber: 1, firstRound: true, announcedTarokkCounts: {} };
 }
 
 export function currentDeclarer(window: DeclarationWindowState): string | undefined {
@@ -35,7 +36,7 @@ export function legalDeclarationActions(
   if (window.finished || currentDeclarer(window) !== playerId) return [];
   if (window.pendingTarokkCountPlayerId && window.pendingTarokkCountPlayerId !== playerId) return [];
   const announced = window.announcedTarokkCounts[playerId];
-  const options = availableDeclarations(hand, { ...context, firstRound: window.firstRound, ...(announced !== undefined ? { announcedTarokkCount: announced } : {}) });
+  const options = availableDeclarations(hand, { ...context, firstRound: window.roundNumber === 1, ...(announced !== undefined ? { announcedTarokkCount: announced } : {}) });
   const countActions: DeclarationAction[] = [];
   const tarokks = hand.filter(c => c.kind === 'tarokk').length;
   if (window.pendingTarokkCountPlayerId === playerId) {
@@ -83,7 +84,15 @@ export function applyDeclarationAction(window: DeclarationWindowState, action: D
     }
     const passes = window.consecutivePasses + 1;
     if (passes >= 3) return { ...window, records, consecutivePasses: passes, finished: true };
-    return { ...window, records, consecutivePasses: passes, currentIndex: (window.currentIndex + 1) % window.order.length };
+    const nextIndex = (window.currentIndex + 1) % window.order.length;
+    const wrapped = nextIndex === 0;
+    return {
+      ...window,
+      records,
+      consecutivePasses: passes,
+      currentIndex: nextIndex,
+      ...(wrapped ? {roundNumber: (window.roundNumber ?? 1) + 1, firstRound: false} : {}),
+    };
   }
   if (action.type === 'declare' && hand && declarationRequiresTarokkCount(action.declaration)) {
     const count = hand.filter(c => c.kind === 'tarokk').length;
@@ -92,5 +101,5 @@ export function applyDeclarationAction(window: DeclarationWindowState, action: D
     }
   }
   // A declaration consumes this speaking turn; the next player is next to speak.
-  return { ...window, records, consecutivePasses: 0, currentIndex: (window.currentIndex + 1) % window.order.length };
+  return { ...window, records, consecutivePasses: 0, currentIndex: window.currentIndex };
 }

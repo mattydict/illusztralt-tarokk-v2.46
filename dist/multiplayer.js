@@ -269,7 +269,7 @@ function inviteTargetLabel(target) {
   return target === 20 ? 'XX' : target === 19 ? 'XIX' : target === 18 ? 'XVIII' : `${target}`;
 }
 function auctionLabel(a, auction) {
-  if(a.type === 'pass') return 'Passz';
+  if(a.type === 'pass') return a.inviteTarget !== undefined ? `Passz (${inviteTargetLabel(a.inviteTarget)} invit)` : 'Passz';
   if(a.type === 'bid') return a.honourless ? 'Honőr nélküli Hármas' : `Licit: ${labels[a.contract] || a.contract}`;
   if(a.type === 'hold') return `Tartom: ${labels[a.contract] || a.contract}`;
   if(a.type === 'hold-invite') return `Tartom: ${labels[a.contract] || a.contract} (${inviteTargetLabel(a.target)} invit)`;

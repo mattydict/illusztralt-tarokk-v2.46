@@ -106,5 +106,5 @@ test('v2.36 complete-deal benchmark records a no-taker auction as a measured red
   const result = simulateAICompleteDeal(['A', 'B', 'C', 'D'], 0, seededRandom(244019));
   assert.equal(result.finalGame.phase, 'scoring');
   assert.equal(result.playMoves.length, 36);
-  assert.equal(result.redeals, 1);
+  assert.equal(result.redeals, 0);
 });

@@ -222,7 +222,10 @@ export function settlementLines(input: GameSettlementInput): SettlementLine[] {
     if (figure.type === 'doubleGame' || figure.type === 'volat') continue;
     if (figure.silent && (silentVolat || silentDouble) && (figure.type === 'tuletroa' || figure.type === 'fourKings')) continue;
     const multiplier = figure.multiplier ?? 1;
-    const effectivePoints = figure.silent ? Math.floor(figure.points / 2) : figure.points;
+    const silentBase = figure.silent ? silentFigureValue(figure.type) : undefined;
+    const effectivePoints = figure.silent
+      ? (silentBase !== undefined && figure.points <= silentBase ? figure.points : Math.floor(figure.points / 2))
+      : figure.points;
     lines.push({
       kind: 'figure',
       type: figure.type,

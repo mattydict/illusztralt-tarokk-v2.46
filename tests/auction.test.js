@@ -73,9 +73,13 @@ function fullHand({honour=22, tarokks=[20,19,18,17,16]}={}) {
   let a=createAuction(['A','B','C','D']);
   a=applyAuctionAction(a,{type:'bid',contract:'two'},valid);
   a=applyAuctionAction(a,{type:'bid',contract:'one'},valid);
-  assert.ok(legalAuctionActions(a,'A',valid).some(x=>x.type==='hold-invite'&&x.target===19));
+  a=applyAuctionAction(a,{type:'pass'},valid);
+  a=applyAuctionAction(a,{type:'pass'},valid);
+  assert.ok(legalAuctionActions(a,'A',valid).some(x=>x.type==='pass'&&x.inviteTarget===19));
   let b=createAuction(['A','B','C','D']);
   b=applyAuctionAction(b,{type:'bid',contract:'two'},invalid);
   b=applyAuctionAction(b,{type:'bid',contract:'one'},invalid);
+  b=applyAuctionAction(b,{type:'pass'},invalid);
+  b=applyAuctionAction(b,{type:'pass'},invalid);
   assert.equal(legalAuctionActions(b,'A',invalid).some(x=>x.type==='hold-invite'),false);
 }

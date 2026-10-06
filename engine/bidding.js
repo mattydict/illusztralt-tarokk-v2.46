@@ -143,12 +143,6 @@ export function legalBids(state, bidding, playerId) {
     if (!previous) {
         result.push({ type: 'bid', contract: 'three' });
         result.push({ type: 'bid', contract: 'solo' });
-        if (canInvite(player.hand)) {
-            for (const target of [20, 19, 18]) {
-                if (hasInviteCard(player.hand, target))
-                    result.push({ type: 'invite', target, contract: 'solo' });
-            }
-        }
         return result;
     }
     const ladder = ['three', 'two', 'one', 'solo'];

@@ -1,3 +1,5 @@
+## v2.61 – bemondási kör és csendes ultimó pontosítás
+
 # Illusztrált Magyar Tarokk – v2.46
 
 v2.44 – **persistent + hardened multiplayer build**. A single-player motor lezárt állapotára építve a multiplayer szerveroldali authority rétege mostantól a licit–fektetés–partnerhívás–bemondás–kontra–lejátszás folyamatot is validálja. A v2.39 single-player release candidate állapotára építve a stratégiai AI most már súlyozott expert benchmarkkal, deklarációs kockázati kapukkal és nagy mintás self-play diagnosztikával is ellenőrizhető.

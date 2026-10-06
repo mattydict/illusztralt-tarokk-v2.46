@@ -93,16 +93,16 @@ import { createAuction, applyAuctionAction, legalAuctionActions } from '../src/e
 
 {
   // A starts with 2. B may interpret B's 1 as an XIX invite. If A actually
-  // holds XIX, A's response is the explicit invite-hold, not an ordinary hold.
+  // holds XIX, A's response is the invite-bearing Passz, not an ordinary hold.
   const t19 = { kind:'tarokk' as const, rank:19 as const, id:'T19', points:1 };
   let a = createAuction(['A','B','C','D']);
   a = applyAuctionAction(a, {type:'bid', contract:'two'}, {A:[t19], B:[], C:[], D:[]});
   a = applyAuctionAction(a, {type:'bid', contract:'one'}, {A:[t19], B:[t19], C:[], D:[]});
   a = applyAuctionAction(a, {type:'pass'}, {A:[t19], B:[t19], C:[], D:[]});
   a = applyAuctionAction(a, {type:'pass'}, {A:[t19], B:[t19], C:[], D:[]});
-  assert.ok(legalAuctionActions(a, 'A', {A:[t19], B:[t19], C:[], D:[]}).some(x => x.type === 'hold-invite' && x.target === 19));
+  assert.ok(legalAuctionActions(a, 'A', {A:[t19], B:[t19], C:[], D:[]}).some(x => x.type === 'pass' && x.inviteTarget === 19));
   assert.equal(legalAuctionActions(a, 'A', {A:[t19], B:[t19], C:[], D:[]}).some(x => x.type === 'hold' && x.contract === 'one'), false);
-  a = applyAuctionAction(a, {type:'hold-invite', contract:'one', target:19}, {A:[t19], B:[t19], C:[], D:[]});
+  a = applyAuctionAction(a, {type:'pass', inviteTarget:19}, {A:[t19], B:[t19], C:[], D:[]});
   assert.deepEqual(a.outstandingInvite, {inviterId:'A', target:19});
   assert.equal(a.inviteAcceptedBy, 'B');
 }
@@ -117,7 +117,7 @@ import { createAuction, applyAuctionAction, legalAuctionActions } from '../src/e
   a = applyAuctionAction(a, {type:'pass'});
   a = applyAuctionAction(a, {type:'pass'});
   assert.ok(legalAuctionActions(a, 'A', {A:[t20], B:[], C:[], D:[]}).some(x => x.type === 'hold' && x.contract === 'one'));
-  assert.equal(legalAuctionActions(a, 'A', {A:[t20], B:[], C:[], D:[]}).some(x => x.type === 'hold-invite'), false);
+  assert.equal(legalAuctionActions(a, 'A', {A:[t20], B:[], C:[], D:[]}).some(x => x.type === 'pass' && x.inviteTarget !== undefined), false);
   a = applyAuctionAction(a, {type:'hold', contract:'one'}, {A:[t20], B:[], C:[], D:[]});
   assert.equal(a.outstandingInvite, undefined);
 }

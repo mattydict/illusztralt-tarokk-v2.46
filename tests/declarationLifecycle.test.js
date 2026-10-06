@@ -113,6 +113,13 @@ test('csendes Négykirály automatikusan felismerhető és nem duplázódik dekl
     assert.equal(p.silentFigures.filter(s => s.type === 'fourKings').length, 0);
 });
 
+test('csendes Sasultimó nem keletkezik attól, hogy a Sas a 9. ütés előtt kerül kijátszásra', () => {
+    let p = initialDeclarationProgress();
+    const tricks = Array.from({ length: 4 }, (_, i) => figureTrick('B', [{ player: 'A', id: i === 3 ? 'T2' : `makk-A-${i}` }]));
+    p = evaluateDeclarations(p, tricks, id => id === 'A' ? 'taker' : 'defence', 4);
+    assert.equal(p.silentFigures.some(s => s.type === 'sasUltimo'), false);
+});
+
 test('csendes Pagátultimó Uhu nélkül is automatikusan felismerhető a 9. ütésben', () => {
     let p = initialDeclarationProgress();
     const tricks = Array.from({ length: 8 }, () => figureTrick('B', [{ player: 'B', id: 'makk-A' }]));

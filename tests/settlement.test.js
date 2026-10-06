@@ -87,6 +87,19 @@ test('a lifecycle-ból a bukott védőoldali figura is helyes előjellel kerül 
     assert.equal(result.at(-1)?.points, 20);
     assert.equal(result.at(-1)?.positiveForTakerPair, true);
 });
+test('a csendes Pagát és Sas ultimó settlement értéke 5 pont, nem feleződik meg kétszer', () => {
+    const progress = {
+        declarations: [], locks: [], events: [],
+        silentFigures: [{ type: 'sasUltimo', ownerId: 'A', trickNumber: 9, status: 'fulfilled', sourceDeclarationId: 'silent:sasUltimo' }],
+    };
+    const figures = figureSettlementsFromProgress(progress, 'A', 'B');
+    assert.equal(figures[0]?.points, 5);
+    const lines = settlementLines({ contract: 'three', takerPairWon: true, takerTrickPoints: 40, gameContra: 'none', figures });
+    assert.equal(lines.find(x => x.type === 'sasUltimo')?.points, 5);
+    const direct = settlementLines({ contract: 'three', takerPairWon: true, takerTrickPoints: 40, gameContra: 'none', figures: [{ type: 'sasUltimo', points: 10, ownerPairWon: true, ownerIsTakerPair: true, silent: true }] });
+    assert.equal(direct.find(x => x.type === 'sasUltimo')?.points, 5);
+});
+
 test('az Uhu-ból keletkező csendes ulti automatikusan bekerül a settlement inputba', () => {
     const progress = {
         declarations: [],

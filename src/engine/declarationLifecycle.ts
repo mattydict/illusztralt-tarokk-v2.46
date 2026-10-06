@@ -354,11 +354,9 @@ export function evaluateDeclarations(progress: DeclarationProgress, tricks: Figu
     }
   }
 
-  // Silent Pagát/Sas Ultimó is an independent figure: it can be completed
-  // without a declared Uhu. If Pagát or Sas is won by its holder on the 9th
-  // trick, record the silent figure. When a Uhu happened to be declared for
-  // the same target and the old conversion path applies, preserve the Uhu id
-  // as provenance so existing settlement/audit records remain stable.
+  // Silent Pagát/Sas Ultimó is earned only when the target card is won by its
+  // holder in the ninth (last) trick. Playing Pagát/Sas earlier does not create
+  // a failed silent figure.
   if (tricks.length === 9) {
     const finalTrick = tricks[8];
     if (finalTrick) {

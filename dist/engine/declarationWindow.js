@@ -2,7 +2,7 @@ import { availableDeclarations, declarationRequiresTarokkCount } from './declara
 export function createDeclarationWindow(order, firstRound = true) {
     if (order.length !== 4)
         throw new Error('A bemondási körhöz 4 játékos szükséges.');
-    return { order: [...order], currentIndex: 0, consecutivePasses: 0, finished: false, records: [], firstRound, announcedTarokkCounts: {} };
+    return { order: [...order], currentIndex: 0, consecutivePasses: 0, finished: false, records: [], roundNumber: 1, firstRound: true, announcedTarokkCounts: {} };
 }
 export function currentDeclarer(window) {
     return window.finished ? undefined : window.order[window.currentIndex];
@@ -13,7 +13,7 @@ export function legalDeclarationActions(window, playerId, hand, context) {
     if (window.pendingTarokkCountPlayerId && window.pendingTarokkCountPlayerId !== playerId)
         return [];
     const announced = window.announcedTarokkCounts[playerId];
-    const options = availableDeclarations(hand, { ...context, firstRound: window.firstRound, ...(announced !== undefined ? { announcedTarokkCount: announced } : {}) });
+    const options = availableDeclarations(hand, { ...context, firstRound: window.roundNumber === 1, ...(announced !== undefined ? { announcedTarokkCount: announced } : {}) });
     const countActions = [];
     const tarokks = hand.filter(c => c.kind === 'tarokk').length;
     if (window.pendingTarokkCountPlayerId === playerId) {
@@ -70,7 +70,15 @@ export function applyDeclarationAction(window, action, hand) {
         const passes = window.consecutivePasses + 1;
         if (passes >= 3)
             return { ...window, records, consecutivePasses: passes, finished: true };
-        return { ...window, records, consecutivePasses: passes, currentIndex: (window.currentIndex + 1) % window.order.length };
+        const nextIndex = (window.currentIndex + 1) % window.order.length;
+        const wrapped = nextIndex === 0;
+        return {
+            ...window,
+            records,
+            consecutivePasses: passes,
+            currentIndex: nextIndex,
+            ...(wrapped ? { roundNumber: (window.roundNumber ?? 1) + 1, firstRound: false } : {}),
+        };
     }
     if (action.type === 'declare' && hand && declarationRequiresTarokkCount(action.declaration)) {
         const count = hand.filter(c => c.kind === 'tarokk').length;
