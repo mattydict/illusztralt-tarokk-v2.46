@@ -85,6 +85,10 @@ export class AuthoritativeRoom {
       if (options.persisted.roomId !== this.roomId) throw new Error('A mentett szobaazonosító nem egyezik.');
       if (JSON.stringify(options.persisted.playerIds) !== JSON.stringify(this.playerIds)) throw new Error('A mentett játékoslista nem egyezik.');
       this.round = { ...options.persisted.round, parallelSkart: true };
+      // Migrate rooms left in the talon-distribution state by older builds.
+      if (this.round.phase === 'talon-distribution' && this.round.takerId && this.round.contract) {
+        this.round = distributeRoundTalon({ ...this.round, parallelSkart: true }, this.round.talon ?? []);
+      }
       // Migrate older rooms that skipped the fektetés-közlés subphase.
       if (this.round.takerId && this.round.players.every(p => p.skart.length === p.receivedTalon.length)) {
         const needsAnnouncements = (this.round.phase === 'skart' || (this.round.phase === 'partner-call' && !this.round.skartAnnouncementResolved))

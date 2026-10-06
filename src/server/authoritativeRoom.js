@@ -19,6 +19,9 @@ export class AuthoritativeRoom {
       if (JSON.stringify(options.persisted.playerIds) !== JSON.stringify(this.playerIds)) throw new Error('A mentett játékoslista nem egyezik.');
       this.round = structuredClone(options.persisted.round);
       this.round.parallelSkart = true;
+      if (this.round.phase === 'talon-distribution' && this.round.takerId && this.round.contract) {
+        this.round = distributeRoundTalon({ ...this.round, parallelSkart: true }, this.round.talon ?? []);
+      }
       if (this.round.takerId && this.round.players.every(p => p.skart.length === p.receivedTalon.length)) {
         const legacyNeeds = (this.round.phase === 'skart' || (this.round.phase === 'partner-call' && !this.round.skartAnnouncementResolved));
         if (legacyNeeds) {

@@ -97,13 +97,13 @@ function handFromRanks(ranks) {
   const html = fs.readFileSync(path.resolve('src/ui/multiplayer.html'), 'utf8');
   assert.match(ui, /hand-group/);
   assert.match(ui, /Tarokkok/);
-  assert.match(ui, /hearts.*diamonds.*spades.*clubs/s);
-  assert.match(ui, /b\.rank - a\.rank/);
+  assert.match(ui, /const groupOrder = \['hearts','diamonds','clubs','spades'\]/);
+  assert.match(ui, /Number\(b\.rank\) - Number\(a\.rank\)/);
   assert.match(ui, /state\.phase === 'skart' \? ''/);
   assert.match(ui, /Engedés \(XX invit\)/);
   assert.match(ui, /msg\.actionType === 'skart' && msg\.playerId === session\?\.playerId/);
   assert.match(ui, /contract = a\.contract \|\| auction\?\.highest\?\.contract \|\| 'solo'/);
-  assert.match(html, /multiplayer\.js\?v=2\.52\.0/);
+  assert.match(html, /multiplayer\.js\?v=2\.53\.0/);
 }
 
 // A complete parallel skart must resolve to the automatic skart-announcement
