@@ -152,6 +152,12 @@ export function declareFigureInGame(state, type, ownerId, trickNumber, targetCar
     if (state.calledTarokk === undefined)
         throw new Error('A partnerhívást előbb kötelező bemondani.');
     const partnerId = state.partnerId;
+    if ((type === 'kingUltimo' || type === 'kingUhu')) {
+        const owner = getPlayer(state, ownerId);
+        if (!targetCardId || !owner.hand.some(c => c.id === targetCardId && c.kind === 'suit' && c.rank === 'K')) {
+            throw new Error('Király ultimóhoz vagy Király uhuhoz csak a bemondó saját kezében lévő király választható.');
+        }
+    }
     const side = pairOf(ownerId, state.takerId, partnerId);
     const pairId = side === 'taker' ? `taker:${state.takerId}` : side === 'defence' ? `defence:${state.players.find(p => p.id !== state.takerId && p.id !== partnerId)?.id ?? 'defence'}` : undefined;
     const declarations = declareFigureLifecycle(state.declarations, type, ownerId, trickNumber, targetCardId, pairId);

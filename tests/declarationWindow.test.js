@@ -7,20 +7,23 @@ test('bemondási passz nem végleges és három egymást követő passz lezár',
     assert.equal(currentDeclarer(w), 'A');
     w = applyDeclarationAction(w, { type: 'pass', playerId: 'A' });
     w = applyDeclarationAction(w, { type: 'declare', playerId: 'B', declaration: 'doubleGame' });
-    w = applyDeclarationAction(w, { type: 'pass', playerId: 'B' });
-    assert.equal(w.finished, false);
+    assert.equal(currentDeclarer(w), 'C');
     w = applyDeclarationAction(w, { type: 'pass', playerId: 'C' });
-    assert.equal(w.consecutivePasses, 2);
+    assert.equal(w.finished, false);
     w = applyDeclarationAction(w, { type: 'pass', playerId: 'D' });
+    assert.equal(w.consecutivePasses, 2);
+    w = applyDeclarationAction(w, { type: 'pass', playerId: 'A' });
     assert.equal(w.finished, true);
 });
-test('declaration does not advance the speaker until they pass', () => {
+test('a declaration advances to the next speaker, enabling subsequent rounds', () => {
     const w = createDeclarationWindow(['A', 'B', 'C', 'D']);
     const hand = createDeck().slice(0, 9);
     const w2 = applyDeclarationAction(w, { type: 'declare', playerId: 'A', declaration: 'doubleGame' }, hand);
-    assert.equal(currentDeclarer(w2), 'A');
-    const w3 = applyDeclarationAction(w2, { type: 'pass', playerId: 'A' }, hand);
-    assert.equal(currentDeclarer(w3), 'B');
+    assert.equal(currentDeclarer(w2), 'B');
+    const w3 = applyDeclarationAction(w2, { type: 'pass', playerId: 'B' }, hand);
+    assert.equal(currentDeclarer(w3), 'C');
+    const w4 = applyDeclarationAction(w3, { type: 'pass', playerId: 'C' }, hand);
+    assert.equal(currentDeclarer(w4), 'D');
 });
 test('pair figures are available without exposing the partner hand', () => {
     const w = createDeclarationWindow(['A', 'B', 'C', 'D']);

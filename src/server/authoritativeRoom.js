@@ -3,11 +3,21 @@ import { legalAuctionActions, applyAuctionAction } from '../engine/auction.js';
 import { resolveCalledPartner } from '../engine/partnership.js';
 import { createDeclarationWindow, currentDeclarer, legalDeclarationActions, applyDeclarationAction } from '../engine/declarationWindow.js';
 import { legalSkartCards } from '../engine/skart.js';
+import { nextContraLevel } from '../engine/contra.js';
 function cloneCard(card) { return card.kind === 'tarokk' ? { id: card.id, kind: card.kind, rank: card.rank, points: card.points } : { id: card.id, kind: card.kind, rank: card.rank, suit: card.suit, points: card.points }; }
 function handsMap(round) { return Object.fromEntries(round.players.map(p => [p.playerId, p.hand])); }
 function phaseOf(round, game) { return game ? game.phase : round.phase; }
 const TALON_COUNTS = { three: [3, 1, 1, 1], two: [2, 2, 1, 1], one: [1, 2, 2, 1], solo: [0, 2, 2, 2] };
 function expectedTalonCounts(round) { return round.contract ? TALON_COUNTS[round.contract] : undefined; }
+function contraLabel(level) {
+  return { kontra: 'Kontra', rekontra: 'Rekontra', szubkontra: 'Szubkontra', mordkontra: 'Mordkontra' }[level] ?? level;
+}
+function getDeclarationContraActions(game, playerId) {
+  if (!game || game.phase !== 'declarations') return [];
+  return game.declarations.declarations
+    .filter(d => canRaiseDeclarationContraInGame(game, d.id, playerId))
+    .map(d => ({ id: d.id, type: d.type, ownerId: d.ownerId, level: nextContraLevel(d.contra.level), label: contraLabel(nextContraLevel(d.contra.level)) }));
+}
 function repairPersistedTalonState(round) {
   if (!round?.takerId || !expectedTalonCounts(round) || !['talon-distribution', 'skart'].includes(round.phase)) return round;
   const expected = expectedTalonCounts(round);
@@ -199,27 +209,48 @@ export class AuthoritativeRoom {
     }
     const current = this.currentPlayerId;
     if (!current || current !== playerId) {
-      const declarationContraIds = this.game?.phase === 'declarations'
-        ? this.game.declarations.declarations.filter(d => canRaiseDeclarationContraInGame(this.game, d.id, playerId)).map(d => d.id) : [];
-      if (this.game && canRaiseGameContraInGame(this.game, playerId)) result.gameContra = true;
-      if (declarationContraIds.length) result.declarationContraIds = declarationContraIds;
+      const declarationContraActions = getDeclarationContraActions(this.game, playerId);
+      if (this.game && canRaiseGameContraInGame(this.game, playerId)) result.gameContra = { level: nextContraLevel(this.game.gameContraState?.level ?? this.game.gameContra ?? 'none'), label: contraLabel(nextContraLevel(this.game.gameContraState?.level ?? this.game.gameContra ?? 'none')) };
+      if (declarationContraActions.length) result.declarationContraActions = declarationContraActions;
       return result;
     }
     if (!this.game && this.round.phase === 'auction') {
       result.auctionActions = legalAuctionActions(this.round.auction, playerId, handsMap(this.round));
     } else if (!this.game && this.round.phase === 'partner-call') {
-      result.partnerRanks = [18, 19, 20].filter(rank => !!resolveCalledPartner(playerId, rank, this.round.players.map(p => ({ id: p.playerId, hand: p.hand }))));
+      const player = this.round.players.find(p => p.playerId === playerId);
+      const hands = this.round.players.map(p => ({ id: p.playerId, hand: p.hand }));
       const required = this.round.auctionOutcome?.calledTarokk;
-      if (required !== undefined) result.partnerRanks = result.partnerRanks.filter(rank => rank === required);
+      if (required !== undefined) {
+        result.partnerRanks = [required].filter(rank => !!resolveCalledPartner(playerId, rank, hands));
+      } else if (player) {
+        const takerTarokks = new Set(player.hand.filter(c => c.kind === 'tarokk').map(c => Number(c.rank)));
+        // No invite: the first unheld tarokk below XIX is the normal partner call;
+        // XX is always a legal self-call when the taker holds it. If XX is absent,
+        // XX is mandatory and no lower tarokk may be offered.
+        const hasXX = takerTarokks.has(20);
+        let target = 20;
+        if (hasXX) {
+          for (let rank = 19; rank >= 2; rank -= 1) {
+            if (!takerTarokks.has(rank)) { target = rank; break; }
+          }
+        }
+        result.partnerRanks = [target];
+        if (hasXX) result.partnerRanks.push(20);
+        result.partnerRanks = [...new Set(result.partnerRanks)].filter(rank => !!resolveCalledPartner(playerId, rank, hands));
+      } else result.partnerRanks = [];
     } else if (this.game?.phase === 'declarations' && this.declarationWindow) {
       const gp = getPlayer(this.game, playerId);
       const legal = legalDeclarationActions(this.declarationWindow, playerId, gp.hand, this.declarationContext(playerId));
       result.declarationActions = legal.flatMap(action => {
         if (action.type === 'declare' && (action.declaration === 'kingUltimo' || action.declaration === 'kingUhu')) {
-          return gp.hand.filter(c => c.kind === 'suit' && c.rank === 'K').map(targetCardId => ({ ...action, targetCardId }));
+          return gp.hand.filter(c => c.kind === 'suit' && c.rank === 'K').map(targetCard => ({ ...action, targetCardId: targetCard.id }));
         }
         return [action];
       });
+      const gameLevel = nextContraLevel(this.game.gameContraState?.level ?? this.game.gameContra ?? 'none');
+      if (canRaiseGameContraInGame(this.game, playerId) && gameLevel) result.gameContra = { level: gameLevel, label: contraLabel(gameLevel) };
+      const dContra = getDeclarationContraActions(this.game, playerId);
+      if (dContra.length) result.declarationContraActions = dContra;
     } else if (this.game?.phase === 'play') {
       result.playCardIds = legalCardsForPlay(this.game, playerId).map(c => c.id);
     }
@@ -266,7 +297,23 @@ export class AuthoritativeRoom {
       : { ...this.round, players, phase: 'partner-call', currentPlayerId: this.round.takerId, skartAnnouncementResolved: true, eventLog: [...this.round.eventLog, `${playerId} közölte: tarokkot fektetett.`, 'Minden szükséges fektetésközlés lezárult; következik a kötelező partnerhívás.'] };
   }
 
-  applyPartnerCall(playerId, rank) { if (this.round.phase !== 'partner-call' || this.round.takerId !== playerId) throw new Error('A partnerhívást csak a felvevő teheti meg.'); const required = this.round.auctionOutcome?.calledTarokk; if (required !== undefined && required !== rank) throw new Error(`Ebben az invitált játékban a ${required}. tarokkot kötelező meghívni.`); const partnerId = resolveCalledPartner(playerId, rank, this.round.players.map(p => ({ id: p.playerId, hand: p.hand }))); if (!partnerId) throw new Error(`A ${rank}. tarokk nem ad egyértelmű partnert.`); const g0 = createInitialState(this.playerIds, this.dealerIndex); const players = g0.players.map(p => { const source = this.round.players.find(x => x.playerId === p.id); return { ...p, hand: [...(source?.hand ?? [])], active: true }; }); let game = setPartnership({ ...g0, players, talon: [], startingPlayerId: this.round.startingPlayerId }, playerId, partnerId); game = recordPartnerCall(game, rank, partnerId); const takerIndex = game.players.findIndex(p => p.id === playerId); game = startDeclarations(game, takerIndex); this.game = game; this.declarationWindow = createDeclarationWindow([playerId, ...this.playerIds.filter(id => id !== playerId)], true); this.round = { ...this.round, phase: 'declarations', currentPlayerId: playerId, calledTarokk: rank }; }
+  applyPartnerCall(playerId, rank) {
+    if (this.round.phase !== 'partner-call' || this.round.takerId !== playerId) throw new Error('A partnerhívást csak a felvevő teheti meg.');
+    const hands = this.round.players.map(p => ({ id: p.playerId, hand: p.hand }));
+    const required = this.round.auctionOutcome?.calledTarokk;
+    if (required !== undefined && required !== rank) throw new Error(`Ebben az invitált játékban a ${required}. tarokkot kötelező meghívni.`);
+    const player = this.round.players.find(p => p.playerId === playerId);
+    if (!required && player) {
+      const held = new Set(player.hand.filter(c => c.kind === 'tarokk').map(c => Number(c.rank)));
+      const hasXX = held.has(20);
+      let normalTarget = 20;
+      if (hasXX) { for (let r = 19; r >= 2; r -= 1) { if (!held.has(r)) { normalTarget = r; break; } } }
+      const allowed = new Set([normalTarget, ...(hasXX ? [20] : [])]);
+      if (!allowed.has(rank)) throw new Error('Ez a partnerhívás ebben a leosztásban nem szabályos.');
+    }
+    const partnerId = resolveCalledPartner(playerId, rank, hands);
+    if (!partnerId) throw new Error(`A ${rank}. tarokk nem ad egyértelmű partnert.`);
+    const g0 = createInitialState(this.playerIds, this.dealerIndex); const players = g0.players.map(p => { const source = this.round.players.find(x => x.playerId === p.id); return { ...p, hand: [...(source?.hand ?? [])], active: true }; }); let game = setPartnership({ ...g0, players, talon: [], startingPlayerId: this.round.startingPlayerId }, playerId, partnerId); game = recordPartnerCall(game, rank, partnerId); const takerIndex = game.players.findIndex(p => p.id === playerId); game = startDeclarations(game, takerIndex); this.game = game; this.declarationWindow = createDeclarationWindow([playerId, ...this.playerIds.filter(id => id !== playerId)], true); this.round = { ...this.round, phase: 'declarations', currentPlayerId: playerId, calledTarokk: rank }; }
   declarationContext(playerId) { if (!this.game) throw new Error('Nincs aktív játék.'); const gp = getPlayer(this.game, playerId); return { isTaker: playerId === this.game.takerId, invited: this.round.auctionOutcome?.calledTarokk !== undefined, ...(this.round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: this.round.auctionOutcome.calledTarokk } : {}), ...(this.round.contract ? { contract: this.round.contract } : {}), previousDeclarations: this.game.declarations.declarations.map(d => d.type), firstRound: this.declarationWindow?.firstRound ?? true, partnersKnown: true, ...(playerId === this.game.partnerId ? { isPartner: true } : {}), ...(this.round.calledTarokk !== undefined ? { calledTarokk: this.round.calledTarokk } : {}), ...(this.game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}), ...(playerId === this.game.takerId && this.round.calledTarokk === 19 && !this.game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}), speakerSeat: this.game.players.findIndex(p => p.id === playerId), ...(this.game.partnerId ? { partnerSeat: this.game.players.findIndex(p => p.id === this.game.partnerId) } : {}), ...(this.game.startingPlayerId ? { starterSeat: this.game.players.findIndex(p => p.id === this.game.startingPlayerId) } : {}), xxiThreatScore: this.game.declarations.declarations.some(d => d.type === 'fourKings') ? 6 : 0, skizCapturePressure: gp.hand.some(c => c.kind === 'tarokk' && c.rank === 22) ? 5 : 0 }; }
   applyDeclaration(playerId, payload) { if (!this.game || this.game.phase !== 'declarations' || !this.declarationWindow) throw new Error('Most nincs bemondási fázis.'); const action = { ...payload, playerId }; const gp = getPlayer(this.game, playerId); const legal = legalDeclarationActions(this.declarationWindow, playerId, gp.hand, this.declarationContext(playerId)); if (!legal.some(x => JSON.stringify(x) === JSON.stringify(action))) throw new Error('Ez a bemondási akció ebben a helyzetben nem szabályos.'); if (action.type === 'declare') this.game = declareFigureInGame(this.game, action.declaration, playerId, this.game.completedTricks.length + 1, action.targetCardId); this.declarationWindow = applyDeclarationAction(this.declarationWindow, action, gp.hand); if (!this.declarationWindow.finished) { this.round = { ...this.round, currentPlayerId: currentDeclarer(this.declarationWindow) }; return; } const leaderIndex = this.game.players.findIndex(p => p.id === this.round.startingPlayerId); this.game = startPlay({ ...this.game, startingPlayerId: this.round.startingPlayerId }, leaderIndex); this.round = { ...this.round, phase: 'play', currentPlayerId: this.game.players[leaderIndex]?.id }; }
   applyGameContra(playerId) { if (!this.game || !canRaiseGameContraInGame(this.game, playerId)) throw new Error('Most nem mondhatsz kontrát a játékra.'); this.game = raiseGameContraInGame(this.game, playerId); }

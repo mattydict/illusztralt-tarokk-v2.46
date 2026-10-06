@@ -1,5 +1,5 @@
 const app = document.querySelector('#app');
-const storageKey = 'illusztralt-tarokk-multiplayer-session-v256';
+const storageKey = 'illusztralt-tarokk-multiplayer-session-v257';
 let session = null;
 let socket = null;
 let reconnectTimer = null;
@@ -182,16 +182,19 @@ function render() {
     return `<button type="button" class="card ${suitClass} ${active?'active':'disabled'} ${selectable?'skartable':''} ${selected?'selected':''}" data-card="${esc(c.id)}"${nativeDisabled}${aria}><strong>${esc(cardName(c))}</strong><small>${c.points} pont</small></button>`;
   };
   const groupOrder = ['hearts','diamonds','clubs','spades'];
+  const handCards = state.phase === 'play' && isMyTurn && (hints.playCardIds || []).length
+    ? playerCards.filter(c => (hints.playCardIds || []).includes(c.id))
+    : playerCards;
   const cardGroups = [
-    { key: 'tarokk', label: 'Tarokkok · erősségi sorrend', cards: playerCards.filter(c => c.kind === 'tarokk').sort(sortCard) },
-    ...groupOrder.map(suit => ({ key: suit, label: `${suitMeta[suit].label} · K–Q–C–J–10`, cards: playerCards.filter(c => c.kind === 'suit' && c.suit === suit).sort(sortCard) })),
+    { key: 'tarokk', label: 'Tarokkok · erősségi sorrend', cards: handCards.filter(c => c.kind === 'tarokk').sort(sortCard) },
+    ...groupOrder.map(suit => ({ key: suit, label: `${suitMeta[suit].label} · K–Q–C–J–10`, cards: handCards.filter(c => c.kind === 'suit' && c.suit === suit).sort(sortCard) })),
   ].filter(group => group.cards.length);
   const hand = cardGroups.map(group => `<div class="hand-group hand-group-${group.key}"><h3>${esc(group.label)}</h3><div class="hand-grid">${group.cards.map(renderCard).join('')}</div></div>`).join('');
   const playButtons = state.phase === 'play' && isMyTurn ? playerCards.filter(c => (hints.playCardIds || []).includes(c.id)).map(c => `<button data-action="play" data-card-id="${esc(c.id)}">Kijátszás: ${esc(cardName(c))}</button>`).join('') : '';
   const auctionActions = Array.isArray(hints.auctionActions) ? [...hints.auctionActions] : [];
   if (state.phase === 'auction' && !auctionActions.some(a => a.type === 'pass')) auctionActions.unshift({type:'pass'});
   const auctionButtons = auctionActions.map((a,i) => `<button data-auction-index="${i}">${esc(auctionLabel(a, state.auction))}</button>`).join('');
-  const partnerButtons = hints.partnerRanks?.map(r => `<button data-partner="${r}">${r}. tarokk</button>`).join('') || '';
+  const partnerButtons = hints.partnerRanks?.map(r => `<button data-partner="${r}">${r}. tarokk${r===20 ? (myPlayer?.hand?.some(c => c.kind === 'tarokk' && Number(c.rank) === 20) ? ' (önhívás)' : '') : ''}</button>`).join('') || '';
   const declButtons = (hints.declarationActions || []).map((a,i) => `<button data-decl-index="${i}">${esc(a.type==='pass'?'Passz':a.type==='tarokkCount'?`${a.count} tarokk`:`${labels[a.declaration] || a.declaration}${a.targetCardId ? ` · ${a.targetCardId}` : ''}`)}</button>`).join('');
   const selectedCount = selectedSkart.size;
   const skartButton = canSkart ? `<button id="submit-skart" class="primary" ${selectedCount === skartCount ? '' : 'disabled'}>Fektetés (${selectedCount}/${skartCount})</button>` : '';
@@ -199,8 +202,11 @@ function render() {
   const skartAnnouncementButton = skartAnnouncementPhase && hints.skartNeedsAnnouncement === true && hints.types?.includes('skart-announce')
     ? `<button data-skart-announce>Bejelentem: ${ownSkartTarokkCount} tarokkot fektettem</button>` : '';
   const contra = [];
-  if(hints.gameContra) contra.push('<button data-contra-game>Kontra a játékra</button>');
-  (hints.declarationContraIds || []).forEach(id => contra.push(`<button data-contra="${esc(id)}">Kontra a bemondásra</button>`));
+  if(hints.gameContra?.level) contra.push(`<button data-contra-game>${esc(hints.gameContra.label || hints.gameContra.level)} a játékra</button>`);
+  (hints.declarationContraActions || []).forEach(item => {
+    const figure = labels[item.type] || item.type;
+    contra.push(`<button data-contra="${esc(item.id)}">${esc(item.label || 'Kontra')} a ${esc(figure)} bemondásra</button>`);
+  });
   const status = connected ? '● Real-time kapcsolat aktív' : '○ Reconnecting…';
   const turnText = canSkart
     ? 'Fektetés: minden játékos párhuzamosan fektethet.'
@@ -215,7 +221,12 @@ function render() {
         : isMyTurn ? 'Te jössz.' : `Most: ${esc(current || '—')}`;
   const scores = state.players.map(p => `<span class="score">${esc(p.id)}: ${p.score ?? 0}</span>`).join(' · ');
   const declarations = state.game?.declarations?.map(d => `${esc(labels[d.type] || d.type)} — ${esc(d.ownerId)}${d.contra && d.contra !== 'none' ? ` · ${esc(d.contra)}` : ''}`).join('<br>') || 'Nincs';
+  const lastCompleted = state.game?.completedTricks?.at?.(-1);
   const trickHtml = trick ? trick.cards.map(x => `<div class="played"><b>${esc(x.player)}</b><span>${esc(cardName(x.card))}</span></div>`).join('') : '<span class="muted">Nincs aktív ütés.</span>';
+  const lastTrickHtml = lastCompleted ? lastCompleted.cards.map(x => `<div class="played"><b>${esc(x.player)}</b><span>${esc(cardName(x.card))}</span></div>`).join('') : '<span class="muted">Még nincs lezárt ütés.</span>';
+  const settlement = state.game?.settlement;
+  const settlementLines = settlement?.lines?.length ? settlement.lines.map(line => `${esc(labels[line.type] || line.type)}: ${line.positiveForTakerPair ? '+' : '-'}${line.points}`).join(' · ') : '';
+  const resultBox = state.phase === 'scoring' || state.phase === 'complete' ? (state.game?.finalPoints ? `<div class="result"><strong>${state.game.finalPoints.result === 'taker' ? 'A felvevő pár nyert.' : 'Az ellenpár nyert.'}</strong> · felvevőpár ${state.game.finalPoints.takerPair} – ellenpár ${state.game.finalPoints.defencePair}${settlement ? ` · nettó ${settlement.netForTakerPair > 0 ? '+' : ''}${settlement.netForTakerPair}` : ''}${settlementLines ? `<br><small>${settlementLines}</small>` : ''}</div>` : '<div class="result">Az elszámolás elkészült.</div>') : '';
   const publicSkartInfo = state.players.filter(p => p.revealedSkart?.length).map(p => `<span class="public-skart"><strong>${esc(p.id)} fektetett tarokkjai:</strong> ${p.revealedSkart.map(cardName).map(esc).join(', ')}</span>`).join('');
   const talonInfo = state.phase === 'skart' && talonCount > 0 ? `<div class="talon-info"><strong>Talont kaptál:</strong> ${receivedTalon.length ? `${receivedTalon.map(cardName).map(esc).join(', ')} · ` : ''}${talonCount} lap</div>` : '';
   app.innerHTML = `
@@ -225,8 +236,9 @@ function render() {
     <section class="panel"><h2>Játékosok</h2><div class="players">${state.players.map(p => { const seat = lobby?.seats?.find(x=>x.playerId===p.id); const online = seat ? seat.connected : p.connected; return `<div class="player ${p.id===session.playerId?'me':''}"><strong>${esc(seat?.displayName || p.id)}</strong><span>${online ? '● online' : '○ offline'} · ${p.cardCount} lap</span></div>`; }).join('')}</div></section>
     <section class="panel"><h2>Akciók</h2><div class="actions">${auctionButtons}${partnerButtons}${declButtons}${skartAnnouncementButton}${skartButton}${playButtons}${contra.join('') || (hints.types?.length ? '' : '<span class="muted">Most nem te cselekszel.</span>')}</div></section>
     <section class="panel hand-panel"><h2>Saját kéz (${playerCards.length})</h2>${talonInfo}${canSkart ? `<div class="skart-active"><strong>Fektetés aktív</strong> · ${hints.skartCount} lapot kell kijelölnöd. A lapok megmaradnak a képernyőn, amíg a Fektetés gombra nem kattintasz.</div>` : ''}<div class="hand">${hand}</div></section>
-    <section class="panel"><h2>Ütés</h2><div class="trick">${trickHtml}</div>${publicSkartInfo ? `<div class="public-skart-wrap">${publicSkartInfo}</div>` : ''}</section>
-    <section class="panel"><h2>Bemondások</h2><p>${declarations}</p></section>`;
+    <section class="panel"><h2>Aktuális ütés</h2><div class="trick">${trickHtml}</div></section>
+    <section class="panel last-trick-panel"><h2>Legutóbbi lezárt ütés</h2><div class="trick">${lastTrickHtml}</div>${lastCompleted?.winner ? `<p class="muted">Ütést vitte: ${esc(lastCompleted.winner)}</p>` : ''}${publicSkartInfo ? `<div class="public-skart-wrap">${publicSkartInfo}</div>` : ''}</section>
+    <section class="panel"><h2>Bemondások</h2><p>${declarations}</p></section>${resultBox}`;
   document.querySelector('#leave')?.addEventListener('click', clearSession);
   document.querySelector('#resync')?.addEventListener('click', syncNow);
   document.querySelectorAll('[data-card]').forEach(btn => btn.addEventListener('click', () => {

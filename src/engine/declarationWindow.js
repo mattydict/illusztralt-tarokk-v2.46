@@ -58,9 +58,9 @@ export function applyDeclarationAction(window, action, hand) {
             throw new Error('A 8 tarokkos jelzés csak 9 tarokkra pontosítható.');
         const announcedTarokkCounts = { ...window.announcedTarokkCounts, [action.playerId]: action.count };
         const { pendingTarokkCountPlayerId: _pending, ...withoutPending } = window;
-        // A player may continue making declarations until they pass. This is
-        // important for the taker: after the mandatory partner call, the taker
-        // may immediately make further declarations in the same turn.
+        // A tarokk-count announcement is a factual disclosure inside the speaker's
+        // current turn. It does not itself end the turn; the speaker may continue
+        // with further declarations or pass.
         return { ...withoutPending, records, announcedTarokkCounts, consecutivePasses: 0 };
     }
     if (action.type === 'pass') {
@@ -78,6 +78,6 @@ export function applyDeclarationAction(window, action, hand) {
             return { ...window, records, consecutivePasses: 0, pendingTarokkCountPlayerId: action.playerId };
         }
     }
-    // A declaration does not end the speaker's turn. Passing does.
-    return { ...window, records, consecutivePasses: 0 };
+    // A declaration consumes this speaking turn; the next player is next to speak.
+    return { ...window, records, consecutivePasses: 0, currentIndex: (window.currentIndex + 1) % window.order.length };
 }
