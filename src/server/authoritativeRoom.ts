@@ -57,6 +57,36 @@ function phaseOf(round: RoundState, game: GameState | null): string {
 
 function statePlayerIds(round: RoundState): string[] { return round.players.map(p => p.playerId); }
 
+const TALON_COUNTS: Record<RoundState['contract'], number[]> = {
+  three: [3, 1, 1, 1],
+  two: [2, 2, 1, 1],
+  one: [1, 2, 2, 1],
+  solo: [0, 2, 2, 2],
+};
+function repairPersistedTalonState(round: RoundState): RoundState {
+  if (!round.takerId || !round.contract || !['talon-distribution', 'skart'].includes(round.phase)) return round;
+  const expected = TALON_COUNTS[round.contract];
+  const takerIndex = round.players.findIndex(p => p.playerId === round.takerId);
+  if (takerIndex < 0) return round;
+  const hasCorrectMetadata = round.players.every((p, i) => p.receivedTalon?.length === expected[(i - takerIndex + 4) % 4]);
+  if (hasCorrectMetadata && round.phase === 'skart') return round;
+  if (round.phase === 'talon-distribution') return distributeRoundTalon({ ...round, parallelSkart: true }, round.talon ?? []);
+  const talon = Array.isArray(round.talon) ? round.talon : [];
+  const talonIds = new Set(talon.map(c => c.id));
+  const talonCardsInHands = round.players.flatMap(p => p.hand.filter(c => talonIds.has(c.id)));
+  if (talon.length === 6 && talonCardsInHands.length === 6) {
+    const players = round.players.map(p => ({
+      ...p,
+      receivedTalon: talon.filter(c => p.hand.some(h => h.id === c.id)),
+      preSkartSuitCounts: p.preSkartSuitCounts ?? { hearts: 0, diamonds: 0, spades: 0, clubs: 0 },
+    }));
+    if (players.every((p, i) => p.receivedTalon.length === expected[(i - takerIndex + 4) % 4])) return { ...round, players, parallelSkart: true };
+  }
+  const noTalonInHands = talon.length === 6 && round.players.every(p => p.hand.length === 9 && (!p.receivedTalon || p.receivedTalon.length === 0));
+  if (noTalonInHands) return distributeRoundTalon({ ...round, parallelSkart: true }, talon);
+  return round;
+}
+
 export class AuthoritativeRoom {
   readonly roomId: string;
   readonly playerIds: string[];
@@ -84,11 +114,7 @@ export class AuthoritativeRoom {
       if (options.persisted.schemaVersion !== 1) throw new Error('Ismeretlen mentett szobaverzió.');
       if (options.persisted.roomId !== this.roomId) throw new Error('A mentett szobaazonosító nem egyezik.');
       if (JSON.stringify(options.persisted.playerIds) !== JSON.stringify(this.playerIds)) throw new Error('A mentett játékoslista nem egyezik.');
-      this.round = { ...options.persisted.round, parallelSkart: true };
-      // Migrate rooms left in the talon-distribution state by older builds.
-      if (this.round.phase === 'talon-distribution' && this.round.takerId && this.round.contract) {
-        this.round = distributeRoundTalon({ ...this.round, parallelSkart: true }, this.round.talon ?? []);
-      }
+      this.round = repairPersistedTalonState({ ...options.persisted.round, parallelSkart: true });
       // Migrate older rooms that skipped the fektetés-közlés subphase.
       if (this.round.takerId && this.round.players.every(p => p.skart.length === p.receivedTalon.length)) {
         const needsAnnouncements = (this.round.phase === 'skart' || (this.round.phase === 'partner-call' && !this.round.skartAnnouncementResolved))
@@ -324,7 +350,7 @@ export class AuthoritativeRoom {
         score: this.game?.players.find(x => x.id === p.playerId)?.score ?? 0,
         connected: this.connected.has(p.playerId),
         ...(own ? { hand: p.hand.map(cloneCard) } : {}),
-        ...(own && p.receivedTalon.length ? { receivedTalon: p.receivedTalon.map(cloneCard) } : {}),
+        ...(own ? { receivedTalon: p.receivedTalon.map(cloneCard), receivedTalonCount: p.receivedTalon.length } : {}),
         ...(own && p.skart.length ? { ownSkart: p.skart.map(cloneCard) } : {}),
         ...(this.round.parallelSkart ? ((p.skartAnnounced || p.skartRevealed) ? { skartCount: p.skart.length } : {}) : { skartCount: p.skart.length }),
         ...(revealed ? { revealedSkart: revealed } : {}),
@@ -440,6 +466,11 @@ export class AuthoritativeRoom {
     }
     this.round = finishAuction(this.round, this.round.talon);
     this.round = distributeRoundTalon({ ...this.round, parallelSkart: true }, this.round.talon);
+    const expectedCounts = { three: [3, 1, 1, 1], two: [2, 2, 1, 1], one: [1, 2, 2, 1], solo: [0, 2, 2, 2] }[this.round.contract as 'three' | 'two' | 'one' | 'solo'];
+    const takerIndex = this.round.players.findIndex(p => p.playerId === this.round.takerId);
+    if (!expectedCounts || takerIndex < 0 || this.round.players.some((p, i) => p.receivedTalon.length !== expectedCounts[(i - takerIndex + 4) % 4])) {
+      throw new Error('A talon kiosztása nem fejeződött be szabályosan.');
+    }
   }
 
   private applySkart(playerId: string, cardIds: string[]): void {

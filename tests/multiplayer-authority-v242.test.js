@@ -20,7 +20,7 @@ test('v2.42 authoritative room rejects illegal and stale actions', () => {
   const room = createAuthoritativeRoom({ roomId: 'r2', playerIds: ids, random: fixedRandom });
   const initial = room.snapshotFor('A');
   assert.equal(initial.sequence, 0);
-  assert.throws(() => room.dispatch('A', initial.sequence, { type: 'auction', action: { type: 'hold', contract: 'three' } }), /nem szabályos/i);
+  assert.throws(() => room.dispatch('A', initial.sequence, { type: 'auction', action: { type: 'hold', contract: 'three' } }), /nem szabályos|nem ennek a játékosnak kell licitálnia/i);
   const afterReject = room.snapshotFor('A');
   assert.equal(afterReject.sequence, 0);
   room.dispatch('A', 0, { type: 'auction', action: { type: 'pass' } });

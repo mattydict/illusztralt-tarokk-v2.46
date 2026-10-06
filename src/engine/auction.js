@@ -235,7 +235,20 @@ export function legalAuctionActions(state, playerId, hands) {
             resultWithHold.push({ type: 'invite', target: 19, contract: 'one' });
         // XX-invit / engedés is available after the player has already entered
         // the auction, regardless of whether the player currently owns Tartom.
-        if (!outstandingInvite && alreadyBid && highest.contract !== 'solo' && canInviteWithHand(hand, 20)) {
+        // Engedés / XX-invit is reserved for the first speaker, and only in
+        // the canonical Három -> Kettő situation, before that first speaker
+        // makes Tartom. It must never be offered to the second speaker after
+        // Három -> Kettő -> Tartom.
+        const firstBid = history[0];
+        const engedesEligible = !!firstBid
+            && firstBid.playerId === playerId
+            && firstBid.action.type === 'bid'
+            && firstBid.action.contract === 'three'
+            && history.length === 2
+            && history[1]?.action.type === 'bid'
+            && history[1]?.action.contract === 'two'
+            && highest.contract === 'two';
+        if (!outstandingInvite && engedesEligible && canInviteWithHand(hand, 20)) {
             resultWithHold.push({ type: 'invite', target: 20, contract: highest.contract });
         }
         return resultWithHold;
@@ -269,12 +282,9 @@ export function legalAuctionActions(state, playerId, hands) {
                 result.push({ type: 'invite', target, contract: announced });
             }
         }
-        // XX-invit / engedés: only after this player has already bid. It keeps the
-        // current contract intact and invites the XX holder to become partner if
-        // somebody else takes the game.
-        if (alreadyBid && highest.contract !== 'solo' && canInviteWithHand(hand, 20)) {
-            result.push({ type: 'invite', target: 20, contract: highest.contract });
-        }
+        // XX-invit / Engedés is handled only in the dedicated first-speaker
+        // Három -> Kettő branch above. Do not offer it here: doing so would make
+        // the second speaker (or later bidders) eligible after Tartom.
     }
     return inviteRestriction ? result.filter(a => a.type !== 'bid') : result;
 }

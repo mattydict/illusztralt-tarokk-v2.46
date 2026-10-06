@@ -6,6 +6,31 @@ import { legalSkartCards } from '../engine/skart.js';
 function cloneCard(card) { return card.kind === 'tarokk' ? { id: card.id, kind: card.kind, rank: card.rank, points: card.points } : { id: card.id, kind: card.kind, rank: card.rank, suit: card.suit, points: card.points }; }
 function handsMap(round) { return Object.fromEntries(round.players.map(p => [p.playerId, p.hand])); }
 function phaseOf(round, game) { return game ? game.phase : round.phase; }
+const TALON_COUNTS = { three: [3, 1, 1, 1], two: [2, 2, 1, 1], one: [1, 2, 2, 1], solo: [0, 2, 2, 2] };
+function expectedTalonCounts(round) { return round.contract ? TALON_COUNTS[round.contract] : undefined; }
+function repairPersistedTalonState(round) {
+  if (!round?.takerId || !expectedTalonCounts(round) || !['talon-distribution', 'skart'].includes(round.phase)) return round;
+  const expected = expectedTalonCounts(round);
+  const takerIndex = round.players.findIndex(p => p.playerId === round.takerId);
+  if (takerIndex < 0) return round;
+  const hasCorrectMetadata = round.players.every((p, i) => p.receivedTalon?.length === expected[(i - takerIndex + 4) % 4]);
+  if (hasCorrectMetadata && round.phase === 'skart') return round;
+  if (round.phase === 'talon-distribution') return distributeRoundTalon({ ...round, parallelSkart: true }, round.talon ?? []);
+  const talon = Array.isArray(round.talon) ? round.talon : [];
+  const talonIds = new Set(talon.map(c => c.id));
+  const talonCardsInHands = round.players.flatMap(p => p.hand.filter(c => talonIds.has(c.id)));
+  if (talon.length === 6 && talonCardsInHands.length === 6) {
+    const players = round.players.map(p => ({
+      ...p,
+      receivedTalon: talon.filter(c => p.hand.some(h => h.id === c.id)),
+      preSkartSuitCounts: p.preSkartSuitCounts ?? suitCounts(p.hand),
+    }));
+    if (players.every((p, i) => p.receivedTalon.length === expected[(i - takerIndex + 4) % 4])) return { ...round, players, parallelSkart: true };
+  }
+  const noTalonInHands = talon.length === 6 && round.players.every(p => p.hand.length === 9 && (!p.receivedTalon || p.receivedTalon.length === 0));
+  if (noTalonInHands) return distributeRoundTalon({ ...round, parallelSkart: true }, talon);
+  return round;
+}
 export class AuthoritativeRoom {
   constructor(options) {
     if (options.playerIds.length !== 4) throw new Error('A multiplayer szobához jelenleg pontosan 4 játékos szükséges.');
@@ -19,9 +44,7 @@ export class AuthoritativeRoom {
       if (JSON.stringify(options.persisted.playerIds) !== JSON.stringify(this.playerIds)) throw new Error('A mentett játékoslista nem egyezik.');
       this.round = structuredClone(options.persisted.round);
       this.round.parallelSkart = true;
-      if (this.round.phase === 'talon-distribution' && this.round.takerId && this.round.contract) {
-        this.round = distributeRoundTalon({ ...this.round, parallelSkart: true }, this.round.talon ?? []);
-      }
+      this.round = repairPersistedTalonState(this.round);
       if (this.round.takerId && this.round.players.every(p => p.skart.length === p.receivedTalon.length)) {
         const legacyNeeds = (this.round.phase === 'skart' || (this.round.phase === 'partner-call' && !this.round.skartAnnouncementResolved));
         if (legacyNeeds) {
@@ -113,7 +136,7 @@ export class AuthoritativeRoom {
         score: this.game?.players.find(x => x.id === p.playerId)?.score ?? 0,
         connected: this.connected.has(p.playerId),
         ...(own ? { hand: p.hand.map(cloneCard) } : {}),
-        ...(own && p.receivedTalon.length ? { receivedTalon: p.receivedTalon.map(cloneCard) } : {}),
+        ...(own ? { receivedTalon: p.receivedTalon.map(cloneCard), receivedTalonCount: p.receivedTalon.length } : {}),
         ...(own && p.skart.length ? { ownSkart: p.skart.map(cloneCard) } : {}),
         ...(announcedCount ? { skartCount: p.skart.length } : {}),
         ...(revealed ? { revealedSkart: revealed } : {})
@@ -204,7 +227,30 @@ export class AuthoritativeRoom {
   }
   canContraForAny(playerId) { if (!this.game || this.game.phase !== 'declarations') return false; if (canRaiseGameContraInGame(this.game, playerId)) return true; return this.game.declarations.declarations.some(d => canRaiseDeclarationContraInGame(this.game, d.id, playerId)); }
   applyAction(playerId, action) { switch (action.type) { case 'auction': return this.applyAuction(playerId, action.action); case 'skart': return this.applySkart(playerId, action.cardIds); case 'skart-announce': return this.applySkartAnnouncement(playerId); case 'partner-call': return this.applyPartnerCall(playerId, action.rank); case 'declaration': return this.applyDeclaration(playerId, action.action); case 'game-contra': return this.applyGameContra(playerId); case 'declaration-contra': return this.applyDeclarationContra(playerId, action.declarationId); case 'play-card': return this.applyPlayCard(playerId, action.cardId); default: throw new Error('Ismeretlen akciótípus.'); } }
-  applyAuction(playerId, action) { if (this.round.phase !== 'auction') throw new Error('Most nincs licitfázis.'); const currentBidder = this.round.auction.seats[this.round.auction.currentSeat]?.playerId; if (currentBidder !== playerId) throw new Error('Most nem ennek a játékosnak kell licitálnia.'); this.round = { ...this.round, auction: applyAuctionAction(this.round.auction, action, handsMap(this.round)) }; if (!this.round.auction.finished) { this.round = { ...this.round, currentPlayerId: this.round.auction.seats[this.round.auction.currentSeat]?.playerId }; return; } if (!this.round.auction.highest) { this.round = { ...this.round, phase: 'complete', currentPlayerId: undefined };  return; } this.round = finishAuction(this.round, this.round.talon); this.round = distributeRoundTalon({ ...this.round, parallelSkart: true }, this.round.talon); this.emit({ type: 'phase-changed', phase: 'skart', message: 'Az aukció lezárult; a fektetés következik.' }); }
+  applyAuction(playerId, action) {
+    if (this.round.phase !== 'auction') throw new Error('Most nincs licitfázis.');
+    const currentBidder = this.round.auction.seats[this.round.auction.currentSeat]?.playerId;
+    if (currentBidder !== playerId) throw new Error('Most nem ennek a játékosnak kell licitálnia.');
+    this.round = { ...this.round, auction: applyAuctionAction(this.round.auction, action, handsMap(this.round)) };
+    if (!this.round.auction.finished) {
+      this.round = { ...this.round, currentPlayerId: this.round.auction.seats[this.round.auction.currentSeat]?.playerId };
+      return;
+    }
+    if (!this.round.auction.highest) {
+      this.round = { ...this.round, phase: 'complete', currentPlayerId: undefined };
+      return;
+    }
+    this.round = finishAuction(this.round, this.round.talon);
+    this.round = distributeRoundTalon({ ...this.round, parallelSkart: true }, this.round.talon);
+    // In every 4-player contract the talon distribution must leave exactly the
+    // contract-defined number of received talon cards with every active player.
+    const expectedCounts = { three: [3, 1, 1, 1], two: [2, 2, 1, 1], one: [1, 2, 2, 1], solo: [0, 2, 2, 2] }[this.round.contract];
+    const takerIndex = this.round.players.findIndex(p => p.playerId === this.round.takerId);
+    if (!expectedCounts || takerIndex < 0 || this.round.players.some((p, i) => p.receivedTalon.length !== expectedCounts[(i - takerIndex + 4) % 4])) {
+      throw new Error('A talon kiosztása nem fejeződött be szabályosan.');
+    }
+    this.emit({ type: 'phase-changed', phase: 'skart', message: 'Az aukció lezárult; a talon kiosztva, a párhuzamos fektetés következik.' });
+  }
   applySkart(playerId, cardIds) { if (this.round.phase !== 'skart') throw new Error('Most nincs fektetési fázis.'); const p = this.round.players.find(x => x.playerId === playerId); if (!p) throw new Error('Ismeretlen játékos.'); if (new Set(cardIds).size !== cardIds.length) throw new Error('Egy lapot csak egyszer lehet fektetni.'); if (p.skart.length === p.receivedTalon.length) throw new Error('Ez a játékos már befejezte a fektetést.'); const cards = cardIds.map(id => p.hand.find(c => c.id === id)); if (cards.some(card => !card)) throw new Error('A fektetés ismeretlen vagy nem a játékos kezében lévő lapot tartalmaz.'); this.round = skartRoundPlayer(this.round, playerId, cards); }
   applySkartAnnouncement(playerId) {
     if (this.round.phase !== 'skart-announcement') throw new Error('Most nincs fektetésközlési fázis.');

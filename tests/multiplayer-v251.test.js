@@ -29,7 +29,7 @@ function handFromRanks(ranks) {
   a = applyAuctionAction(a, {type:'bid', contract:'two'}, hands);
   a = applyAuctionAction(a, {type:'hold', contract:'two'}, hands);
   const actions = legalAuctionActions(a, 'B', hands);
-  assert.ok(actions.some(x => x.type === 'invite' && x.target === 20 && x.contract === 'two'));
+  assert.ok(!actions.some(x => x.type === 'invite' && x.target === 20 && x.contract === 'two'));
   assert.ok(actions.some(x => x.type === 'invite' && x.target === 19 && x.contract === 'solo'));
 
   a = applyAuctionAction(a, {type:'invite', target:20}, hands);
@@ -53,7 +53,7 @@ function handFromRanks(ranks) {
   assert.equal(a.seats[a.currentSeat].playerId, 'B');
   const actions = legalAuctionActions(a, 'B', hands);
   assert.ok(actions.some(x => x.type === 'bid' && x.contract === 'one'));
-  assert.ok(actions.some(x => x.type === 'invite' && x.target === 20 && x.contract === 'two'));
+  assert.ok(!actions.some(x => x.type === 'invite' && x.target === 20 && x.contract === 'two'));
   assert.ok(actions.some(x => x.type === 'invite' && x.target === 19 && x.contract === 'solo'));
 }
 
