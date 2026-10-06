@@ -51,10 +51,8 @@ function canInviteWithHand(hand, target) {
     const hasBigHonour = tarokks.some(c => c.rank === 21 || c.rank === 22);
     if (tarokks.length < 5 || !hasBigHonour || !hasTarget)
         return false;
-    // XX-invit / engedés is not available with Pagát: it is the XX + big honour
-    // + 5 tarokk structural invite used to release the game to a partner.
-    if (target === 20 && tarokks.some(c => c.rank === 1))
-        return false;
+    // XX-invit / Engedés requires XX, at least five tarokks and at least one
+    // big honour. Pagát is not an additional exclusion criterion here.
     return true;
 }
 function hasBidOfPlayer(state, playerId) {
@@ -194,10 +192,24 @@ function continuationAfterHold(state, holder) {
 export function legalAuctionActions(state, playerId, hands) {
     if (state.finished || state.seats[state.currentSeat]?.playerId !== playerId || state.out.includes(playerId))
         return [];
-    const result = [{ type: 'pass' }];
     const hand = hands?.[playerId];
     const hasBidAuthority = canBidWithHand(hand);
     const currentHolder = holdOwner(state);
+    const history = bidRecords(state);
+    const firstBid = history[0];
+    const isThreeTwoFirstSpeaker = !!firstBid
+        && firstBid.playerId === playerId
+        && firstBid.action.type === 'bid'
+        && firstBid.action.contract === 'three'
+        && history.length === 2
+        && history[1]?.action.type === 'bid'
+        && history[1]?.action.contract === 'two'
+        && state.highest?.contract === 'two';
+    // Pass is public in every normal auction position, including for an
+    // honourless hand. After the specific 3->2 response of the first speaker,
+    // however, an ordinary Pass is not a legal action: yielding is the XX-invite
+    // (Engedés), subject to its exact card prerequisites.
+    const result = isThreeTwoFirstSpeaker ? [] : [{ type: 'pass' }];
     if (state.inviterLockedOut && state.outstandingInvite?.inviterId === playerId)
         return result;
     if (!hasBidAuthority) {
@@ -214,7 +226,6 @@ export function legalAuctionActions(state, playerId, hands) {
     }
     const highest = state.highest;
     const outstandingInvite = state.outstandingInvite;
-    const history = bidRecords(state);
     const alreadyBid = hasBidOfPlayer(state, playerId);
     // The only player entitled to Tartom is the current hold-owner. It does not
     // suppress legal invite signals that the same player can make after having
@@ -390,13 +401,20 @@ export function applyAuctionAction(state, action, hands) {
         if (state.highest && action.target !== 20 && contract !== inviteContractForTarget(state, action.target))
             throw new Error('Az ugró-invit szerződésértéke nem egyezik a licitlépcsővel.');
         next.outstandingInvite = { inviterId: playerId, target: action.target };
-        // A XIX/XVIII jump invite is the announced higher contract itself. XX-invit
-        // is deliberately an engedés: the existing highest contract remains intact.
+        // A XIX/XVIII jump invite is the announced higher contract itself.
+        // XX-invit is Engedés: the existing highest (the Kettő) remains the
+        // contract, the first speaker becomes the mandatory XX partner, and
+        // the auction ends immediately. There is no acceptance turn.
         if (state.highest && action.target !== 20 && contract) {
             next.highest = { playerId, contract, seat: state.currentSeat };
         }
         const recordedAction = contract ? { ...action, contract } : action;
         next.records[next.records.length - 1] = { playerId, action: recordedAction };
+        if (action.target === 20 && state.highest?.contract === 'two' && state.highest.playerId !== playerId) {
+            next.inviteAcceptedBy = state.highest.playerId;
+            next.engedes = true;
+            return finish(next);
+        }
         const ns = nextActive(next, state.currentSeat);
         return ns === undefined ? finish(next) : { ...next, currentSeat: ns };
     }

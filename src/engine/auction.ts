@@ -402,13 +402,20 @@ export function applyAuctionAction(state: AuctionState, action: AuctionAction, h
     if (state.highest && action.target !== 20 && !contract) throw new Error('Ehhez a licithelyzethez nem tartozik szabályos ugró-invit.');
     if (state.highest && action.target !== 20 && contract !== inviteContractForTarget(state, action.target)) throw new Error('Az ugró-invit szerződésértéke nem egyezik a licitlépcsővel.');
     next.outstandingInvite = { inviterId: playerId, target: action.target };
-    // A XIX/XVIII jump invite is the announced higher contract itself. XX-invit
-    // is deliberately an engedés: the existing highest contract remains intact.
+    // A XIX/XVIII jump invite is the announced higher contract itself.
+    // XX-invit is Engedés: the existing highest (the Kettő) remains the
+    // contract, the first speaker becomes the mandatory XX partner, and
+    // the auction ends immediately. There is no acceptance turn.
     if (state.highest && action.target !== 20 && contract) {
       next.highest = { playerId, contract, seat: state.currentSeat };
     }
     const recordedAction: AuctionAction = contract ? { ...action, contract } : action;
     next.records[next.records.length - 1] = { playerId, action: recordedAction };
+    if (action.target === 20 && state.highest?.contract === 'two' && state.highest.playerId !== playerId) {
+      next.inviteAcceptedBy = state.highest.playerId;
+      next.engedes = true;
+      return finish(next);
+    }
     const ns = nextActive(next, state.currentSeat);
     return ns === undefined ? finish(next) : { ...next, currentSeat: ns };
   }

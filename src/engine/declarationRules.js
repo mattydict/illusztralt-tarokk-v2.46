@@ -12,9 +12,8 @@ export function validateDeclarationCall(type, context) {
     // Trull is the normal logical communication context for these figures,
     // but it is not a formal prerequisite: a very strong taker can deliberately
     // omit Trull and start with XIX + Centrum to communicate to the partner.
-    if (context.pairId && context.declarationsOnCurrentTrick.length > 0) {
-        return { ok: false, reason: 'Egy pár ugyanarra az ütésre csak egy bemondást tehet.' };
-    }
+    // One speaking turn may contain multiple different declarations. A repeat
+    // of the same figure by the same pair remains prohibited below.
     if (context.pairId && context.previousPairIds?.some(x => x.pairId === context.pairId && x.type === type)) {
         return { ok: false, reason: 'A pár ezt a figurát már bemondta.' };
     }

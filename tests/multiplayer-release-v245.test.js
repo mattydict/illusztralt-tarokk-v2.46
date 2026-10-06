@@ -83,11 +83,13 @@ test('v2.52 full multiplayer lifecycle runs from lobby to completed scoring with
       const fresh = await json(base, `/rooms/${created.body.roomId}?playerId=${encodeURIComponent(p.id)}&token=${encodeURIComponent(p.token)}`);
       clients.get(p.id).snapshot = fresh.body;
     }
-    let guard = 220;
+    let guard = 400;
     let sawPlay = false;
+    let sawSettlement = false;
     while (guard-- > 0) {
-      const any = [...clients.values()].find(c => c.snapshot.phase === 'complete' || c.snapshot.phase === 'scoring')?.snapshot ?? [...clients.values()][0].snapshot;
-      if (any.phase === 'complete' || any.phase === 'scoring') break;
+      const any = [...clients.values()][0].snapshot;
+      if (any.lastSettlement || Number(any.scoreboard?.dealsPlayed || 0) > 0) sawSettlement = true;
+      if (sawSettlement && any.phase === 'auction' && Number(any.scoreboard?.dealsPlayed || 0) > 0) break;
       const current = any.currentPlayerId;
       const client = current && clients.get(current)
         ? clients.get(current)
@@ -113,9 +115,9 @@ test('v2.52 full multiplayer lifecycle runs from lobby to completed scoring with
       }
     }
     const final = [...clients.values()][0].snapshot;
-    assert.ok(['scoring', 'complete'].includes(final.phase), `final phase was ${final.phase}`);
     assert.equal(sawPlay, true);
-    assert.ok(final.game?.finalPoints || final.game?.settlement);
+    assert.ok(final.lastSettlement || final.scoreboard?.dealsPlayed > 0);
+    assert.equal(final.phase, 'auction');
   } finally {
     for (const ws of sockets) try { ws.close(); } catch {}
     await app.close();
@@ -131,7 +133,7 @@ test('v2.52 release static build exposes versioned single-player and multiplayer
   await access(path.join(root, 'dist', 'main.js'));
   await access(path.join(root, 'dist', 'multiplayer.js'));
   const index = await readFile(path.join(root, 'dist', 'index.html'), 'utf8');
-  assert.match(index, /v2\.57/);
+  assert.match(index, /v2\.60/);
   assert.match(index, /\.\/main\.js/);
 });
 

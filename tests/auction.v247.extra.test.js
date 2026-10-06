@@ -44,20 +44,18 @@ function noHonourHand() {
   assert.equal(legalAuctionActions(a,'B',hands).some(x => x.type === 'bid' && x.contract === 'solo'), false);
 }
 
-// Ha az első licitáló passzol, a tartási jog átkerül a második licitálóra,
-// aki megkapja a következő megszólalási jogot is.
+// Ha Három-Kettő után az első licitáló rendelkezik az XX-invit feltételeivel,
+// az Engedés lezárja az aukciót, és a Kettes licitáló lesz a felvevő.
 {
-  const hands = {A:hand(),B:hand({honour:21}),C:hand(),D:hand()};
+  const hands = {A:hand([22,20,19,18,17]),B:hand({honour:21}),C:hand(),D:hand()};
   let a = createAuction(['A','B','C','D']);
   a = applyAuctionAction(a,{type:'bid',contract:'three'},hands);
   a = applyAuctionAction(a,{type:'bid',contract:'two'},hands);
-  a = applyAuctionAction(a,{type:'pass'},hands);
-  assert.equal(a.seats[a.currentSeat].playerId,'B');
-  a = applyAuctionAction(a,{type:'bid',contract:'one'},hands);
-  assert.equal(a.seats[a.currentSeat].playerId,'C');
-  a = applyAuctionAction(a,{type:'bid',contract:'solo'},hands);
-  assert.equal(a.seats[a.currentSeat].playerId,'B');
-  assert.ok(legalAuctionActions(a,'B',hands).some(x => x.type === 'hold' && x.contract === 'solo'));
+  assert.equal(legalAuctionActions(a,'A',hands).some(x => x.type === 'pass'), false);
+  a = applyAuctionAction(a,{type:'invite',target:20,contract:'two'},hands);
+  assert.equal(a.finished,true);
+  assert.equal(a.highest?.playerId,'B');
+  assert.equal(a.engedes,true);
 }
 
 // Az invithez kell a cél-tarokk, legalább 5 tarokk és nagyhonőr (XXI vagy Skíz).

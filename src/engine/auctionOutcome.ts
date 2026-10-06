@@ -39,11 +39,17 @@ export function resolveAuctionOutcome(
   let requiredPartnerCallId: PlayerId | undefined;
   if (inviter && (inviter.action.type === 'invite' || inviter.action.type === 'hold-invite') && inviter.playerId !== highest.playerId) {
     const target = inviter.action.target;
-    const acceptedBy = auction.records
-      .filter(r => r.playerId !== inviter.playerId && r.action.type === 'bid')
-      .map(r => r.playerId)
-      .find(id => hasInviteCard(hands[id] ?? [], target));
-    if (acceptedBy !== undefined) requiredPartnerCallId = inviter.playerId;
+    // Engedés / XX-invit is special: the inviter is the guaranteed partner
+    // of the Kettő bidder, so no further acceptance is needed.
+    if (target === 20 && highest.contract === 'two' && auction.engedes) {
+      requiredPartnerCallId = inviter.playerId;
+    } else {
+      const acceptedBy = auction.records
+        .filter(r => r.playerId !== inviter.playerId && r.action.type === 'bid')
+        .map(r => r.playerId)
+        .find(id => hasInviteCard(hands[id] ?? [], target));
+      if (acceptedBy !== undefined) requiredPartnerCallId = inviter.playerId;
+    }
   }
 
   const honourless = auction.records.some(

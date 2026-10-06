@@ -285,11 +285,34 @@ export function evaluateDeclarations(progress, tricks, sideOf, currentTrickNumbe
             }
         }
     }
-    // Silent Pagát/Sas Ultimó is an independent figure: it can be completed
-    // without a declared Uhu. If Pagát or Sas is won by its holder on the 9th
-    // trick, record the silent figure. When a Uhu happened to be declared for
-    // the same target and the old conversion path applies, preserve the Uhu id
-    // as provenance so existing settlement/audit records remain stable.
+    // Silent Pagát/Sas Ultimó is an independent figure: without an explicit
+    // declaration, the target can only make the silent figure by being won by
+    // its holder on trick 9. Playing it earlier, or losing it on trick 9,
+    // therefore creates a failed silent figure for settlement.
+    for (const [targetId, silentType] of [['T1', 'pagatUltimo'], ['T2', 'sasUltimo']]) {
+        if (declarations.some(d => d.type === silentType))
+            continue;
+        const uhuType = silentType === 'pagatUltimo' ? 'pagatUhu' : 'sasUhu';
+        if (declarations.some(d => d.type === uhuType))
+            continue;
+        if (silentFigures.some(s => s.type === silentType))
+            continue;
+        for (let i = 0; i < tricks.length; i++) {
+            const entry = tricks[i].cards.find(e => e.card.id === targetId);
+            if (!entry)
+                continue;
+            const trickNumber = i + 1;
+            const fulfilled = trickNumber === 9 && tricks[i].winner === entry.player;
+            silentFigures.push({
+                type: silentType,
+                ownerId: entry.player,
+                trickNumber,
+                status: fulfilled ? 'fulfilled' : 'failed',
+                sourceDeclarationId: `silent:${silentType}`,
+            });
+            break;
+        }
+    }
     if (tricks.length === 9) {
         const finalTrick = tricks[8];
         if (finalTrick) {

@@ -2,13 +2,13 @@ import test, { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateDeclarationCall } from '../src/engine/declarationRules.js';
 describe('declaration restrictions', () => {
-    it('blocks a second figure by the same pair on the same trick', () => {
+    it('allows multiple distinct figures by the same pair in one speaking turn', () => {
         const r = validateDeclarationCall('sasUltimo', {
             previousDeclarations: [],
             declarationsOnCurrentTrick: ['pagatUltimo'],
             pairId: 'AB'
         });
-        assert.equal(r.ok, false);
+        assert.equal(r.ok, true);
     });
     it('blocks repeating an already declared figure', () => {
         const r = validateDeclarationCall('centrum', {

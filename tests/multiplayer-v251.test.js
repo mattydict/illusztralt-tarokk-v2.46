@@ -101,7 +101,7 @@ function handFromRanks(ranks) {
   assert.match(ui, /Engedés \(XX invit\)/);
   assert.match(ui, /msg\.actionType === 'skart' && msg\.playerId === session\?\.playerId/);
   assert.match(ui, /contract = a\.contract \|\| auction\?\.highest\?\.contract \|\| 'solo'/);
-  assert.match(html, /multiplayer\.js\?v=2\.57\.0/);
+  assert.match(html, /multiplayer\.js\?v=2\.60\.0/);
 }
 
 // A complete parallel skart must resolve to the automatic skart-announcement
