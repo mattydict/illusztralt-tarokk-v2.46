@@ -1,5 +1,5 @@
 import {
-  createRound, dealRound, finishAuction, distributeRoundTalon, skartRoundPlayer,
+  createRound, dealRound, finishAuction, distributeRoundTalon, preSkartRedealReason, skartRoundPlayer,
   createInitialState, setPartnership, recordPartnerCall, startDeclarations, startPlay,
   declareFigureInGame, playCard, canRaiseGameContraInGame, raiseGameContraInGame,
   canRaiseDeclarationContraInGame, raiseDeclarationContraInGame,
@@ -38,6 +38,7 @@ export interface PersistedRoomState {
   matchScores?: Record<string, number>;
   settlementHistory?: unknown[];
   lastSettlement?: unknown;
+  instantScoreHistory?: unknown[];
 }
 
 type Listener = (event: PublicEvent) => void;
@@ -59,6 +60,13 @@ function phaseOf(round: RoundState, game: GameState | null): string {
 }
 
 function statePlayerIds(round: RoundState): string[] { return round.players.map(p => p.playerId); }
+function sameDeclarationAction(expected: any, actual: any): boolean {
+  if (!expected || !actual || expected.type !== actual.type || expected.playerId !== actual.playerId) return false;
+  if (expected.type === 'pass') return true;
+  if (expected.type === 'tarokkCount') return Number(expected.count) === Number(actual.count);
+  if (expected.type === 'declare') return expected.declaration === actual.declaration && (expected.targetCardId ?? undefined) === (actual.targetCardId ?? undefined);
+  return false;
+}
 
 const TALON_COUNTS: Record<RoundState['contract'], number[]> = {
   three: [3, 1, 1, 1],
@@ -107,6 +115,7 @@ export class AuthoritativeRoom {
   private matchScores: Record<string, number>;
   private settlementHistory: any[];
   private lastSettlement?: any;
+  private instantScoreHistory: any[];
 
   constructor(options: RoomOptions) {
     if (options.playerIds.length !== 4) throw new Error('A multiplayer szobához jelenleg pontosan 4 játékos szükséges.');
@@ -118,6 +127,7 @@ export class AuthoritativeRoom {
     this.onCommit = options.onCommit;
     this.matchScores = structuredClone(options.persisted?.matchScores ?? Object.fromEntries(this.playerIds.map(id => [id, 0])));
     this.settlementHistory = structuredClone(options.persisted?.settlementHistory ?? (options.persisted?.lastSettlement ? [options.persisted.lastSettlement] : [])) as any[];
+    this.instantScoreHistory = structuredClone(options.persisted?.instantScoreHistory ?? []) as any[];
     if (options.persisted) {
       if (options.persisted.schemaVersion !== 1) throw new Error('Ismeretlen mentett szobaverzió.');
       if (options.persisted.roomId !== this.roomId) throw new Error('A mentett szobaazonosító nem egyezik.');
@@ -155,6 +165,7 @@ export class AuthoritativeRoom {
       this.lastActionAt = options.persisted.lastActionAt ?? Date.now();
       this.matchScores = structuredClone(options.persisted.matchScores ?? Object.fromEntries(this.playerIds.map(id => [id, this.round.players.find(p => p.playerId === id)?.score ?? 0])));
       this.settlementHistory = structuredClone(options.persisted.settlementHistory ?? (this.lastSettlement ? [this.lastSettlement] : [])) as any[];
+      this.instantScoreHistory = structuredClone(options.persisted.instantScoreHistory ?? []) as any[];
       // Connections are ephemeral and must never be restored as online after a process restart.
       this.connected = new Set();
       return;
@@ -272,6 +283,7 @@ export class AuthoritativeRoom {
     this.lastSettlement = state.lastSettlement ? structuredClone(state.lastSettlement) : this.lastSettlement;
     this.matchScores = structuredClone(state.matchScores ?? this.matchScores);
     this.settlementHistory = structuredClone(state.settlementHistory ?? this.settlementHistory) as any[];
+    this.instantScoreHistory = structuredClone(state.instantScoreHistory ?? this.instantScoreHistory) as any[];
     this.lastActionAt = state.lastActionAt;
   }
 
@@ -392,7 +404,7 @@ export class AuthoritativeRoom {
       players: publicPlayers,
       ...(auction ? { auction } : {}),
       ...(game ? { game } : {}),
-      scoreboard: { dealsPlayed: this.settlementHistory.length, scores: Object.fromEntries(this.playerIds.map(id => [id, Number(this.matchScores[id] ?? 0)])), history: this.settlementHistory.slice(-12) },
+      scoreboard: { dealsPlayed: this.settlementHistory.length, scores: Object.fromEntries(this.playerIds.map(id => [id, Number(this.matchScores[id] ?? 0)])), history: this.settlementHistory.slice(-12), instantHistory: this.instantScoreHistory.slice(-12) },
       publicEvents: this.publicEvents.slice(-30),
       legalActionTypes: this.legalActionTypes(playerId),
       legalActionHints: this.legalActionHints(playerId),
@@ -570,10 +582,11 @@ export class AuthoritativeRoom {
     if (action.type !== 'declare') {
       const gp = getPlayer(this.game, playerId);
       const legal = legalDeclarationActions(this.declarationWindow, playerId, gp.hand, this.declarationContext(playerId));
-      if (!legal.some(x => JSON.stringify(x) === JSON.stringify(action))) throw new Error('Ez a bemondási akció ebben a helyzetben nem szabályos.');
+      if (!legal.some(x => sameDeclarationAction(x, action))) throw new Error('Ez a bemondási akció ebben a helyzetben nem szabályos.');
     }
     const gp = getPlayer(this.game, playerId);
     this.declarationWindow = applyDeclarationAction(this.declarationWindow, action, gp.hand);
+    if (action.type === 'tarokkCount') this.recordInstantTarokkScore(playerId, action.count as 8|9);
     if (!this.declarationWindow.finished) {
       const next = currentDeclarer(this.declarationWindow);
       this.round = { ...this.round, currentPlayerId: next };
@@ -636,6 +649,23 @@ export class AuthoritativeRoom {
     this.game = null;
     this.declarationWindow = null;
 
+  private recordInstantTarokkScore(playerId: string, count: 8|9): void {
+    const pointsEach = count === 9 ? 2 : 1;
+    const deltas: Record<string, number> = Object.fromEntries(this.playerIds.map(id => [id, id === playerId ? pointsEach * 3 : -pointsEach]));
+    for (const id of this.playerIds) this.matchScores[id] = Number(this.matchScores[id] ?? 0) + Number(deltas[id] ?? 0);
+    this.instantScoreHistory = [...this.instantScoreHistory, { type: 'tarokk-count', playerId, count, pointsEach, totalWon: pointsEach * 3, deltas, immediate: true }].slice(-100);
+    this.publicEvents.push({ sequence: this.sequence, type: 'deal-complete', message: `${playerId} ${count} tarokkot mondott: ${pointsEach} pont játékosonként, azonnal elszámolva.` });
+  }
+  private redeal(reason: string): void {
+    const base = createRound(this.playerIds, (this.dealerIndex + 1) % 4);
+    base.players = base.players.map(p => ({ ...p, score: Number(this.matchScores[p.playerId] ?? 0) }));
+    this.round = dealRound(base, this.random);
+    this.round.parallelSkart = true;
+    this.round = { ...this.round, redealCount: Number(this.round.redealCount ?? 0) + 1, redealReason: reason };
+    this.game = null;
+    this.declarationWindow = null;
+    this.publicEvents.push({ sequence: this.sequence, type: 'deal-complete', message: `Újraosztás: ${reason}` });
+  }
   isReady(): boolean { return this.connected.size === this.playerIds.length; }
 
   isConnected(playerId: string): boolean { this.assertPlayer(playerId); return this.connected.has(playerId); }

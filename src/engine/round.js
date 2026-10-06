@@ -68,6 +68,20 @@ export function finishAuction(state, talon = []) {
             .concat(outcome.requiredPartnerCallId ? [`Kötelező meghívni: ${outcome.requiredPartnerCallId}`] : []),
     };
 }
+export function preSkartRedealReason(state) {
+    if (!state?.takerId || !Array.isArray(state.players)) return undefined;
+    const kings = new Set(['hearts-K', 'diamonds-K', 'spades-K', 'clubs-K']);
+    for (const player of state.players) {
+        const tarokks = player.hand.filter(c => c?.kind === 'tarokk');
+        const tarokkIds = new Set(tarokks.map(c => c.id));
+        if ([...kings].every(id => player.hand.some(c => c?.id === id))) return `${player.playerId}: mind a négy király.`;
+        if (tarokks.length === 0) return `${player.playerId}: nincs tarokk a kezében.`;
+        if (tarokks.length === 1 && tarokks[0]?.id === 'T1') return `${player.playerId}: szóló Pagát.`;
+        if (tarokks.length === 1 && tarokks[0]?.id === 'T21') return `${player.playerId}: szóló XXI.`;
+        if (tarokks.length === 2 && tarokkIds.has('T1') && tarokkIds.has('T21')) return `${player.playerId}: csak Pagát és XXI.`;
+    }
+    return undefined;
+}
 function suitCounts(hand) {
     const counts = { hearts: 0, diamonds: 0, spades: 0, clubs: 0 };
     for (const card of hand) {

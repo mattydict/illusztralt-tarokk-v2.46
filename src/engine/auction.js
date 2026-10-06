@@ -558,16 +558,27 @@ export function applyAuctionAction(state, action, hands) {
             }
             const ownerSeat = seatOf(next, owner);
             const bidderSeat = seatOf(next, playerId);
-            const passedBetween = (() => {
-                let s = (ownerSeat + 1) % next.seats.length;
-                while (s !== bidderSeat) {
+            // If anyone between the new bidder and the hold-owner has already
+            // passed earlier in this auction, we are completing a speaking
+            // cycle after a gap. The seats after the new bid and before the
+            // holder must receive their own explicit turns; never infer a
+            // pass from the contents of their hand.
+            const hasPassedGap = (() => {
+                for (let step = 1; step < next.seats.length; step++) {
+                    const s = (bidderSeat + step) % next.seats.length;
+                    if (s === ownerSeat) break;
                     const id = next.seats[s].playerId;
                     if (next.out.includes(id)) return true;
-                    s = (s + 1) % next.seats.length;
+                }
+                for (let step = 1; step < next.seats.length; step++) {
+                    const s = (ownerSeat + step) % next.seats.length;
+                    if (s === bidderSeat) break;
+                    const id = next.seats[s].playerId;
+                    if (next.out.includes(id)) return true;
                 }
                 return false;
             })();
-            if (passedBetween) {
+            if (hasPassedGap) {
                 const queue = responseQueueUntilHolder(next, playerId, owner);
                 if (queue.length)
                     return { ...next, currentSeat: seatOf(next, queue[0]), responseQueue: queue.slice(1) };

@@ -20,7 +20,7 @@ export interface ActionRequest {
 
 export interface PublicEvent {
   sequence: number;
-  type: 'action-accepted' | 'phase-changed' | 'action-rejected' | 'deal-complete';
+  type: 'action-accepted' | 'phase-changed' | 'action-rejected' | 'deal-complete' | 'instant-score' | 'redeal';
   playerId?: string;
   actionType?: PlayerAction['type'];
   phase?: string;
@@ -48,7 +48,7 @@ export interface AuthoritativeView {
   players: PublicPlayerView[];
   auction?: unknown;
   game?: unknown;
-  scoreboard?: { dealsPlayed: number; scores: Record<string, number>; history: unknown[] };
+  scoreboard?: { dealsPlayed: number; scores: Record<string, number>; history: unknown[]; instantHistory?: unknown[] };
   publicEvents: PublicEvent[];
   legalActionTypes: PlayerAction['type'][];
   legalActionHints?: Record<string, unknown>;

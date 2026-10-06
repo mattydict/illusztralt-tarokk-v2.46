@@ -38,6 +38,8 @@ export interface RoundState {
   parallelSkart?: boolean;
   /** True once all required fektetés-közlések have been resolved. */
   skartAnnouncementResolved?: boolean;
+  redealCount?: number;
+  redealReason?: string;
 }
 
 export function createRound(playerIds: string[], firstBidder = 0): RoundState {
@@ -111,6 +113,21 @@ function suitCounts(hand: Card[]): Record<Suit, number> {
     if (card.kind === 'suit') counts[card.suit] += 1;
   }
   return counts;
+}
+
+export function preSkartRedealReason(state: RoundState): string | undefined {
+  if (!state?.takerId) return undefined;
+  const kings = new Set(['hearts-K','diamonds-K','spades-K','clubs-K']);
+  for (const player of state.players) {
+    const tarokks = player.hand.filter(c => c.kind === 'tarokk');
+    const ids = new Set(tarokks.map(c => c.id));
+    if ([...kings].every(id => player.hand.some(c => c.id === id))) return `${player.playerId}: mind a négy király.`;
+    if (tarokks.length === 0) return `${player.playerId}: nincs tarokk a kezében.`;
+    if (tarokks.length === 1 && ids.has('T1')) return `${player.playerId}: szóló Pagát.`;
+    if (tarokks.length === 1 && ids.has('T21')) return `${player.playerId}: szóló XXI.`;
+    if (tarokks.length === 2 && ids.has('T1') && ids.has('T21')) return `${player.playerId}: csak Pagát és XXI.`;
+  }
+  return undefined;
 }
 
 export function distributeRoundTalon(state: RoundState, talon: Card[]): RoundState {
