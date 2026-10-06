@@ -27,8 +27,6 @@ export interface AuctionState {
   openingBid?: { playerId: PlayerId; contract: 'two' | 'one' | 'solo' };
   /** The player currently entitled to use Tartom. Initially this is the first bidder; after that player's pass it moves to the next bidder. */
   holdOwnerId?: PlayerId;
-  /** A later player has interpreted the opening bid as an invite; the opening bidder must now clarify by holding if the invite is not valid. */
-  openingInvitePending?: { inviterId: PlayerId; target: 19 | 18; acceptedBy: PlayerId; contract: 'one' | 'solo' };
 }
 
 const order: Contract[] = ['three', 'two', 'one', 'solo'];
@@ -334,6 +332,8 @@ export function applyAuctionAction(state: AuctionState, action: AuctionAction, h
       return q.length ? nextQueueSeat(next, q) : finish(next);
     }
     if (next.highest && next.out.includes(next.highest.playerId)) return finish(next);
+    // A simple Hármas ends after the fourth player's pass. There is no
+    // second-round return to the opening bidder.
     if (activeIds(next).length <= 1 && next.highest) return finish(next);
     // When the holder passes, the Tartom right moves directly to the next
     // bidder; that player must be given the next speaking turn. Do not skip

@@ -313,8 +313,10 @@ export function applyAuctionAction(state, action, hands) {
         }
         if (next.highest && next.out.includes(next.highest.playerId))
             return finish(next);
-        if (activeIds(next).length <= 1 && next.highest)
-            return finish(next);
+        // In a simple Hármas all three other players have passed. The fourth
+        // pass is the end of the auction; there is no second-round return to
+        // the opening bidder. The game remains Hármas and proceeds to the talon.
+        if (activeIds(next).length <= 1 && next.highest) return finish(next);
         // When the holder passes, the Tartom right moves directly to the next
         // bidder; do not skip that player with nextActive().
         if (successor)

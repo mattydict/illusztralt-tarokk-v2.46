@@ -66,24 +66,82 @@ test('v2.57 King Ultimo/Uhu can target only a king actually held by the declarer
   assert.equal(g.declarations.declarations[0].targetCardId, 'hearts-K');
 });
 
-test('v2.57 declarations are serial and continue into a second round until three consecutive passes', () => {
+test('v2.59 declarations are serial, allow multiple declarations per turn, and continue into later rounds until three passes', () => {
   let w = createDeclarationWindow(['A','B','C','D']);
   const hand = createDeck().slice(0, 9);
   w = applyDeclarationAction(w, {type:'declare', playerId:'A', declaration:'doubleGame'}, hand);
+  w = applyDeclarationAction(w, {type:'declare', playerId:'A', declaration:'fourKings'}, hand);
+  assert.equal(currentDeclarer(w), 'A');
+  w = applyDeclarationAction(w, {type:'pass', playerId:'A'}, hand);
+  assert.equal(currentDeclarer(w), 'B');
+  w = applyDeclarationAction(w, {type:'declare', playerId:'B', declaration:'doubleGame'}, hand);
   assert.equal(currentDeclarer(w), 'B');
   w = applyDeclarationAction(w, {type:'pass', playerId:'B'}, hand);
-  w = applyDeclarationAction(w, {type:'declare', playerId:'C', declaration:'doubleGame'}, hand);
+  w = applyDeclarationAction(w, {type:'pass', playerId:'C'}, hand);
   assert.equal(currentDeclarer(w), 'D');
-  w = applyDeclarationAction(w, {type:'declare', playerId:'D', declaration:'doubleGame'}, hand);
-  assert.equal(currentDeclarer(w), 'A');
-  assert.equal(w.consecutivePasses, 0);
+  w = applyDeclarationAction(w, {type:'pass', playerId:'D'}, hand);
+  assert.equal(w.finished, true);
 });
 
 test('v2.57 multiplayer UI shows specific contra targets and settlement/last-trick boxes', () => {
-  const ui = fs.readFileSync(path.resolve('src/ui/multiplayer.js'), 'utf8');
+  const ui = fs.readFileSync(new URL('../src/ui/multiplayer.js', import.meta.url), 'utf8');
   assert.match(ui, /declarationContraActions/);
   assert.match(ui, /\$\{esc\(item\.label/);
   assert.match(ui, /Legutóbbi lezárt ütés/);
   assert.match(ui, /nettó/);
   assert.match(ui, /handCards = state\.phase === 'play'/);
+});
+
+
+test('v2.59 simple Hármas ends after the fourth player passes', async () => {
+  const { createAuction, legalAuctionActions, applyAuctionAction } = await import('../src/engine/auction.js');
+  const hand = { A: [22], B: [21], C: [20], D: [19] };
+  let a = createAuction(['A','B','C','D'], 0);
+  a = applyAuctionAction(a, {type:'bid', contract:'three'}, hand);
+  a = applyAuctionAction(a, {type:'pass'}, hand);
+  a = applyAuctionAction(a, {type:'pass'}, hand);
+  a = applyAuctionAction(a, {type:'pass'}, hand);
+  assert.equal(a.finished, true);
+  assert.deepEqual(legalAuctionActions(a, 'A', hand), []);
+});
+
+test('v2.58 one declaration turn may contain multiple declarations before passing', async () => {
+  const { createDeclarationWindow, applyDeclarationAction, currentDeclarer } = await import('../src/engine/declarationWindow.js');
+  let w = createDeclarationWindow(['A','B','C','D']);
+  const hand = createDeck().slice(0, 9);
+  w = applyDeclarationAction(w, {type:'declare', playerId:'A', declaration:'doubleGame'}, hand);
+  w = applyDeclarationAction(w, {type:'declare', playerId:'A', declaration:'fourKings'}, hand);
+  assert.equal(currentDeclarer(w), 'A');
+  assert.equal(w.records.length, 2);
+  w = applyDeclarationAction(w, {type:'pass', playerId:'A'}, hand);
+  assert.equal(currentDeclarer(w), 'B');
+});
+
+test('v2.58 locked cards may be played early only when they are the sole legal card', async () => {
+  const { createInitialState, setPartnership, recordPartnerCall, declareFigureInGame, legalCardsForPlay, playCard } = await import('../src/engine/game.js');
+  const deck = createDeck();
+  let g = createInitialState(['A','B','C','D']);
+  g = { ...g, phase:'declarations', players:g.players.map(p => ({...p, hand: p.id === 'A' ? [deck.find(c => c.id === 'T20'), deck.find(c => c.id === 'hearts-Q')].filter(Boolean) : []})) };
+  g = setPartnership(g, 'A', 'B');
+  g = recordPartnerCall(g, 19, 'B');
+  g = declareFigureInGame(g, 'centrum', 'A', 1);
+  g = { ...g, phase:'play', trick:{leader:'C', cards:[{player:'C', card:deck.find(c => c.id === 'hearts-K')}]}, leadSuit:'hearts', nextPlayerIndex:0 };
+  const legal = legalCardsForPlay(g, 'A');
+  assert.deepEqual(legal.map(c=>c.id), ['hearts-Q']);
+  g = { ...g, players:g.players.map(p => p.id==='A' ? {...p, hand:[deck.find(c=>c.id==='T20')] } : p), trick:{leader:'C', cards:[{player:'C', card:deck.find(c=>c.id==='hearts-K')}]}, leadSuit:'hearts', nextPlayerIndex:0 };
+  assert.doesNotThrow(() => playCard(g,'A','T20'));
+});
+
+test('v2.58 current-turn contra only exposes the correct side, allowing rekontra on the responding turn', async () => {
+  const { createInitialState, setPartnership, recordPartnerCall, declareFigureInGame, canRaiseDeclarationContraInGame, raiseDeclarationContraInGame } = await import('../src/engine/game.js');
+  let g = setPartnership(createInitialState(['A','B','C','D']), 'A','B');
+  g = recordPartnerCall(g,19,'B');
+  g = { ...g, phase:'declarations' };
+  g = declareFigureInGame(g,'fourKings','A',1);
+  const id = g.declarations.declarations[0].id;
+  g = raiseDeclarationContraInGame(g,id,'C');
+  assert.equal(canRaiseDeclarationContraInGame(g,id,'A'), true);
+  assert.equal(canRaiseDeclarationContraInGame(g,id,'C'), false);
+  g = raiseDeclarationContraInGame(g,id,'A');
+  assert.equal(g.declarations.declarations[0].contra.level,'rekontra');
 });

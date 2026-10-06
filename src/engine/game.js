@@ -187,7 +187,10 @@ export function playCard(state, playerId, cardId) {
     const trick = state.trick;
     if (!trick)
         throw new Error('Nincs aktív ütés.');
-    validateLockedPlay(card, state.lockedCards, playerId);
+    // applyDeclaredFigureLocks() already implements the exception that allows a
+    // locked card to be played early when it is the only card that satisfies the
+    // ordinary follow/tarokk obligation. A second, unconditional validator here
+    // would incorrectly reject that exception.
     const players = state.players.map(p => p.id === playerId ? { ...p, hand: p.hand.filter(c => c.id !== cardId) } : p);
     const cards = [...trick.cards, { player: playerId, card }];
     const leadSuit = state.leadSuit ?? (card.kind === 'suit' ? card.suit : null);

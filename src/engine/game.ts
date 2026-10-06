@@ -1,6 +1,5 @@
 import { Card, createDeck, isTarokk, Suit } from './cards.js';
 import { pointsByPlayer, totalTrickPoints, winnerByPair } from './scoring.js';
-import { LockedCard, validateLockedPlay } from './locks.js';
 import { applyDeclaredFigureLocks } from './play.js';
 import { DeclarationProgress, ActiveDeclaration, advanceDeclarationLifecycle, evaluateDeclarations, initialDeclarationProgress, declareFigure as declareFigureLifecycle } from './declarationLifecycle.js';
 import { DeclarationType } from './declarations.js';
@@ -193,7 +192,9 @@ export function playCard(state: GameState, playerId: PlayerId, cardId: string): 
   if (!card) throw new Error('Ez a lap ebben a helyzetben nem játszható ki.');
   const trick = state.trick;
   if (!trick) throw new Error('Nincs aktív ütés.');
-  validateLockedPlay(card, state.lockedCards, playerId);
+  // legalCardsForPlay() already applies the declared-lock exception: when
+  // every ordinarily legal card is locked, the player may choose among those
+  // locked cards; the chosen declaration is then marked failed.
 
   const players = state.players.map(p => p.id === playerId ? { ...p, hand: p.hand.filter(c => c.id !== cardId) } : p);
   const cards = [...trick.cards, { player: playerId, card }];

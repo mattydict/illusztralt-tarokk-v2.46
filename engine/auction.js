@@ -235,7 +235,20 @@ export function legalAuctionActions(state, playerId, hands) {
             resultWithHold.push({ type: 'invite', target: 19, contract: 'one' });
         // XX-invit / engedés is available after the player has already entered
         // the auction, regardless of whether the player currently owns Tartom.
-        if (!outstandingInvite && alreadyBid && highest.contract !== 'solo' && canInviteWithHand(hand, 20)) {
+        // Engedés / XX-invit is reserved for the first speaker, and only in
+        // the canonical Három -> Kettő situation, before that first speaker
+        // makes Tartom. It must never be offered to the second speaker after
+        // Három -> Kettő -> Tartom.
+        const firstBid = history[0];
+        const engedesEligible = !!firstBid
+            && firstBid.playerId === playerId
+            && firstBid.action.type === 'bid'
+            && firstBid.action.contract === 'three'
+            && history.length === 2
+            && history[1]?.action.type === 'bid'
+            && history[1]?.action.contract === 'two'
+            && highest.contract === 'two';
+        if (!outstandingInvite && engedesEligible && canInviteWithHand(hand, 20)) {
             resultWithHold.push({ type: 'invite', target: 20, contract: highest.contract });
         }
         return resultWithHold;
@@ -269,12 +282,9 @@ export function legalAuctionActions(state, playerId, hands) {
                 result.push({ type: 'invite', target, contract: announced });
             }
         }
-        // XX-invit / engedés: only after this player has already bid. It keeps the
-        // current contract intact and invites the XX holder to become partner if
-        // somebody else takes the game.
-        if (alreadyBid && highest.contract !== 'solo' && canInviteWithHand(hand, 20)) {
-            result.push({ type: 'invite', target: 20, contract: highest.contract });
-        }
+        // XX-invit / Engedés is handled only in the dedicated first-speaker
+        // Három -> Kettő branch above. Do not offer it here: doing so would make
+        // the second speaker (or later bidders) eligible after Tartom.
     }
     return inviteRestriction ? result.filter(a => a.type !== 'bid') : result;
 }
@@ -303,10 +313,15 @@ export function applyAuctionAction(state, action, hands) {
         }
         if (next.highest && next.out.includes(next.highest.playerId))
             return finish(next);
-        if (activeIds(next).length <= 1 && next.highest)
-            return finish(next);
-        const nextFrom = successor ? seatOf(next, successor) : state.currentSeat;
-        const ns = nextActive(next, nextFrom);
+        // In a simple Hármas all three other players have passed. The fourth
+        // pass is the end of the auction; there is no second-round return to
+        // the opening bidder. The game remains Hármas and proceeds to the talon.
+        if (activeIds(next).length <= 1 && next.highest) return finish(next);
+        // When the holder passes, the Tartom right moves directly to the next
+        // bidder; do not skip that player with nextActive().
+        if (successor)
+            return { ...next, currentSeat: seatOf(next, successor) };
+        const ns = nextActive(next, state.currentSeat);
         return ns === undefined ? finish(next) : { ...next, currentSeat: ns };
     }
     if (action.type === 'bid') {

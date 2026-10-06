@@ -78,6 +78,8 @@ export function applyDeclarationAction(window, action, hand) {
             return { ...window, records, consecutivePasses: 0, pendingTarokkCountPlayerId: action.playerId };
         }
     }
-    // A declaration consumes this speaking turn; the next player is next to speak.
-    return { ...window, records, consecutivePasses: 0, currentIndex: (window.currentIndex + 1) % window.order.length };
+    // A player may make any number of declarations during the same speaking turn.
+    // Only a pass hands the speaking right to the next player. This is what creates
+    // a genuine second declaration round after the first speaker returns to the turn.
+    return { ...window, records, consecutivePasses: 0, currentIndex: window.currentIndex };
 }

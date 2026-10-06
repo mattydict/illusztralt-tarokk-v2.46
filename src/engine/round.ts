@@ -10,6 +10,7 @@ export type RoundPhase = 'auction'|'talon-distribution'|'skart'|'skart-announcem
 export interface PlayerRoundState {
   playerId: string;
   hand: Card[];
+  score?: number;
   receivedTalon: Card[];
   skart: Card[];
   skartTarokkCount?: number;
@@ -62,6 +63,7 @@ export function dealRound(state: RoundState, random: () => number = Math.random)
   const players = state.players.map(p => ({
     playerId: p.playerId,
     hand: [] as Card[],
+    score: p.score ?? 0,
     receivedTalon: [] as Card[],
     skart: [] as Card[],
     skartRevealed: false,

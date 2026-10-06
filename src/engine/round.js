@@ -26,6 +26,7 @@ export function dealRound(state, random = Math.random) {
     const players = state.players.map(p => ({
         playerId: p.playerId,
         hand: [],
+        score: p.score ?? 0,
         receivedTalon: [],
         skart: [],
         skartRevealed: false,

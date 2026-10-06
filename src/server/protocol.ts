@@ -48,6 +48,7 @@ export interface AuthoritativeView {
   players: PublicPlayerView[];
   auction?: unknown;
   game?: unknown;
+  scoreboard?: { dealsPlayed: number; scores: Record<string, number>; history: unknown[] };
   publicEvents: PublicEvent[];
   legalActionTypes: PlayerAction['type'][];
   legalActionHints?: Record<string, unknown>;
