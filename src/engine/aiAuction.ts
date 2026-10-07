@@ -348,11 +348,17 @@ function clampBelief(v: number): number { return Math.max(0, Math.min(1, v)); }
  * TAROKK-ŐR / Tarokk Akadémia material. They are conventions/strategy, not
  * legality rules; legality remains delegated to auction.ts.
  */
+export interface AIAuctionOptions {
+  /** UI-specific calibration; omitted/default keeps the shared engine unchanged. */
+  singlePlayer?: boolean;
+}
+
 export function chooseAIAuctionAction(
   auction: AuctionState,
   playerId: PlayerId,
   hand: Card[],
   hands?: Record<PlayerId, Card[]>,
+  options: AIAuctionOptions = {},
 ): AIAuctionDecision {
   const legal = legalAuctionActions(auction, playerId, hands);
   if (!legal.length) throw new Error('Az AI játékosnak nincs szabályos licitlépése.');
@@ -370,7 +376,74 @@ export function chooseAIAuctionAction(
   // information-preserving action, so require a meaningful edge before entering
   // the auction. Strong conventions (invites/holds) remain untouched.
   const pass = scored.find(x => x.action.type === 'pass');
-  const best = scored[0]!;
+  let best = scored[0]!;
+  // Single-player opening calibration: a nyitó Szóló nem általános kézerősségi
+  // döntés, hanem nagyon szűk, klasszikus kivétel.
+  //
+  // 1) Skíz + legalább 7 tarokk; vagy
+  // 2) XXI + Skíz + legalább 6 tarokk.
+  // Mindkét nyitó Szóló-profilnál további kötelező feltétel, hogy a
+  // legkisebb tarokk XIII-as vagy magasabb legyen, és legyen legalább egy
+  // színes király a kézben.
+  //
+  // Ez a korábbi, túl tág "két nagyhonőr + 6 tarokk" kaput szándékosan
+  // megszünteti. A feltétel csak a single-player UI-kalibrációt érinti; a
+  // multiplayer ugyanazt az engine-t használhatja a default opcióval.
+  const hasSuitKing = hand.some(card => card.kind === 'suit' && card.rank === 'K');
+  const tarokkRanks = hand.filter(isTarokk).map(card => card.rank);
+  const lowestTarokkRank = tarokkRanks.length ? Math.min(...tarokkRanks) : undefined;
+  const exceptionalOpeningProfile =
+    (profile.skiz && profile.tarokks >= 7) ||
+    (profile.xxi && profile.skiz && profile.tarokks >= 6);
+  const openingSoloExceptional =
+    exceptionalOpeningProfile &&
+    lowestTarokkRank !== undefined &&
+    lowestTarokkRank >= 13 &&
+    hasSuitKing;
+  // A Nagymadár klasszikus magas-tarokk lépcsője: XX-XIX-XVIII-XVII-XVI.
+  // Nyitó Egyeshez ebből legalább négy szükséges, és ugyanúgy kell legalább
+  // egy színes király. Ez a két kivételes nagyhonőrös profil mindegyikére
+  // vonatkozik, függetlenül attól, hogy a Szóló szűk feltétele teljesül-e.
+  const nagymadarRanks = [20, 19, 18, 17, 16];
+  const nagymadarHighCount = tarokkRanks.filter(rank => nagymadarRanks.includes(rank)).length;
+  const nagymadarOpeningOne = exceptionalOpeningProfile && nagymadarHighCount >= 4 && hasSuitKing;
+
+  if (options.singlePlayer && !position.hasOpened) {
+    // These opening conventions are hard single-player policy gates, not
+    // scoring bonuses: if the exceptional Solo profile is present, generic
+    // opportunity-cost calibration must not turn it back into a lower bid.
+    if (openingSoloExceptional) {
+      const solo = scored.find(x => x.action.type === 'bid' && x.action.contract === 'solo');
+      if (solo) {
+        return { ...solo, reasons: [...solo.reasons, 'Single-player nyitókalibráció: kivételes Szóló-kéz, ezért a nyitó Szóló elsődleges és nem csak pontozási opció.'] };
+      }
+    }
+
+    if (exceptionalOpeningProfile && nagymadarOpeningOne) {
+      const one = scored.find(x => x.action.type === 'bid' && x.action.contract === 'one');
+      if (one) {
+        return { ...one, reasons: [...one.reasons, 'Single-player nyitókalibráció: legalább négy Nagymadárig szükséges magas tarokk + király esetén Egyes az elsődleges nyitás.'] };
+      }
+    }
+
+    // A két kivételes, nagyhonőrös nyitóprofilnál, ha a Szólóhoz szükséges
+    // szűk feltétel nem áll fenn és az Egyes Nagymadár-küszöbe sem teljesül,
+    // a nyitó Kettes legyen az alapértelmezett emelés. Ezt is csak single-player
+    // módban alkalmazzuk.
+    if (exceptionalOpeningProfile && !openingSoloExceptional && !nagymadarOpeningOne) {
+      const two = scored.find(x => x.action.type === 'bid' && x.action.contract === 'two');
+      if (two) {
+        return { ...two, reasons: [...two.reasons, 'Single-player nyitókalibráció: a kivételes nagyhonőrös profil megvan, de a Szóló- és Egyes-küszöb nem teljesül; Kettes a következő nyitó lépcső.'] };
+      }
+    }
+
+    if (best.action.type === 'bid' && best.action.contract === 'solo' && !openingSoloExceptional) {
+      const nonSolo = scored.find(x => x.action.type === 'bid' && x.action.contract !== 'solo');
+      if (nonSolo) {
+        best = { ...nonSolo, reasons: [...nonSolo.reasons, 'Single-player kalibráció: nyitó Szóló csak a szűk kivételes kézprofilok egyikével engedett stratégiai cél.'] };
+      }
+    }
+  }
   if (pass && best.action.type === 'bid') {
     const margin = best.action.contract === 'solo' ? 5 : best.action.contract === 'three' ? 2.5 : 3.5;
     if (best.score < pass.score + margin) {

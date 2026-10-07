@@ -214,7 +214,7 @@ function newMatch() {
 function handsMap() { return Object.fromEntries((round?.players ?? []).map(p => [p.playerId, p.hand])); }
 function aiAuctionAction(state, id) {
     const hand = activeHand(id);
-    return chooseAIAuctionAction(state, id, hand, handsMap()).action;
+    return chooseAIAuctionAction(state, id, hand, handsMap(), { singlePlayer: true }).action;
 }
 function applyBid(action) {
     if (!round)
@@ -306,12 +306,27 @@ function runAiSkart() {
         const pendingAI = round.players.find(p => p.playerId !== HUMAN && p.skart.length < p.receivedTalon.length);
         if (pendingAI) {
             const n = pendingAI.receivedTalon.length;
-            const decision = chooseAISkart(pendingAI.hand, n, {
-                isTaker: pendingAI.playerId === round.takerId,
-                ...(round.invitedTarokk !== undefined ? { invitedTarokk: round.invitedTarokk } : {}),
-                ...(round.contract ? { contract: round.contract } : {}),
-                ...(pendingAI.preSkartSuitCounts ? { preSkartSuitCounts: pendingAI.preSkartSuitCounts } : {}),
-            });
+            let decision;
+            try {
+                decision = chooseAISkart(pendingAI.hand, n, {
+                    isTaker: pendingAI.playerId === round.takerId,
+                    ...(round.invitedTarokk !== undefined ? { invitedTarokk: round.invitedTarokk } : {}),
+                    ...(round.contract ? { contract: round.contract } : {}),
+                    ...(pendingAI.preSkartSuitCounts ? { preSkartSuitCounts: pendingAI.preSkartSuitCounts } : {}),
+                });
+            }
+            catch (e) {
+                // Single-player safety net: a strategy-layer failure must not
+                // deadlock the whole fektetés. The authoritative skart validator
+                // still decides whether the fallback is legal.
+                const legal = legalSkartCards(pendingAI.hand, round.invitedTarokk);
+                if (legal.length < n) {
+                    message = e instanceof Error ? e.message : `${playerName(pendingAI.playerId)} nem tudott szabályos fektetést választani.`;
+                    render();
+                    return;
+                }
+                decision = { cards: legal.slice(0, n), reasons: ['Biztonsági fektetés: az AI stratégiai skartválasztója hibát jelzett.'] };
+            }
             try {
                 round = skartRoundPlayer(round, pendingAI.playerId, decision.cards);
                 setAiReason(pendingAI.playerId, decision.reasons);
@@ -865,7 +880,7 @@ function render() {
     const legal = game && game.phase === 'play' ? new Set(legalCardsForPlay(game, HUMAN).map(c => c.id)) : new Set();
     const current = game ? game.players[game.nextPlayerIndex]?.id : round.currentPlayerId;
     const phase = game?.phase ?? round.phase;
-    const skartMode = round?.phase === 'skart' && round.currentPlayerId === HUMAN;
+    const skartMode = round?.phase === 'skart' && (round.parallelSkart === true || round.currentPlayerId === HUMAN);
     const skartLegal = skartMode ? new Set(legalSkartCards(hand, round.invitedTarokk).map(c => c.id)) : new Set();
     const renderCard = (c) => {
         const canSkart = skartMode && skartLegal.has(c.id);
@@ -976,10 +991,12 @@ function render() {
             render();
         }
     }));
-    document.querySelectorAll('[data-card]').forEach(b => b.addEventListener('click', () => { const id = b.dataset.card; if (round.phase === 'skart' && round.currentPlayerId === HUMAN) {
+    document.querySelectorAll('[data-card]').forEach(b => b.addEventListener('click', () => { const id = b.dataset.card; if (round.phase === 'skart' && (round.parallelSkart === true || round.currentPlayerId === HUMAN)) {
+        const human = humanRound();
+        const skartCount = human?.receivedTalon.length ?? 0;
         if (selectedSkart.has(id))
             selectedSkart.delete(id);
-        else
+        else if (selectedSkart.size < skartCount)
             selectedSkart.add(id);
         render();
     }

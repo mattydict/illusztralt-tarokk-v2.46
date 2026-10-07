@@ -43,6 +43,67 @@ test('5 tarokkos, XX-XIX-XVIII nélküli védtelen Pagát is veszteségminimaliz
   assert.equal(d.action.contract, 'solo');
 });
 
+
+
+test('single-player: nyitó Szóló csak Skíz + 7 tarokk esetén automatikus', () => {
+  const auction = createAuction(['A','B','C','D'], 0);
+  const hand = [c(22), c(21), c(20), c(19), c(18), c(17), c(16), { kind:'suit' as const, suit:'hearts' as const, rank:'K' as const, id:'hearts-K', points:5 }];
+  const d = chooseAIAuctionAction(auction, 'A', hand, {A:hand}, { singlePlayer: true });
+  assert.equal(d.action.type, 'bid');
+  assert.equal(d.action.contract, 'solo');
+});
+
+test('single-player: Skíz + 7 tarokk esetén is kell XIII-as vagy magasabb legalacsonyabb tarokk és király a nyitó Szólóhoz', () => {
+  const auction = createAuction(['A','B','C','D'], 0);
+  const noXiii = [c(22), c(21), c(20), c(19), c(18), c(17), c(12), { kind:'suit' as const, suit:'hearts' as const, rank:'K' as const, id:'hearts-K', points:5 }];
+  const noKing = [c(22), c(21), c(20), c(19), c(18), c(17), c(16), { kind:'suit' as const, suit:'hearts' as const, rank:'Q' as const, id:'hearts-Q', points:4 }];
+  for (const hand of [noXiii, noKing]) {
+    const d = chooseAIAuctionAction(auction, 'A', hand, {A:hand}, { singlePlayer: true });
+    assert.notEqual(d.action.type === 'bid' ? d.action.contract : undefined, 'solo');
+  }
+});
+
+test('single-player: XXI + Skíz + 6 tarokk esetén kell a XIII-as legalacsonyabb tarokk és a király a nyitó Szólóhoz', () => {
+  const auction = createAuction(['A','B','C','D'], 0);
+  const hand = [c(22), c(21), c(18), c(17), c(16), c(13), { kind:'suit' as const, suit:'hearts' as const, rank:'K' as const, id:'hearts-K', points:5 }];
+  const d = chooseAIAuctionAction(auction, 'A', hand, {A:hand}, { singlePlayer: true });
+  assert.equal(d.action.type, 'bid');
+  assert.equal(d.action.contract, 'solo');
+});
+
+test('single-player: XXI + Skíz + 6 tarokk, de XIII vagy király nélkül nem nyit Szólóval', () => {
+  const auction = createAuction(['A','B','C','D'], 0);
+  const noThirteen = [c(22), c(21), c(19), c(18), c(17), c(16), { kind:'suit' as const, suit:'hearts' as const, rank:'K' as const, id:'hearts-K', points:5 }];
+  const noKing = [c(22), c(21), c(18), c(17), c(16), c(13), { kind:'suit' as const, suit:'hearts' as const, rank:'Q' as const, id:'hearts-Q', points:4 }];
+  for (const hand of [noThirteen, noKing]) {
+    const d = chooseAIAuctionAction(auction, 'A', hand, {A:hand}, { singlePlayer: true });
+    assert.notEqual(d.action.type === 'bid' ? d.action.contract : undefined, 'solo');
+  }
+});
+
+test('single-player: négy Nagymadárig szükséges magas tarokk + király esetén nyitó Egyes', () => {
+  const auction = createAuction(['A','B','C','D'], 0);
+  const hand = [c(22), c(21), c(20), c(19), c(18), c(17), c(12), { kind:'suit' as const, suit:'hearts' as const, rank:'K' as const, id:'hearts-K', points:5 }];
+  const d = chooseAIAuctionAction(auction, 'A', hand, {A:hand}, { singlePlayer: true });
+  assert.equal(d.action.type, 'bid');
+  assert.equal(d.action.contract, 'one');
+});
+
+test('single-player: a nagyhonőrös profilban Egyes-küszöb nélkül nyitó Kettes', () => {
+  const auction = createAuction(['A','B','C','D'], 0);
+  const hand = [c(22), c(21), c(20), c(19), c(12), c(11), c(10), { kind:'suit' as const, suit:'hearts' as const, rank:'K' as const, id:'hearts-K', points:5 }];
+  const d = chooseAIAuctionAction(auction, 'A', hand, {A:hand}, { singlePlayer: true });
+  assert.equal(d.action.type, 'bid');
+  assert.equal(d.action.contract, 'two');
+});
+
+test('single-player: a nagyhonőrös profilban, ha sem a Szóló-, sem az Egyes-küszöb nem teljesül, nyitó Kettes', () => {
+  const auction = createAuction(['A','B','C','D'], 0);
+  const hand = [c(22), c(21), c(15), c(14), c(13), c(12), { kind:'suit' as const, suit:'hearts' as const, rank:'Q' as const, id:'hearts-Q', points:4 }];
+  const d = chooseAIAuctionAction(auction, 'A', hand, {A:hand}, { singlePlayer: true });
+  assert.equal(d.action.type, 'bid');
+  assert.equal(d.action.contract, 'two');
+});
 test('Skíz + Pagát + 7 tarokk esetén a Szóló agresszív stratégiai opció', () => {
   const auction = createAuction(['A','B','C','D'], 0);
   const hand = [c(22), c(1), c(7), c(8), c(9), c(10), c(11)];

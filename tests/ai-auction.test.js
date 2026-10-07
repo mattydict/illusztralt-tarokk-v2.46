@@ -30,6 +30,19 @@ test('illusztrált stratégia: gyenge, védtelen Pagáttal a veszteségminimaliz
     assert.equal(d.action.type, 'bid');
     assert.equal(d.action.contract, 'solo');
 });
+test('single-playerben a nyitó Szóló nem automatikus egy átlagos honőrös kéznél', () => {
+    const auction = createAuction(['A', 'B', 'C', 'D'], 0);
+    const hand = [c(1), c(7), c(8), c(9), c(10), c(11)];
+    const d = chooseAIAuctionAction(auction, 'A', hand, { A: hand }, { singlePlayer: true });
+    assert.notEqual(d.action.type === 'bid' ? d.action.contract : undefined, 'solo');
+});
+test('single-playerben a kivételes Skíz-kézhez is kell XIII-as vagy magasabb legalacsonyabb tarokk és király', () => {
+    const auction = createAuction(['A', 'B', 'C', 'D'], 0);
+    const hand = [c(22), c(21), c(20), c(19), c(18), c(17), c(16), { kind: 'suit', suit: 'hearts', rank: 'K', id: 'hearts-K', points: 5 }];
+    const d = chooseAIAuctionAction(auction, 'A', hand, { A: hand }, { singlePlayer: true });
+    assert.equal(d.action.type, 'bid');
+    assert.equal(d.action.contract, 'solo');
+});
 test('5 tarokkos, XX-XIX-XVIII nélküli védtelen Pagát is veszteségminimalizáló kéz', () => {
     const auction = createAuction(['A', 'B', 'C', 'D'], 0);
     const hand = [c(1), c(7), c(8), c(9), c(10)];

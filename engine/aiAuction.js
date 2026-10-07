@@ -297,7 +297,7 @@ function clampBelief(v) { return Math.max(0, Math.min(1, v)); }
  * TAROKK-ŐR / Tarokk Akadémia material. They are conventions/strategy, not
  * legality rules; legality remains delegated to auction.ts.
  */
-export function chooseAIAuctionAction(auction, playerId, hand, hands) {
+export function chooseAIAuctionAction(auction, playerId, hand, hands, options = {}) {
     const legal = legalAuctionActions(auction, playerId, hands);
     if (!legal.length)
         throw new Error('Az AI játékosnak nincs szabályos licitlépése.');
@@ -313,7 +313,19 @@ export function chooseAIAuctionAction(auction, playerId, hand, hands) {
     // information-preserving action, so require a meaningful edge before entering
     // the auction. Strong conventions (invites/holds) remain untouched.
     const pass = scored.find(x => x.action.type === 'pass');
-    const best = scored[0];
+    let best = scored[0];
+    // Single-player calibration only: an opening Szóló is a legal but very rare
+    // real-table choice. Do not let generic score bonuses turn an ordinary
+    // honőrös opening hand into an automatic Szóló. Exceptional opening strength
+    // (Skíz + 7+ tarokk, or both big honours + 6+ tarokk) remains available.
+    const openingSoloExceptional = profile.skiz && profile.tarokks >= 7 || profile.bigHonours === 2 && profile.tarokks >= 6;
+    if (options.singlePlayer && !position.hasOpened && best.action.type === 'bid' && best.action.contract === 'solo' && !openingSoloExceptional) {
+        const nonSolo = scored.find(x => x.action.type === 'bid' && x.action.contract !== 'solo');
+        if (nonSolo) {
+            best = nonSolo;
+            best.reasons = [...best.reasons, 'Single-player kalibráció: nyitó Szóló csak kivételesen erős kézzel; a normál nyitó licit kapott elsőbbséget.'];
+        }
+    }
     if (pass && best.action.type === 'bid') {
         const margin = best.action.contract === 'solo' ? 5 : best.action.contract === 'three' ? 2.5 : 3.5;
         if (best.score < pass.score + margin) {

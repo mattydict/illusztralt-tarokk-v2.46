@@ -297,7 +297,7 @@ function clampBelief(v) { return Math.max(0, Math.min(1, v)); }
  * TAROKK-ŐR / Tarokk Akadémia material. They are conventions/strategy, not
  * legality rules; legality remains delegated to auction.ts.
  */
-export function chooseAIAuctionAction(auction, playerId, hand, hands) {
+export function chooseAIAuctionAction(auction, playerId, hand, hands, options = {}) {
     const legal = legalAuctionActions(auction, playerId, hands);
     if (!legal.length)
         throw new Error('Az AI játékosnak nincs szabályos licitlépése.');
@@ -313,7 +313,43 @@ export function chooseAIAuctionAction(auction, playerId, hand, hands) {
     // information-preserving action, so require a meaningful edge before entering
     // the auction. Strong conventions (invites/holds) remain untouched.
     const pass = scored.find(x => x.action.type === 'pass');
-    const best = scored[0];
+    let best = scored[0];
+    // Single-player calibration only: an opening Szóló is a legal but very rare
+    // real-table choice. Both exceptional profiles still require the additional
+    // classic protection: the lowest tarokk must be XIII or higher and the hand
+    // must contain at least one suit king.
+    const exceptionalOpeningProfile = profile.skiz && profile.tarokks >= 7 || profile.xxi && profile.skiz && profile.tarokks >= 6;
+    const tarokkRanks = hand.filter(isTarokk).map(card => card.rank);
+    const lowestTarokkRank = tarokkRanks.length ? Math.min(...tarokkRanks) : undefined;
+    const hasSuitKing = hand.some(card => card.kind === 'suit' && card.rank === 'K');
+    const openingSoloExceptional = exceptionalOpeningProfile && lowestTarokkRank !== undefined && lowestTarokkRank >= 13 && hasSuitKing;
+    const nagymadarRanks = [20, 19, 18, 17, 16];
+    const nagymadarHighCount = tarokkRanks.filter(rank => nagymadarRanks.includes(rank)).length;
+    const nagymadarOpeningOne = exceptionalOpeningProfile && nagymadarHighCount >= 4 && hasSuitKing;
+    if (options.singlePlayer && !position.hasOpened) {
+        if (openingSoloExceptional) {
+            const solo = scored.find(x => x.action.type === 'bid' && x.action.contract === 'solo');
+            if (solo)
+                return { ...solo, reasons: [...solo.reasons, 'Single-player nyitókalibráció: kivételes Szóló-kéz, ezért a nyitó Szóló elsődleges és nem csak pontozási opció.'] };
+        }
+        if (nagymadarOpeningOne) {
+            const one = scored.find(x => x.action.type === 'bid' && x.action.contract === 'one');
+            if (one)
+                return { ...one, reasons: [...one.reasons, 'Single-player nyitókalibráció: legalább négy Nagymadárig szükséges magas tarokk + király esetén Egyes az elsődleges nyitás.'] };
+        }
+        if (exceptionalOpeningProfile && !nagymadarOpeningOne) {
+            const two = scored.find(x => x.action.type === 'bid' && x.action.contract === 'two');
+            if (two)
+                return { ...two, reasons: [...two.reasons, 'Single-player nyitókalibráció: a kivételes nagyhonőrös profil megvan, de a Szóló- és Egyes-küszöb nem teljesül; Kettes a következő nyitó lépcső.'] };
+        }
+    }
+    if (options.singlePlayer && !position.hasOpened && best.action.type === 'bid' && best.action.contract === 'solo' && !openingSoloExceptional) {
+        const nonSolo = scored.find(x => x.action.type === 'bid' && x.action.contract !== 'solo');
+        if (nonSolo) {
+            best = nonSolo;
+            best.reasons = [...best.reasons, 'Single-player kalibráció: nyitó Szóló csak kivételesen erős kézzel; a normál nyitó licit kapott elsőbbséget.'];
+        }
+    }
     if (pass && best.action.type === 'bid') {
         const margin = best.action.contract === 'solo' ? 5 : best.action.contract === 'three' ? 2.5 : 3.5;
         if (best.score < pass.score + margin) {
