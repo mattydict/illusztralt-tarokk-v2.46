@@ -11,7 +11,7 @@ import { chooseAIContra } from '../engine/aiContra.js';
 import { chooseAIAuctionAction } from '../engine/aiAuction.js';
 import { chooseAICardAtDifficulty, type AIDifficulty } from '../engine/aiPlay.js';
 import { createInitialState, legalCardsForPlay, playCard, setPartnership, recordPartnerCall, startDeclarations, startPlay, declareFigureInGame, canRaiseGameContraInGame, raiseGameContraInGame, canRaiseDeclarationContraInGame, raiseDeclarationContraInGame, type GameState } from '../engine/game.js';
-import { createDeclarationWindow, currentDeclarer, legalDeclarationActions, applyDeclarationAction, type DeclarationWindowState } from '../engine/declarationWindow.js';
+import { createDeclarationWindow, declarationOrderFromTaker, currentDeclarer, legalDeclarationActions, applyDeclarationAction, type DeclarationWindowState } from '../engine/declarationWindow.js';
 import { shuffle } from '../engine/game.js';
 import { legalSkartCards } from '../engine/skart.js';
 import { chooseAISkart } from '../engine/aiSkart.js';
@@ -29,8 +29,12 @@ let selectedSkart = new Set<string>();
 let calledTarokk: 18|19|20|undefined;
 let declarationWindow: DeclarationWindowState | null = null;
 let message = '';
-let seed = 20261003;
-let matchTrickPoints: Record<string, number> = {};
+function createRandomSeed():number{try{const values=new Uint32Array(1);window.crypto?.getRandomValues(values);if(values[0]!==undefined)return values[0]>>>0;}catch{}return ((Date.now()^Math.floor(Math.random()*0x100000000))>>>0);}
+let seed=createRandomSeed();
+let matchScores: Record<string, number> = {};
+let instantScoreHistory: Array<{playerId:string;count:8|9;pointsEach:number;deltas:Record<string,number>;immediate:true}> = [];
+let currentDealSettlementApplied = false;
+let currentDealDeltas: Record<string,number> = {};
 let aiDifficulty: AIDifficulty = 'expert';
 let showAiReasons = false;
 let paused = false;
@@ -86,7 +90,7 @@ function setAiReason(playerId: string, reasons: string[]) {
 }
 
 
-function rng(seed0: number) { let x = seed0 >>> 0; return () => { x = (1664525*x + 1013904223) >>> 0; return x / 4294967296; }; }
+function dealRandom():number { const values=new Uint32Array(1); try { if(window.crypto?.getRandomValues){ window.crypto.getRandomValues(values); return values[0]!/4294967296; } } catch {} return Math.random(); }
 function cardName(card: Card): string { if (card.kind === 'tarokk') return `${card.rank}. tarokk`; const suit={hearts:'♥',diamonds:'♦',spades:'♠',clubs:'♣'}[card.suit]; return `${suit}${card.rank}`; }
 function playerName(id: string) { return id === HUMAN ? 'Te' : `Gépi ${id.slice(1)}`; }
 
@@ -116,10 +120,19 @@ function contractLabel(contract: string | undefined): string {
   return ({three:'Hármas',two:'Kettes',one:'Egyes',solo:'Szóló'} as Record<string,string>)[contract ?? ''] ?? contract ?? '—';
 }
 
+function partnerPubliclyKnown(g: GameState | null): boolean {
+  if (!g?.partnerId) return false;
+  const declarationRecord=(declarationWindow?.records ?? []).some(r=>r.playerId===g.partnerId && r.type!=='pass');
+  const declaredFigure=(g.declarations?.declarations ?? []).some(d=>d.ownerId===g.partnerId);
+  const called=g.calledTarokk;
+  const calledPlayed=called!==undefined && ([...(g.trick?.cards ?? []), ...g.completedTricks.flatMap(t=>t.cards ?? [])] as any[]).some(x=>x.player===g.partnerId && x.card?.kind==='tarokk' && x.card.rank===called);
+  return declarationRecord || declaredFigure || calledPlayed;
+}
+
 function currentDealSummary(): string {
   if (!game) return '—';
   const taker = game.takerId ? playerName(game.takerId) : '—';
-  const partner = game.partnerId ? playerName(game.partnerId) : '—';
+  const partner = partnerPubliclyKnown(game) && game.partnerId ? playerName(game.partnerId) : 'ismeretlen';
   const called = game.calledTarokk !== undefined ? `${game.calledTarokk}. tarokk` : '—';
   return `${contractLabel(game.contract)} · felvevő: ${taker} · partner: ${partner} · hívott: ${called}`;
 }
@@ -135,22 +148,26 @@ function startConfiguredMatch(playerCount: 4|5, targetRounds: number) {
   playerIds = PLAYER_POOL.slice(0, playerCount);
   const startingDealerIndex = playerCount - 1;
   match = createMatch(playerIds, targetRounds, startingDealerIndex);
-  matchTrickPoints = Object.fromEntries(playerIds.map(id => [id, 0]));
+  matchScores=Object.fromEntries(playerIds.map(id=>[id,0]));
+  instantScoreHistory=[];
+  currentDealSettlementApplied=false;
+  currentDealDeltas=Object.fromEntries(playerIds.map(id=>[id,0]));
   startNextDeal();
 }
 
 function startNextDeal() {
   if (!match) return;
   paused=false; uiError=''; lastAiReason=undefined; clearAiTimer();
-  game=null; declarationWindow=null; selectedSkart.clear(); calledTarokk=undefined; message=''; seed += 1;
+  game=null; declarationWindow=null; selectedSkart.clear(); calledTarokk=undefined; message=''; seed=createRandomSeed(); currentDealSettlementApplied=false; currentDealDeltas=Object.fromEntries(playerIds.map(id=>[id,0]));
   const dealPlayers = orderedDealPlayers(match);
   round=createRound(dealPlayers,0);
   // Single-player uses the same parallel skart state model as multiplayer.
   // The taker does not get a separate 'announce discarded tarokks' turn; the
   // authoritative round engine handles the public disclosure rules.
   round={...round,parallelSkart:true};
-  round=dealRound(round,rng(seed));
+  round=dealRound(round,dealRandom);
   talon=round.talon;
+  round={...round,eventLog:[...round.eventLog,'Új, véletlenszerű keverés készült.']};
 
   message = dealPlayers.includes(HUMAN)
     ? `${playerName(round.startingPlayerId)} kezdi a licitet.`
@@ -160,10 +177,15 @@ function startNextDeal() {
 
 function finishCurrentDeal() {
   if (!match || !game?.finalPoints) return;
-  for (const [id, points] of Object.entries(game.finalPoints.byPlayer)) {
-    matchTrickPoints[id] = (matchTrickPoints[id] ?? 0) + points;
+  const net=Number(game.settlement?.netForTakerPair??0);
+  if(game.takerId&&game.partnerId){
+    for(const id of playerIds){
+      const delta=id===game.takerId||id===game.partnerId?net:-net;
+      matchScores[id]=(matchScores[id]??0)+delta;
+      currentDealDeltas[id]=(currentDealDeltas[id]??0)+delta;
+    }
   }
-  match = completeDeal(match);
+  match=completeDeal(match);
   if (isMatchComplete(match)) {
     message = `A mérkőzés befejeződött: ${match.completedRounds} forduló, ${match.completedDeals} leosztás.`;
     render();
@@ -224,11 +246,12 @@ function applyBid(action: AuctionAction) {
   } catch(e) { message=e instanceof Error?e.message:'Szabálytalan licit.'; render(); }
 }
 function labelAction(a: AuctionAction) {
-  if(a.type==='pass') return 'passz';
-  if(a.type==='bid') return a.honourless?'honőr nélküli hármas':'licit '+a.contract;
-  if(a.type==='hold') return 'tartom '+a.contract;
-  if(a.type==='hold-invite') return `tartom ${a.contract}, invit ${a.target}. tarokk`;
-  return `invit ${a.target}. tarokk`;
+  if(a.type==='pass') return 'Passz';
+  if(a.type==='bid') return a.honourless?'Honőr nélküli Hármas':contractLabel(a.contract);
+  if(a.type==='hold') return `Tartom: ${contractLabel(a.contract)}`;
+  if(a.type==='hold-invite') return `Tartom: ${contractLabel(a.contract)} (${a.target}. tarokk invit)`;
+  if(a.type==='invite') return `${a.target}. tarokk invit`;
+  return `${a.target??''}. tarokk invit`;
 }
 function runAiAuction() {
   clearAiTimer();
@@ -252,7 +275,7 @@ function finishAuctionFlow() {
   if(!round || !round.auction.finished || !round.auction.highest) { render(); return; }
   try {
     const outcome=resolveAuctionOutcome(round.auction,handsMap(),talon);
-    round={...round,contract:outcome.contract,takerId:outcome.takerId,auctionOutcome:outcome,phase:'talon-distribution',currentPlayerId:outcome.takerId,...(outcome.calledTarokk!==undefined?{calledTarokk:outcome.calledTarokk,invitedTarokk:outcome.calledTarokk}:{}),eventLog:[...round.eventLog,`Felvevő: ${playerName(outcome.takerId)}, játék: ${outcome.contract}.`].concat(outcome.requiredPartnerCallId?[`Meghívandó invitáló: ${playerName(outcome.requiredPartnerCallId)}`]:[])};
+    round={...round,contract:outcome.contract,takerId:outcome.takerId,auctionOutcome:outcome,phase:'talon-distribution',currentPlayerId:outcome.takerId,...(outcome.calledTarokk!==undefined?{calledTarokk:outcome.calledTarokk,invitedTarokk:outcome.calledTarokk}:{}),eventLog:[...round.eventLog,`Felvevő: ${playerName(outcome.takerId)}, játék: ${contractLabel(outcome.contract)}.`].concat(outcome.requiredPartnerCallId?[`Meghívandó invitáló: ${playerName(outcome.requiredPartnerCallId)}`]:[])};
     // distributeRoundTalon expects its own talon, then skartolási fázist kezdi.
     round=distributeRoundTalon(round,talon);
     message=round.takerId===HUMAN?'Vedd fel a talont, majd válaszd ki a fektetendő lapokat.':'A gépek fektetnek.';
@@ -408,6 +431,8 @@ function targetCardForKingDeclaration(type: 'kingUltimo'|'kingUhu', hand: Card[]
   return kings.sort((a,b)=>a.id.localeCompare(b.id))[0]?.id;
 }
 
+function recordInstantTarokkScore(playerId:string,count:8|9):void{const pointsEach=count===9?2:count===8?1:0;if(!pointsEach)return;const deltas=Object.fromEntries(playerIds.map(id=>[id,id===playerId?pointsEach*3:-pointsEach]));for(const [id,delta] of Object.entries(deltas)){matchScores[id]=(matchScores[id]??0)+Number(delta);currentDealDeltas[id]=(currentDealDeltas[id]??0)+Number(delta);}instantScoreHistory=[...instantScoreHistory,{playerId,count,pointsEach,deltas,immediate:true}].slice(-20);round={...round!,eventLog:[...round!.eventLog,`${playerName(playerId)}: ${count} tarokk — azonnali elszámolás: ${pointsEach} pont játékosonként.`]};}
+
 function runAiDeclarations(){
   clearAiTimer();
   if(!game || game.phase!=='declarations' || !round || !declarationWindow) return;
@@ -469,6 +494,7 @@ function runAiDeclarations(){
       else game=declareFigureInGame(game,action.declaration,id,game.completedTricks.length+1,targetCardId);
     }
     declarationWindow=applyDeclarationAction(declarationWindow,action,gp.hand);
+    if(action.type==='tarokkCount') recordInstantTarokkScore(id,action.count);
     const actionText=action.type==='pass'?'Passz':action.type==='tarokkCount'?`${action.count} tarokk`:declarationLabel(action.declaration);
     round={...round,eventLog:[...round.eventLog,`${playerName(id)}: ${actionText}`]};
     message=`${playerName(id)}: ${actionText}.`;
@@ -514,7 +540,7 @@ function startGame(partnerId:string) {
   // Declaration order always starts with the taker, regardless of who opened
   // the auction or who will lead the first trick.
   g=startDeclarations(g, takerIndex); game=g;
-  declarationWindow=createDeclarationWindow([round.takerId, ...g.players.map(p=>p.id).filter(id=>id!==round!.takerId)], true);
+  declarationWindow=createDeclarationWindow(declarationOrderFromTaker(g.players.map(p=>p.id),round.takerId), true);
   round={...round,phase:'declarations',currentPlayerId:g.players[takerIndex]!.id,...(calledTarokk!==undefined?{calledTarokk}: {})};
   message='A bemondási kör kezdődik: a felvevő következik.'; render(); runAiDeclarations();
 }
@@ -552,9 +578,12 @@ function humanContra(target: 'game' | string) {
   } catch(e) { message=e instanceof Error?e.message:'Szabálytalan kontra.'; render(); }
 }
 
+function applyCurrentDealSettlement():void{if(currentDealSettlementApplied||!game?.finalPoints||!game.takerId||!game.partnerId)return;const net=Number(game.settlement?.netForTakerPair??0);for(const id of playerIds){const delta=id===game.takerId||id===game.partnerId?net:-net;matchScores[id]=(matchScores[id]??0)+delta;currentDealDeltas[id]=(currentDealDeltas[id]??0)+delta;}currentDealSettlementApplied=true;}
+
 function syncRoundPhaseFromGame() {
   if(!round || !game) return;
   if(game.phase==='scoring') {
+    applyCurrentDealSettlement();
     const { currentPlayerId: _currentPlayerId, ...rest } = round;
     round={...rest, phase:'scoring'};
   }
@@ -607,7 +636,7 @@ function actionButtons(){
   if(round.phase==='declarations'&&game&&declarationWindow&&currentDeclarer(declarationWindow)===HUMAN){
     const hp=game.players.find(p=>p.id===HUMAN);
     if(hp){
-      const ctx = {isTaker:HUMAN===game.takerId, invited:round.auctionOutcome?.calledTarokk!==undefined, ...(round.auctionOutcome?.calledTarokk!==undefined?{invitedTarokk:round.auctionOutcome.calledTarokk as 18|19|20}:{}), ...(round.contract?{contract:round.contract}:{}), previousDeclarations:game.declarations.declarations.map(d=>d.type),partnersKnown:true, ...(HUMAN===game.partnerId?{isPartner:true}:{}), ...(round.calledTarokk!==undefined?{calledTarokk:round.calledTarokk as 18|19|20}:{}), ...(game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullDeclared:true}:{}), ...(HUMAN===game.takerId&&round.calledTarokk===19&&!game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullOmittedByTaker:true}:{})};
+      const ctx = {isTaker:HUMAN===game.takerId, invited:round.auctionOutcome?.calledTarokk!==undefined, ...(round.auctionOutcome?.calledTarokk!==undefined?{invitedTarokk:round.auctionOutcome.calledTarokk as 18|19|20}:{}), ...(round.contract?{contract:round.contract}:{}), previousDeclarations:game.declarations.declarations.map(d=>d.type),partnersKnown:partnerPubliclyKnown(game), ...(HUMAN===game.partnerId?{isPartner:true}:{}), ...(round.calledTarokk!==undefined?{calledTarokk:round.calledTarokk as 18|19|20}:{}), ...(game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullDeclared:true}:{}), ...(HUMAN===game.takerId&&round.calledTarokk===19&&!game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullOmittedByTaker:true}:{})};
       const acts=legalDeclarationActions(declarationWindow,HUMAN,hp.hand,ctx);
       const currentGame=game;
       const currentTrickNumber=currentGame.completedTricks.length+1;
@@ -619,10 +648,10 @@ function actionButtons(){
         if(a.type==='declare' && (a.declaration==='kingUltimo' || a.declaration==='kingUhu')){
           const kings=hp.hand.filter(c=>c.kind==='suit' && c.rank==='K');
           return kings.length
-            ? kings.map(k=>`<button class="action" data-decl="${i}" data-target="${k.id}">${a.declaration} · ${cardName(k)}</button>`)
+            ? kings.map(k=>`<button class="action" data-decl="${i}" data-target="${k.id}">${declarationLabel(a.declaration)} · ${cardName(k)}</button>`)
             : [];
         }
-        return [`<button class="action" data-decl="${i}">${a.type==='pass'?'Passz':a.type==='tarokkCount'?`${a.count} tarokk`:a.declaration}</button>`];
+        return [`<button class="action" data-decl="${i}">${a.type==='pass'?'Passz':a.type==='tarokkCount'?`${a.count} tarokk`:declarationLabel(a.declaration)}</button>`];
       }).join('');
       const contraButtons:string[]=[];
       if(canRaiseGameContraInGame(game,HUMAN)){
@@ -658,7 +687,7 @@ function actionButtons(){
 }
 function render(){
   if(!round){
-    app.innerHTML=`<div class="empty"><h3>Illusztrált Magyar Tarokk</h3><p>Single-player release candidate · valódi szabálymotorral és stratégiai AI-val.</p><div class="settings" role="group" aria-label="Játékbeállítások"><label>Játékosok: <select id="playerCount" aria-label="Játékosok száma"><option value="4">4</option><option value="5">5</option></select></label> <label>Fordulók: <input id="rounds" type="number" min="1" max="50" value="${savedRounds}" aria-label="Fordulók száma"></label> <label>AI nehézség: <select id="aiDifficulty" aria-label="AI nehézsége"><option value="casual">Gyakorló</option><option value="standard">Normál</option><option value="expert">Expert</option></select></label> <label><input id="showAiReasons" type="checkbox"> AI-indoklások</label></div><div class="settings-actions"><button id="new" class="primary">Új mérkőzés</button></div></div>`;
+    app.innerHTML=`<div class="empty"><h3>Illusztrált Magyar Tarokk</h3><p>Egyjátékos mód · valódi szabálymotorral és stratégiai AI-val.</p><div class="settings" role="group" aria-label="Játékbeállítások"><label>Játékosok: <select id="playerCount" aria-label="Játékosok száma"><option value="4">4</option><option value="5">5</option></select></label> <label>Fordulók: <input id="rounds" type="number" min="1" max="50" value="${savedRounds}" aria-label="Fordulók száma"></label> <label>AI nehézség: <select id="aiDifficulty" aria-label="AI nehézsége"><option value="casual">Gyakorló</option><option value="standard">Normál</option><option value="expert">Expert</option></select></label> <label><input id="showAiReasons" type="checkbox"> AI-indoklások</label></div><div class="settings-actions"><button id="new" class="primary">Új mérkőzés</button></div></div>`;
     const difficultySelect=document.querySelector('#aiDifficulty') as HTMLSelectElement | null;
     if(difficultySelect) difficultySelect.value=aiDifficulty;
     const playerCountSelect=document.querySelector('#playerCount') as HTMLSelectElement | null;
@@ -704,7 +733,8 @@ function render(){
   ];
   const cards=suitGroups.filter(g=>g.cards.length).map(g=>`<section class="hand-group hand-group-${g.key}"><h3>${g.label}</h3><div class="hand-grid">${g.cards.map(renderCard).join('')}</div></section>`).join('');
   const skartInfo=round.phase==='skart'?`<p>Fektetendő lapok: ${round.players.find(p=>p.playerId===HUMAN)!.receivedTalon.length}. Kijelölve: ${selectedSkart.size}</p>`:round.phase==='skart-announcement'?`<p>A fektetett tarokkok közlése a fektető védők feladata.</p>`:'';
-  const opponents=round.players.filter(p=>p.playerId!==HUMAN).map(p=>`<div class="opponent"><strong>${playerName(p.playerId)}</strong><span>${p.hand.length} lap</span><span>${round!.takerId===p.playerId?'felvevő':game?.partnerId===p.playerId?'felvevő párja':'ellenfél'}</span></div>`).join('');
+  const partnerKnown=partnerPubliclyKnown(game);
+  const opponents=round.players.filter(p=>p.playerId!==HUMAN).map(p=>`<div class="opponent"><strong>${playerName(p.playerId)}</strong><span>${p.hand.length} lap</span><span>${round!.takerId===p.playerId?'felvevő':game?.partnerId===p.playerId&&partnerKnown?'felvevő párja':'ellenfél'}</span></div>`).join('');
   const trick=game?.trick?.cards??[];
   const trickNo=game ? game.completedTricks.length + 1 : 0;
   const trickHtml=trick.length?trick.map(x=>`<div class="played"><strong>${playerName(x.player)}</strong><span>${cardName(x.card)}</span></div>`).join(''):'<span class="muted">Nincs aktív ütés.</span>';
@@ -718,10 +748,10 @@ function render(){
   const declarationHtml=declarationHistory.length ? declarationHistory.map(d=>`<li>${playerName(d.ownerId)}: ${declarationLabel(d.type)}${d.status==='fulfilled'?' ✓':d.status==='failed'?' ✗':''}</li>`).join('') : '<li class="muted">Még nincs bemondás.</li>';
   const auctionLog=round.eventLog.slice(-30).map((x,i)=>`<li><span class="event-index">${i+1}.</span> ${x}</li>`).join('');
   const settlementLines = game?.settlement?.lines?.length ? game.settlement.lines.map(line=>`${declarationLabel(line.type ?? 'game')}: ${line.positiveForTakerPair ? '+' : '-'}${line.points}`).join(' · ') : '';
-  const result=game?.finalPoints?`<div class="result"><strong>${game.finalPoints.result==='taker'?'A felvevő pár nyert.':'Az ellenpár nyert.'}</strong> · ütés ${game.finalPoints.takerPair}–${game.finalPoints.defencePair}${game.settlement?` · nettó ${game.settlement.netForTakerPair>0?'+':''}${game.settlement.netForTakerPair}`:''}${settlementLines?`<br><small>${settlementLines}</small>`:''}</div>`:'';
+  const result=game?.finalPoints?`<div class="result"><strong>${game.finalPoints.result==='taker'?'A felvevő pár nyert.':'Az ellenpár nyert.'}</strong> · ütés ${game.finalPoints.takerPair}–${game.finalPoints.defencePair}${game.settlement?` · nettó ${game.settlement.netForTakerPair>0?'+':''}${game.settlement.netForTakerPair}`:''}<br><small>Leosztás elszámolása: ${playerIds.map(id=>`${playerName(id)} ${currentDealDeltas[id]>0?'+':''}${currentDealDeltas[id]??0}`).join(' · ')}</small>${settlementLines?`<br><small>${settlementLines}</small>`:''}</div>`:'';
   const matchInfo=match?`<div class="match-info">Forduló ${match.roundNumber}/${match.targetRounds} · Leosztás ${Math.min(match.dealNumberInRound, match.playerCount)}/${match.playerCount} · Osztó: ${playerName(match.playerIds[match.dealerIndex]!)}</div>`:'';
   const dealSummary=game?`<div class="deal-summary"><strong>${currentDealSummary()}</strong>${game.phase==='play'?` · ${trickNo}. ütés, ${trick.length}/4 lap` : ''}</div>`:'';
-  const scoreTable=match?`<div class="match-score"><strong>Mérkőzés ütés-pontjai</strong> ${playerIds.map(id=>`${playerName(id)}: ${matchTrickPoints[id]??0}`).join(' · ')}</div>`:'';
+  const scoreTable=match?`<div class="match-score"><strong>Mérkőzés állása</strong> ${playerIds.map(id=>`${playerName(id)}: ${matchScores[id]??0} pont`).join(' · ')}${instantScoreHistory.length?`<br><small>Azonnali tarokkszám-elszámolás: ${instantScoreHistory.slice(-3).map(x=>`${playerName(x.playerId)} ${x.count} tarokk (${x.pointsEach}/játékos)`).join(' · ')}</small>`:''}</div>`:'';
   // The taker's discarded tarokks are public from the completed skart stage
   // until the first trick is completed. Only tarokks are exposed, not the
   // other discarded cards.
@@ -757,7 +787,7 @@ function render(){
   document.querySelectorAll<HTMLButtonElement>('[data-decl]').forEach(b=>b.addEventListener('click',()=>{
     if(!game||!round||!declarationWindow)return;
     const hp=game.players.find(p=>p.id===HUMAN); if(!hp)return;
-    const ctx={isTaker:HUMAN===game.takerId,invited:round.auctionOutcome?.calledTarokk!==undefined,...(round.auctionOutcome?.calledTarokk!==undefined?{invitedTarokk:round.auctionOutcome.calledTarokk as 18|19|20}:{}),...(round.contract?{contract:round.contract}:{}),previousDeclarations:game.declarations.declarations.map(d=>d.type),partnersKnown:true,...(declarationWindow && declarationWindow.announcedTarokkCounts[HUMAN]!==undefined?{announcedTarokkCount:declarationWindow.announcedTarokkCounts[HUMAN]}:{}),...(HUMAN===game.partnerId?{isPartner:true}:{}),...(round.calledTarokk!==undefined?{calledTarokk:round.calledTarokk as 18|19|20}:{}),...(game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullDeclared:true}:{}),...(HUMAN===game.takerId&&round.calledTarokk===19&&!game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullOmittedByTaker:true}:{})};
+    const ctx={isTaker:HUMAN===game.takerId,invited:round.auctionOutcome?.calledTarokk!==undefined,...(round.auctionOutcome?.calledTarokk!==undefined?{invitedTarokk:round.auctionOutcome.calledTarokk as 18|19|20}:{}),...(round.contract?{contract:round.contract}:{}),previousDeclarations:game.declarations.declarations.map(d=>d.type),partnersKnown:partnerPubliclyKnown(game),...(declarationWindow && declarationWindow.announcedTarokkCounts[HUMAN]!==undefined?{announcedTarokkCount:declarationWindow.announcedTarokkCounts[HUMAN]}:{}),...(HUMAN===game.partnerId?{isPartner:true}:{}),...(round.calledTarokk!==undefined?{calledTarokk:round.calledTarokk as 18|19|20}:{}),...(game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullDeclared:true}:{}),...(HUMAN===game.takerId&&round.calledTarokk===19&&!game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullOmittedByTaker:true}:{})};
     const acts=legalDeclarationActions(declarationWindow,HUMAN,hp.hand,ctx); const a=acts[Number(b.dataset.decl)]; if(!a)return;
     try {
       // Keep the declaration window transactional with the game state: the
@@ -767,6 +797,7 @@ function render(){
         game=declareFigureInGame(game,a.declaration,HUMAN,game.completedTricks.length+1,targetCardId);
       }
       declarationWindow=applyDeclarationAction(declarationWindow,a,hp.hand);
+      if(a.type==='tarokkCount') recordInstantTarokkScore(HUMAN,a.count);
       const humanActionText=a.type==='pass'?'Passz':a.type==='tarokkCount'?`${a.count} tarokk`:declarationLabel(a.declaration);
       round={...round,eventLog:[...round.eventLog,`Te: ${humanActionText}`]};
       message=`Te: ${humanActionText}.`;

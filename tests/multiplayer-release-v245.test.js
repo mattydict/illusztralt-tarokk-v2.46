@@ -133,7 +133,8 @@ test('v2.52 release static build exposes versioned single-player and multiplayer
   await access(path.join(root, 'dist', 'main.js'));
   await access(path.join(root, 'dist', 'multiplayer.js'));
   const index = await readFile(path.join(root, 'dist', 'index.html'), 'utf8');
-  assert.match(index, /v2\.77/);
+  const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+  assert.match(index, new RegExp(`v${pkg.version.replace(/\.0$/, '')}`));
   assert.match(index, /\.\/main\.js/);
 });
 

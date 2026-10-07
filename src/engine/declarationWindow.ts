@@ -21,6 +21,13 @@ export interface DeclarationWindowState {
   pendingTarokkCountPlayerId?: string;
 }
 
+export function declarationOrderFromTaker(playerIds: string[], takerId: string): string[] {
+  if (playerIds.length !== 4) throw new Error('A bemondási sorrendhez 4 játékos szükséges.');
+  const start = playerIds.indexOf(takerId);
+  if (start < 0) throw new Error('A felvevő nincs a játékosok között.');
+  return playerIds.map((_, i) => playerIds[(start + i) % playerIds.length]!);
+}
+
 export function createDeclarationWindow(order: string[], firstRound = true): DeclarationWindowState {
   if (order.length !== 4) throw new Error('A bemondási körhöz 4 játékos szükséges.');
   return { order: [...order], currentIndex: 0, consecutivePasses: 0, turnHadAction: false, finished: false, records: [], roundNumber: 1, firstRound, announcedTarokkCounts: {}, openingTakerTurnPending: true };

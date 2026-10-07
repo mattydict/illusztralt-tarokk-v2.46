@@ -1,7 +1,7 @@
 import { createRound, dealRound, finishAuction, distributeRoundTalon, preSkartRedealReason, skartRoundPlayer, createInitialState, setPartnership, recordPartnerCall, startDeclarations, startPlay, declareFigureInGame, playCard, legalCardsForPlay, canRaiseGameContraInGame, raiseGameContraInGame, canRaiseDeclarationContraInGame, raiseDeclarationContraInGame, getPlayer } from '../engine/index.js';
 import { legalAuctionActions, applyAuctionAction } from '../engine/auction.js';
 import { resolveCalledPartner, pairOf as pairOfEngine } from '../engine/partnership.js';
-import { createDeclarationWindow, currentDeclarer, legalDeclarationActions, applyDeclarationAction, markDeclarationTurnAction } from '../engine/declarationWindow.js';
+import { createDeclarationWindow, declarationOrderFromTaker, currentDeclarer, legalDeclarationActions, applyDeclarationAction, markDeclarationTurnAction } from '../engine/declarationWindow.js';
 import { legalSkartCards } from '../engine/skart.js';
 import { nextContraLevel } from '../engine/contra.js';
 function cloneCard(card) { return card.kind === 'tarokk' ? { id: card.id, kind: card.kind, rank: card.rank, points: card.points } : { id: card.id, kind: card.kind, rank: card.rank, suit: card.suit, points: card.points }; }
@@ -10,7 +10,6 @@ function phaseOf(round, game) { return game ? game.phase : round.phase; }
 const TALON_COUNTS = { three: [3, 1, 1, 1], two: [2, 2, 1, 1], one: [1, 2, 2, 1], solo: [0, 2, 2, 2] };
 function expectedTalonCounts(round) { return round.contract ? TALON_COUNTS[round.contract] : undefined; }
 function pairOfId(playerId, takerId, partnerId) { return pairOfEngine(playerId, takerId ?? '', partnerId); }
-function declarationOrderFor(playerId, playerIds) { const start = playerIds.indexOf(playerId); if (start < 0) return [playerId, ...playerIds.filter(id => id !== playerId)]; return playerIds.map((_, i) => playerIds[(start + i) % playerIds.length]); }
 function contraLabel(level) {
   return { kontra: 'Kontra', rekontra: 'Rekontra', szubkontra: 'Szubkontra', mordkontra: 'Mordkontra' }[level] ?? level;
 }
@@ -343,7 +342,7 @@ export class AuthoritativeRoom {
     // The declaration phase itself always starts with the taker. The declaration
     // window separately excludes the taker's first actual declaration turn from
     // the three-pass closing streak.
-    const declarationOrder = declarationOrderFor(playerId, this.playerIds);
+    const declarationOrder = declarationOrderFromTaker(this.playerIds, playerId);
     this.declarationWindow = createDeclarationWindow(declarationOrder, true);
     this.round = { ...this.round, phase: 'declarations', currentPlayerId: declarationOrder[0], calledTarokk: rank }; }
   declarationContext(playerId) {

@@ -7,7 +7,7 @@ import {
 } from '../engine/index.js';
 import { legalAuctionActions, applyAuctionAction, type AuctionAction, type AuctionState } from '../engine/auction.js';
 import { resolveCalledPartner, pairOf as pairOfEngine } from '../engine/partnership.js';
-import { createDeclarationWindow, currentDeclarer, legalDeclarationActions, applyDeclarationAction, markDeclarationTurnAction, type DeclarationWindowState } from '../engine/declarationWindow.js';
+import { createDeclarationWindow, declarationOrderFromTaker, currentDeclarer, legalDeclarationActions, applyDeclarationAction, markDeclarationTurnAction, type DeclarationWindowState } from '../engine/declarationWindow.js';
 import type { Card } from '../engine/cards.js';
 import { legalCardsForPlay } from '../engine/game.js';
 import { legalSkartCards } from '../engine/skart.js';
@@ -62,7 +62,6 @@ function phaseOf(round: RoundState, game: GameState | null): string {
 }
 
 function statePlayerIds(round: RoundState): string[] { return round.players.map(p => p.playerId); }
-function declarationOrderFor(playerId: string, playerIds: string[]): string[] { const start = playerIds.indexOf(playerId); if (start < 0) return [playerId, ...playerIds.filter(id => id !== playerId)]; return playerIds.map((_, i) => playerIds[(start + i) % playerIds.length]); }
 function pairOfId(playerId: string, takerId: string | undefined, partnerId: string | undefined): 'taker' | 'defence' | 'unknown' { return pairOfEngine(playerId, takerId ?? '', partnerId); }
 function sameDeclarationAction(expected: any, actual: any): boolean {
   if (!expected || !actual || expected.type !== actual.type || expected.playerId !== actual.playerId) return false;
@@ -556,7 +555,7 @@ export class AuthoritativeRoom {
     // The declaration phase itself always starts with the taker. The declaration
     // window separately excludes the taker's first actual declaration turn from
     // the three-pass closing streak.
-    const declarationOrder = declarationOrderFor(playerId, this.playerIds);
+    const declarationOrder = declarationOrderFromTaker(this.playerIds, playerId);
     this.declarationWindow = createDeclarationWindow(declarationOrder, true);
     this.round = { ...this.round, phase: 'declarations', currentPlayerId: declarationOrder[0], calledTarokk: rank };
   }
