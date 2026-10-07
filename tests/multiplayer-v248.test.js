@@ -47,7 +47,13 @@ test('v2.50 a felvevő fektetett tarokkjai az első ütés végéig nyilvánosak
   assert.equal(room.round.phase, 'partner-call');
   const called = room.snapshotFor(taker).legalActionHints.partnerRanks[0];
   room.dispatch(taker, room.sequence, {type:'partner-call', rank:called});
-  for (const id of room.declarationWindow.order.slice(0,3)) room.dispatch(id, room.sequence, {type:'declaration',action:{type:'pass'}});
+  // Partner-call is outside the declaration pass counter. The taker then gets
+  // the first actual declaration turn, which is excluded from the three-pass
+  // streak; all four players therefore pass in declaration order before play.
+  for (const id of room.declarationWindow.order) {
+    assert.equal(room.currentPlayerId, id);
+    room.dispatch(id, room.sequence, {type:'declaration',action:{type:'pass'}});
+  }
   assert.equal(room.round.phase, 'play');
   assert.ok(room.snapshotFor('A').players.find(p => p.id === taker)?.revealedSkart?.length > 0);
   for (let i=0;i<4;i++) {

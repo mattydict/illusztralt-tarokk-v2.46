@@ -11,6 +11,8 @@ export interface DeclarationWindowState {
   currentIndex: number;
   consecutivePasses: number;
   turnHadAction?: boolean;
+  /** The taker's first actual declaration turn is excluded from the three-pass streak. */
+  openingTakerTurnPending: boolean;
   finished: boolean;
   records: DeclarationAction[];
   firstRound: boolean;
@@ -21,7 +23,7 @@ export interface DeclarationWindowState {
 
 export function createDeclarationWindow(order: string[], firstRound = true): DeclarationWindowState {
   if (order.length !== 4) throw new Error('A bemondási körhöz 4 játékos szükséges.');
-  return { order: [...order], currentIndex: 0, consecutivePasses: 0, turnHadAction: false, finished: false, records: [], roundNumber: 1, firstRound: true, announcedTarokkCounts: {} };
+  return { order: [...order], currentIndex: 0, consecutivePasses: 0, turnHadAction: false, finished: false, records: [], roundNumber: 1, firstRound, announcedTarokkCounts: {}, openingTakerTurnPending: true };
 }
 
 export function currentDeclarer(window: DeclarationWindowState): string | undefined {
@@ -84,8 +86,15 @@ export function applyDeclarationAction(window: DeclarationWindowState, action: D
       throw new Error('A kötelező tarokkszám-bemondást előbb meg kell tenni.');
     }
     const purePass = window.turnHadAction !== true;
-    const passes = purePass ? window.consecutivePasses + 1 : 0;
-    if (passes >= 3) return { ...window, records, consecutivePasses: passes, turnHadAction: false, finished: true };
+    // The mandatory partner call is outside this window. The taker's first
+    // actual declaration turn is also excluded from the three-pass streak,
+    // whether it contains further declarations or only Passz.
+    const openingTakerPass = window.openingTakerTurnPending === true
+      && window.currentIndex === 0
+      && window.roundNumber === 1;
+    const passes = openingTakerPass ? 0 : (purePass ? window.consecutivePasses + 1 : 0);
+    const openingTakerTurnPending = openingTakerPass ? false : window.openingTakerTurnPending;
+    if (passes >= 3) return { ...window, records, consecutivePasses: passes, turnHadAction: false, openingTakerTurnPending, finished: true };
     const nextIndex = (window.currentIndex + 1) % window.order.length;
     const wrapped = nextIndex === 0;
     return {
@@ -93,6 +102,7 @@ export function applyDeclarationAction(window: DeclarationWindowState, action: D
       records,
       consecutivePasses: passes,
       turnHadAction: false,
+      openingTakerTurnPending,
       currentIndex: nextIndex,
       ...(wrapped ? {roundNumber: (window.roundNumber ?? 1) + 1, firstRound: false} : {}),
     };

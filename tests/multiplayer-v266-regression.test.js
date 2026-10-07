@@ -91,3 +91,63 @@ test('v2.66 UI preserves the manual Passz and synced talon states', () => {
   assert.match(ui,/Szinkronizálás/);
   assert.match(ui,/legalActionHints/);
 });
+
+
+test('v2.69 partner call is outside the pass streak; taker starts declarations and B-C-D must all pass after the taker opening turn', async () => {
+  const { AuthoritativeRoom } = await import('../src/server/authoritativeRoom.js');
+  const { createDeck } = await import('../src/engine/cards.js');
+  const deck = createDeck();
+  const makeHand = (id, tarokkRanks) => [
+    ...tarokkRanks.map((rank, i) => ({ ...deck.find(c => c.id === `T${rank}`), id: `${id}-T${rank}-${i}` })),
+    ...deck.filter(c => c.kind === 'suit').slice(0, 5).map((c, i) => ({ ...c, id: `${id}-S${i}` })),
+  ];
+  const room = new AuthoritativeRoom({roomId:'decl-window-partner-call-v269',playerIds:['A','B','C','D'],dealerIndex:0,random:()=>0.2});
+  room.round = {
+    ...room.round,
+    phase:'partner-call',
+    takerId:'A',
+    contract:'three',
+    startingPlayerId:'A',
+    currentPlayerId:'A',
+    players: [
+      {...room.round.players.find(p => p.playerId === 'A'), hand:makeHand('A',[22,21,20,18,17]), receivedTalon:[], skart:[], skartRevealed:false, skartAnnounced:true},
+      {...room.round.players.find(p => p.playerId === 'B'), hand:makeHand('B',[19,16,15,14,13]), receivedTalon:[], skart:[], skartRevealed:false, skartAnnounced:true},
+      {...room.round.players.find(p => p.playerId === 'C'), hand:makeHand('C',[12,11,10,9,8]), receivedTalon:[], skart:[], skartRevealed:false, skartAnnounced:true},
+      {...room.round.players.find(p => p.playerId === 'D'), hand:makeHand('D',[7,6,5,4,3]), receivedTalon:[], skart:[], skartRevealed:false, skartAnnounced:true},
+    ],
+  };
+  room.applyPartnerCall('A',19);
+  assert.equal(room.round.currentPlayerId,'A');
+  assert.equal(room.declarationWindow.currentIndex,0);
+  // Partner-call is outside the declaration window. A's first actual
+  // declaration turn is also excluded from the three-pass streak.
+  room.applyDeclaration('A',{type:'pass'});
+  assert.equal(room.round.currentPlayerId,'B');
+  assert.equal(room.declarationWindow.consecutivePasses,0);
+  room.applyDeclaration('B',{type:'pass'});
+  assert.equal(room.round.currentPlayerId,'C');
+  assert.equal(room.declarationWindow.consecutivePasses,1);
+  room.applyDeclaration('C',{type:'pass'});
+  assert.equal(room.round.currentPlayerId,'D');
+  assert.equal(room.declarationWindow.consecutivePasses,2);
+  assert.equal(room.game.phase,'declarations');
+  room.applyDeclaration('D',{type:'pass'});
+  assert.equal(room.game.phase,'play');
+});
+
+test('v2.69 the taker can make multiple opening declarations before passing', async () => {
+  const { createDeclarationWindow, applyDeclarationAction, currentDeclarer } = await import('../src/engine/declarationWindow.js');
+  let w=createDeclarationWindow(['A','B','C','D']);
+  w=applyDeclarationAction(w,{type:'declare',playerId:'A',declaration:'doubleGame'});
+  w=applyDeclarationAction(w,{type:'declare',playerId:'A',declaration:'fourKings'});
+  w=applyDeclarationAction(w,{type:'pass',playerId:'A'});
+  assert.equal(currentDeclarer(w),'B');
+  assert.equal(w.consecutivePasses,0);
+  w=applyDeclarationAction(w,{type:'pass',playerId:'B'});
+  assert.equal(w.consecutivePasses,1);
+  w=applyDeclarationAction(w,{type:'pass',playerId:'C'});
+  assert.equal(w.consecutivePasses,2);
+  assert.equal(w.finished,false);
+  w=applyDeclarationAction(w,{type:'pass',playerId:'D'});
+  assert.equal(w.finished,true);
+});

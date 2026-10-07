@@ -66,3 +66,17 @@ test('engine rejection does not belong to declaration window state', () => {
     assert.equal(w.records.length, 0);
     void hand;
 });
+
+
+test('a felvevő első passza nem számít bele a három passzba', () => {
+    let w = createDeclarationWindow(['A', 'B', 'C', 'D']);
+    w = applyDeclarationAction(w, { type: 'pass', playerId: 'A' });
+    assert.equal(currentDeclarer(w), 'B');
+    assert.equal(w.consecutivePasses, 0);
+    w = applyDeclarationAction(w, { type: 'pass', playerId: 'B' });
+    w = applyDeclarationAction(w, { type: 'pass', playerId: 'C' });
+    assert.equal(w.finished, false);
+    assert.equal(w.consecutivePasses, 2);
+    w = applyDeclarationAction(w, { type: 'pass', playerId: 'D' });
+    assert.equal(w.finished, true);
+});

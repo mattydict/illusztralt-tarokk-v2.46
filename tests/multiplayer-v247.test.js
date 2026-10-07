@@ -73,9 +73,11 @@ function chooseCards(room, playerId, count) {
   assert.equal(room.currentPlayerId,taker);
   assert.equal(room.snapshotFor(taker).legalActionTypes.includes('declaration'), true);
 
-  // Three consecutive passes in the actual declaration phase start the play phase.
+  // The partner call is outside the declaration pass counter. The taker now
+  // gets the first actual declaration turn; that opening turn is excluded
+  // from the three-pass streak. B must therefore pass first, followed by C-D-A.
   const declOrder=[...room.declarationWindow.order];
-  for (const id of declOrder.slice(0,3)) {
+  for (const id of declOrder) {
     assert.equal(room.snapshotFor(id).legalActionHints.declarationActions.some(a=>a.type==='pass'), true);
     room.dispatch(id,room.sequence,{type:'declaration',action:{type:'pass'}});
   }

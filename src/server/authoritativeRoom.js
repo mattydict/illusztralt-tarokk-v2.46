@@ -338,7 +338,14 @@ export class AuthoritativeRoom {
     }
     const partnerId = resolveCalledPartner(playerId, rank, hands);
     if (!partnerId) throw new Error(`A ${rank}. tarokk nem ad egyértelmű partnert.`);
-    const g0 = createInitialState(this.playerIds, this.dealerIndex); const players = g0.players.map(p => { const source = this.round.players.find(x => x.playerId === p.id); return { ...p, hand: [...(source?.hand ?? [])], score: source?.score ?? 0, active: true }; }); let game = setPartnership({ ...g0, players, talon: [], contract: this.round.contract, startingPlayerId: this.round.startingPlayerId, skartsByPlayer: Object.fromEntries(this.round.players.map(p => [p.playerId, [...p.skart]])), preSkartSuitCountsByPlayer: Object.fromEntries(this.round.players.map(p => [p.playerId, p.preSkartSuitCounts ?? {}])) }, playerId, partnerId); game = recordPartnerCall(game, rank, partnerId); const takerIndex = game.players.findIndex(p => p.id === playerId); game = startDeclarations(game, takerIndex); this.game = game; this.declarationWindow = createDeclarationWindow(declarationOrderFor(playerId, this.playerIds), true); this.round = { ...this.round, phase: 'declarations', currentPlayerId: playerId, calledTarokk: rank }; }
+    const g0 = createInitialState(this.playerIds, this.dealerIndex); const players = g0.players.map(p => { const source = this.round.players.find(x => x.playerId === p.id); return { ...p, hand: [...(source?.hand ?? [])], score: source?.score ?? 0, active: true }; }); let game = setPartnership({ ...g0, players, talon: [], contract: this.round.contract, startingPlayerId: this.round.startingPlayerId, skartsByPlayer: Object.fromEntries(this.round.players.map(p => [p.playerId, [...p.skart]])), preSkartSuitCountsByPlayer: Object.fromEntries(this.round.players.map(p => [p.playerId, p.preSkartSuitCounts ?? {}])) }, playerId, partnerId); game = recordPartnerCall(game, rank, partnerId); const takerIndex = game.players.findIndex(p => p.id === playerId); game = startDeclarations(game, takerIndex); this.game = game;
+    // The mandatory partner call happens in the preceding partner-call phase.
+    // The declaration phase itself always starts with the taker. The declaration
+    // window separately excludes the taker's first actual declaration turn from
+    // the three-pass closing streak.
+    const declarationOrder = declarationOrderFor(playerId, this.playerIds);
+    this.declarationWindow = createDeclarationWindow(declarationOrder, true);
+    this.round = { ...this.round, phase: 'declarations', currentPlayerId: declarationOrder[0], calledTarokk: rank }; }
   declarationContext(playerId) {
     if (!this.game) throw new Error('Nincs aktív játék.');
     const gp = getPlayer(this.game, playerId);

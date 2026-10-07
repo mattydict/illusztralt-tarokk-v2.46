@@ -552,8 +552,13 @@ export class AuthoritativeRoom {
     const takerIndex = game.players.findIndex(p => p.id === playerId);
     game = startDeclarations(game, takerIndex);
     this.game = game;
-    this.declarationWindow = createDeclarationWindow(declarationOrderFor(playerId, this.playerIds), true);
-    this.round = { ...this.round, phase: 'declarations', currentPlayerId: playerId, calledTarokk: rank };
+    // The mandatory partner call happens in the preceding partner-call phase.
+    // The declaration phase itself always starts with the taker. The declaration
+    // window separately excludes the taker's first actual declaration turn from
+    // the three-pass closing streak.
+    const declarationOrder = declarationOrderFor(playerId, this.playerIds);
+    this.declarationWindow = createDeclarationWindow(declarationOrder, true);
+    this.round = { ...this.round, phase: 'declarations', currentPlayerId: declarationOrder[0], calledTarokk: rank };
   }
 
   private declarationContext(playerId: string): DeclarationContext {
