@@ -24,9 +24,13 @@ function copyTree(src, dst) {
 }
 
 copyTree(engine, path.join(out, 'engine'));
-for (const name of ['main.js', 'multiplayer.js', 'multiplayer.html']) fs.copyFileSync(path.join(ui, name), path.join(out, name));
+for (const name of ['main.js', 'multiplayer.js', 'multiplayer.html']) {
+  const source = fs.readFileSync(path.join(ui, name), 'utf8');
+  const release = name === 'main.js' ? source.replaceAll("from '../engine/", "from './engine/") : source;
+  fs.writeFileSync(path.join(out, name), release);
+}
 let index = fs.readFileSync(path.join(ui, 'index.html'), 'utf8');
-index = index.replaceAll(/v\d+\.\d+/g, `v${version.replace(/\.0$/, '')}`).replace('./main.ts', './main.js');
+index = index.replaceAll(/v\d+\.\d+/g, `v${version.replace(/\.0$/, '')}`).replaceAll(/v=\d+\.\d+/g, `v=${version.replace(/\.0$/, '')}`).replace('./main.ts', './main.js');
 fs.writeFileSync(path.join(out, 'index.html'), index);
 let multiplayer = fs.readFileSync(path.join(out, 'multiplayer.html'), 'utf8').replaceAll(/v\d+\.\d+/g, `v${version.replace(/\.0$/, '')}`);
 fs.writeFileSync(path.join(out, 'multiplayer.html'), multiplayer);
