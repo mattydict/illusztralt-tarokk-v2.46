@@ -630,13 +630,11 @@ export class AuthoritativeRoom {
   private applyGameContra(playerId: string): void {
     if (!this.game || !canRaiseGameContraInGame(this.game, playerId)) throw new Error('Most nem mondhatsz kontrát a játékra.');
     this.game = raiseGameContraInGame(this.game, playerId);
-    if (this.declarationWindow) this.declarationWindow = markDeclarationTurnAction(this.declarationWindow, playerId);
   }
 
   private applyDeclarationContra(playerId: string, declarationId: string): void {
     if (!this.game || !canRaiseDeclarationContraInGame(this.game, declarationId, playerId)) throw new Error('Most nem mondhatsz kontrát erre a bemondásra.');
     this.game = raiseDeclarationContraInGame(this.game, declarationId, playerId);
-    if (this.declarationWindow) this.declarationWindow = markDeclarationTurnAction(this.declarationWindow, playerId);
   }
 
   private applyPlayCard(playerId: string, cardId: string): void {

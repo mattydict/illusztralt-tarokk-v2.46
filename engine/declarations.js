@@ -38,7 +38,13 @@ export function availableDeclarations(hand, context) {
     const hasTrullContext = context.trullDeclared === true || previous.has('tuletroa') || context.trullDeclared === undefined;
     const rareTakerCentrum = context.isTaker === true && context.trullOmittedByTaker === true;
     const lyukasAllowed = context.seatContext !== 'lyukasCentrum' || context.lastSeatHasXVIIAndUnboundHigherTarokk === true;
-    if ((hasTrullContext || rareTakerCentrum) && lyukasAllowed)
+    // XIX partner-call + Centrum is the exceptional XX/XIX communication line.
+    // In this exact XIX-called configuration the speaker must hold the complete
+    // Skíz–XXI–XX–XVIII core; a generic XX + one big honour is not sufficient.
+    const strictXixCentrumCore = context.calledTarokk === 19
+        ? (hasTarokk(hand, 22) && hasTarokk(hand, 21) && hasTarokk(hand, 20) && hasTarokk(hand, 18))
+        : true;
+    if ((hasTrullContext || rareTakerCentrum) && lyukasAllowed && strictXixCentrumCore)
         result.push({ type: 'centrum', required: false });
     if (hasTrullContext && !rareTakerCentrum && lyukasAllowed) {
         result.push({ type: 'kismadar', required: false }, { type: 'nagymadar', required: false });

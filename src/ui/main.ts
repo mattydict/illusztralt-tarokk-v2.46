@@ -640,10 +640,11 @@ function actionButtons(){
       const ctx = {isTaker:HUMAN===game.takerId, invited:round.auctionOutcome?.calledTarokk!==undefined, ...(round.auctionOutcome?.calledTarokk!==undefined?{invitedTarokk:round.auctionOutcome.calledTarokk as 18|19|20}:{}), ...(round.contract?{contract:round.contract}:{}), previousDeclarations:game.declarations.declarations.map(d=>d.type),partnersKnown:partnerPubliclyKnown(game), ...(HUMAN===game.partnerId?{isPartner:true}:{}), ...(round.calledTarokk!==undefined?{calledTarokk:round.calledTarokk as 18|19|20}:{}), ...(game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullDeclared:true}:{}), ...(HUMAN===game.takerId&&round.calledTarokk===19&&!game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullOmittedByTaker:true}:{})};
       const acts=legalDeclarationActions(declarationWindow,HUMAN,hp.hand,ctx);
       const currentGame=game;
+      const humanNeedsRekontra=Boolean((currentGame.gameContraState?.records ?? []).some(r=>r.side==='defence' && r.level==='kontra' && !((currentGame.gameContraState?.records ?? []).some(x=>x.side==='taker' && x.level==='rekontra')) && HUMAN===currentGame.partnerId));
       const currentTrickNumber=currentGame.completedTricks.length+1;
       const humanSide=HUMAN===currentGame.takerId || HUMAN===currentGame.partnerId ? 'taker' : 'defence';
       const pairAlreadyDeclaredThisTrick=currentGame.declarations.declarations.some(d=>d.declaredAtTrick===currentTrickNumber && ((d.ownerId===currentGame.takerId || d.ownerId===currentGame.partnerId ? 'taker' : 'defence')===humanSide));
-      const filteredActs=pairAlreadyDeclaredThisTrick ? acts.filter(a=>a.type!=='declare') : acts;
+      const filteredActs=humanNeedsRekontra ? acts.filter(a=>a.type==='pass') : (pairAlreadyDeclaredThisTrick ? acts.filter(a=>a.type!=='declare') : acts);
       const declButtons=filteredActs.flatMap((a)=>{
         const i=acts.indexOf(a);
         if(a.type==='declare' && (a.declaration==='kingUltimo' || a.declaration==='kingUhu')){

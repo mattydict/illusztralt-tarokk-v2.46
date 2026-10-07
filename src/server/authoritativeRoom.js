@@ -397,8 +397,8 @@ export class AuthoritativeRoom {
     this.game = startPlay({ ...this.game, startingPlayerId: this.round.startingPlayerId }, leaderIndex);
     this.round = { ...this.round, phase: 'play', currentPlayerId: this.game.players[leaderIndex]?.id };
   }
-  applyGameContra(playerId) { if (!this.game || !canRaiseGameContraInGame(this.game, playerId)) throw new Error('Most nem mondhatsz kontrát a játékra.'); this.game = raiseGameContraInGame(this.game, playerId); if (this.declarationWindow) this.declarationWindow = markDeclarationTurnAction(this.declarationWindow, playerId); }
-  applyDeclarationContra(playerId, declarationId) { if (!this.game || !canRaiseDeclarationContraInGame(this.game, declarationId, playerId)) throw new Error('Most nem mondhatsz kontrát erre a bemondásra.'); this.game = raiseDeclarationContraInGame(this.game, declarationId, playerId); if (this.declarationWindow) this.declarationWindow = markDeclarationTurnAction(this.declarationWindow, playerId); }
+  applyGameContra(playerId) { if (!this.game || !canRaiseGameContraInGame(this.game, playerId)) throw new Error('Most nem mondhatsz kontrát a játékra.'); this.game = raiseGameContraInGame(this.game, playerId); }
+  applyDeclarationContra(playerId, declarationId) { if (!this.game || !canRaiseDeclarationContraInGame(this.game, declarationId, playerId)) throw new Error('Most nem mondhatsz kontrát erre a bemondásra.'); this.game = raiseDeclarationContraInGame(this.game, declarationId, playerId); }
   applyPlayCard(playerId, cardId) {
     if (!this.game || this.game.phase !== 'play') throw new Error('Most nincs lejátszási fázis.');
     const completedBefore = this.game.completedTricks.length;

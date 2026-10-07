@@ -103,6 +103,10 @@ function declarationFeasibilityGate(type: DeclarationType, hand: Card[], context
   const big = has(21) || has(22);
   const chain = context.trullDeclared === true || context.trullOmittedByTaker === true || context.previousDeclarations.includes('fourKings');
   if (type === 'centrum') {
+    if (context.calledTarokk === 19) {
+      const strictXixCentrumCore = has(22) && has(21) && has(20) && has(18);
+      if (!strictXixCentrumCore) return { allowed: false, reason: 'XIX-hívás után a Centrum csak Skíz–XXI–XX–XVIII kézzel szabályos.' };
+    }
     const strongXixCentrumChain = chain && has(20) && t >= 5 && (has(21) || has(22));
     const baseCore = has(20) && (has(21) || has(22)) && t >= 5;
     if (!baseCore && !strongXixCentrumChain) return { allowed: false, reason: 'Centrum: az AI-nál hiányzik a saját XX + nagyhonőr mag; a kommunikáció önmagában nem elég.' };

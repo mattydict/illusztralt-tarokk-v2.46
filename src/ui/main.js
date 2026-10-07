@@ -581,7 +581,6 @@ function forceSinglePlayerDefenceIdentification(id) {
     try {
         game = raiseGameContraInGame(game, id);
         round = { ...round, eventLog: [...round.eventLog, `${playerName(id)}: Kontra a játékra — az ellenpár azonosította magát.`] };
-        declarationWindow = markDeclarationTurnAction(declarationWindow, id);
         message = `${playerName(id)} kontrával azonosította az ellenpárt.`;
         return true;
     } catch {
@@ -687,8 +686,7 @@ function runAiDeclarations() {
             const contraDecision = chooseAIContra(game, id);
             const target = contraDecision?.target ?? 'game';
             game = target === 'game' ? raiseGameContraInGame(game, id) : raiseDeclarationContraInGame(game, target, id);
-            declarationWindow = markDeclarationTurnAction(declarationWindow, id);
-            round = { ...round, eventLog: [...round.eventLog, `${playerName(id)}: ${target === 'game' ? 'Kontra a játékra' : 'Kontra a bemondásra'} — az ellenpár azonosította magát.`] };
+                round = { ...round, eventLog: [...round.eventLog, `${playerName(id)}: ${target === 'game' ? 'Kontra a játékra' : 'Kontra a bemondásra'} — az ellenpár azonosította magát.`] };
             const refreshedCtx = { ...ctx, speakerRolePubliclyKnown: true, partnersKnown: true, allowHiddenDefenceFourKings: false };
             actions = legalDeclarationActions(declarationWindow, id, gp.hand, refreshedCtx);
             action = actions.find(a => a.type === 'declare' && a.declaration === 'fourKings') ?? actions.find(a => a.type === 'pass') ?? actions[0];
@@ -697,16 +695,14 @@ function runAiDeclarations() {
             const contraDecision = chooseAIContra(game, id);
             const target = contraDecision?.target ?? 'game';
             game = target === 'game' ? raiseGameContraInGame(game, id) : raiseDeclarationContraInGame(game, target, id);
-            declarationWindow = markDeclarationTurnAction(declarationWindow, id);
-            round = { ...round, eventLog: [...round.eventLog, `${playerName(id)}: ${target === 'game' ? 'Kontra a játékra' : 'Kontra a bemondásra'} — az ellenpár azonosította magát.`] };
+                round = { ...round, eventLog: [...round.eventLog, `${playerName(id)}: ${target === 'game' ? 'Kontra a játékra' : 'Kontra a bemondásra'} — az ellenpár azonosította magát.`] };
         }
         const forcedRekontraTarget = singlePlayerTakerRekontraTarget(game, id);
         if (forcedRekontraTarget && action.type !== 'pass') {
             game = forcedRekontraTarget === 'game'
                 ? raiseGameContraInGame(game, id)
                 : raiseDeclarationContraInGame(game, forcedRekontraTarget, id);
-            declarationWindow = markDeclarationTurnAction(declarationWindow, id);
-            round = { ...round, eventLog: [...round.eventLog, `${playerName(id)}: Rekontra — a felvevőpár azonosította magát.`] };
+                round = { ...round, eventLog: [...round.eventLog, `${playerName(id)}: Rekontra — a felvevőpár azonosította magát.`] };
         }
         if (action.type === 'declare') {
             const targetCardId = (action.declaration === 'kingUltimo' || action.declaration === 'kingUhu') ? targetCardForKingDeclaration(action.declaration, gp.hand) : undefined;
@@ -1129,7 +1125,7 @@ function render() {
             if (a.type !== 'pass' && privateSideForPlayer(game, HUMAN) === 'defence' && !isRolePublicForPlayer(game, round, declarationWindow, HUMAN))
                 throw new Error('Bemondás előtt az ellenpárnak kontrával kell azonosítania magát; Passzhoz ez nem szükséges.');
             if (singlePlayerTakerRekontraTarget(game, HUMAN) && a.type !== 'pass')
-                throw new Error('Az ellenpár kontrája után a felvevőpárnak előbb rekontrával kell azonosítania magát.');
+                throw new Error('Az ellenpár kontrája után bemondás csak rekontrával tehető; Passzhoz nem kell rekontra.');
             // Keep the declaration window transactional with the game state: the
             // authoritative engine must accept a figure before the window advances.
             if (a.type === 'declare') {
