@@ -407,6 +407,11 @@ export function chooseAIAuctionAction(
   const nagymadarRanks = [20, 19, 18, 17, 16];
   const nagymadarHighCount = tarokkRanks.filter(rank => nagymadarRanks.includes(rank)).length;
   const nagymadarOpeningOne = exceptionalOpeningProfile && nagymadarHighCount >= 4 && hasSuitKing;
+  // A nyitó Kettes sem általános erősségi licit. Single-playerben csak a
+  // klasszikus nagyon erős két-királyos / nyolc-tarokkos kéz nyithat Kettessel:
+  // 7 tarokk + legalább két király, vagy legalább 8 tarokk.
+  const kingCount = hand.filter(card => card.kind === 'suit' && card.rank === 'K').length;
+  const openingTwoExceptional = tarokkRanks.length >= 8 || (tarokkRanks.length >= 7 && kingCount >= 2);
 
   if (options.singlePlayer && !position.hasOpened) {
     // These opening conventions are hard single-player policy gates, not
@@ -441,6 +446,14 @@ export function chooseAIAuctionAction(
       const nonSolo = scored.find(x => x.action.type === 'bid' && x.action.contract !== 'solo');
       if (nonSolo) {
         best = { ...nonSolo, reasons: [...nonSolo.reasons, 'Single-player kalibráció: nyitó Szóló csak a szűk kivételes kézprofilok egyikével engedett stratégiai cél.'] };
+      }
+    }
+
+    if (best.action.type === 'bid' && best.action.contract === 'two' && !openingTwoExceptional) {
+      const lower = scored.find(x => x.action.type === 'bid' && x.action.contract === 'one')
+        ?? scored.find(x => x.action.type === 'pass');
+      if (lower) {
+        best = { ...lower, reasons: [...lower.reasons, 'Single-player kalibráció: nyitó Kettes csak legalább 8 tarokknál, vagy 7 tarokk + két királynál megengedett.'] };
       }
     }
   }

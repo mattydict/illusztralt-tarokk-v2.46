@@ -249,7 +249,7 @@ export function playCard(state, playerId, cardId) {
         nextPlayerIndex: state.players.findIndex(p => p.id === winner),
         phase: 'scoring',
         ...(settlement ? { settlement } : {}),
-        finalPoints: { byPlayer, takerPair, defencePair, total: takerPair + defencePair, result }
+        finalPoints: { byPlayer, takerPair, defencePair, total: takerPair + defencePair, result, takerSkartPoints, defenceSkartPoints }
     };
 }
 function determineTrickWinner(cards, leadSuit) { let winner = cards[0]; for (const current of cards.slice(1))

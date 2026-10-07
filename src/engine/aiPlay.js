@@ -314,6 +314,20 @@ export function chooseAICard(state, playerId, beliefs, options = {}) {
         }
         return tactical;
     });
+    if (options.singlePlayer && state.trick?.cards.length === 0 && pairOf(playerId, state.takerId ?? '', state.partnerId) === 'defence') {
+        const defenceHasContra = (state.gameContraState?.records ?? []).some(r => r.side === 'defence')
+            || state.declarations.declarations.some(d => (d.contra?.records ?? []).some(r => r.side === 'defence'));
+        if (!defenceHasContra) {
+            for (const item of scored) {
+                if (isTarokk(item.card)) {
+                    item.score -= 10000;
+                    item.reasons.push('Single-player szabály: kontra nélküli ellenpár kizárólag színnel indulhat.');
+                } else {
+                    item.score += 1000;
+                }
+            }
+        }
+    }
     scored.sort((a, b) => {
         if (b.score !== a.score)
             return b.score - a.score;
@@ -340,8 +354,8 @@ function difficultyJitter(state, playerId, difficulty) {
     }
     return (hash >>> 0) / 4294967296;
 }
-export function chooseAICardAtDifficulty(state, playerId, beliefs, difficulty = 'expert') {
-    const decision = chooseAICard(state, playerId, beliefs);
+export function chooseAICardAtDifficulty(state, playerId, beliefs, difficulty = 'expert', options = {}) {
+    const decision = chooseAICard(state, playerId, beliefs, options);
     if (difficulty === 'expert' || !decision.alternatives || decision.alternatives.length < 2)
         return decision;
     const jitter = difficultyJitter(state, playerId, difficulty);

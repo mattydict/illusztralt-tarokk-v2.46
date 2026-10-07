@@ -176,6 +176,10 @@ function scoreDeclaration(option, hand, context, beliefs) {
         score += 2;
         if (beliefs.encouragements.doubleGame)
             score += beliefs.encouragements.doubleGame.score;
+        if (context.partnerDeclarationEncouragement) {
+            score += 5;
+            reasons.push('A partner 9 tarokk + Négykirály bemondása szabály szerinti erős partneri bíztatás; a Duplajátékot ezért kiemelten mérlegeli.');
+        }
         if (context.previousDeclarations.includes('centrum')) {
             score += 4;
             reasons.push('Centrum után a dupla kommunikációs jelzésként is működhet.');
@@ -185,6 +189,10 @@ function scoreDeclaration(option, hand, context, beliefs) {
         score += 1 + Math.min(t, 8) / 4;
         if (t >= 8)
             score += 2;
+        if (context.partnerDeclarationEncouragement) {
+            score += 2;
+            reasons.push('A partner 9 tarokk + Négykirály jelzése erős játékra bíztat; a Volátot is külön ellenőrzi.');
+        }
     }
     if (option.type === 'pagatUltimo' || option.type === 'sasUltimo' || option.type === 'kingUltimo')
         score += 5;
