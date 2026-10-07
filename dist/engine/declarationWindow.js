@@ -1,4 +1,13 @@
 import { availableDeclarations, declarationRequiresTarokkCount } from './declarations.js';
+export function declarationOrderFromTaker(playerIds, takerId) {
+    if (!Array.isArray(playerIds) || playerIds.length !== 4)
+        throw new Error('A bemondási sorrendhez 4 játékos szükséges.');
+    const start = playerIds.indexOf(takerId);
+    if (start < 0)
+        throw new Error('A felvevő nincs a játékosok között.');
+    return playerIds.map((_, i) => playerIds[(start + i) % playerIds.length]);
+}
+
 export function createDeclarationWindow(order, firstRound = true) {
     if (order.length !== 4)
         throw new Error('A bemondási körhöz 4 játékos szükséges.');
