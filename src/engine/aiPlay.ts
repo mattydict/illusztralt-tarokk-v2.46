@@ -50,9 +50,108 @@ export interface AICardDecision {
   alternatives?: AICardAlternative[];
 }
 
+export function assessXXILeadRisk(state: GameState, playerId: string): {
+  level: 'none' | 'low' | 'medium' | 'high' | 'certain';
+  safe: boolean;
+  hardHold: boolean;
+  penalty: number;
+  reason: string;
+  tarokkCount?: number;
+  opponentsAfter?: string[];
+} {
+  if ((state as any).singlePlayerPolicy !== true) {
+    return { level: 'none', safe: true, hardHold: false, penalty: 0, reason: '' };
+  }
+  const hand = state.players.find(p => p.id === playerId)?.hand ?? [];
+  const xxi = hand.find(c => c.kind === 'tarokk' && c.rank === 21);
+  if (!xxi || pairOf(playerId, state.takerId ?? '', state.partnerId) !== 'defence') {
+    return { level: 'none', safe: true, hardHold: false, penalty: 0, reason: '' };
+  }
+  const active = state.players.filter(p => p.active);
+  const me = active.findIndex(p => p.id === playerId);
+  if (me < 0) return { level: 'none', safe: true, hardHold: false, penalty: 0, reason: '' };
+  const trickCards = state.trick?.cards ?? [];
+  const played = new Set(trickCards.map(c => c.player));
+  const isOpponent = (id: string) => pairOf(id, state.takerId ?? '', state.partnerId) === 'taker';
+
+  // A Skíz that has already appeared in a completed trick cannot catch a
+  // subsequently played XXI. Conversely, a Skíz already visible in the
+  // current trick is an immediate, not merely hypothetical, threat.
+  const completedSkiz = state.completedTricks.some(t => t.cards.some(c => c.card.kind === 'tarokk' && c.card.rank === 22));
+  const currentOpponentSkiz = trickCards.some(c => c.card.kind === 'tarokk' && c.card.rank === 22 && isOpponent(c.player));
+  if (currentOpponentSkiz) {
+    return {
+      level: 'certain', safe: false, hardHold: true, penalty: 900,
+      reason: 'Az ellenpár Skíze már az aktuális ütésben van; a XXI-es kijátszása közvetlenül XXI-fogást adna.',
+    };
+  }
+  if (completedSkiz) {
+    return { level: 'none', safe: true, hardHold: false, penalty: 0, reason: 'A Skíz már korábbi ütésben kijött, ezért a XXI-es nem fogható meg vele.' };
+  }
+
+  // Judge the danger from the actual current-trick position, not merely from
+  // the fixed seat order. A player can be safe to play the XXI even early in
+  // the hand when every opponent has already acted in the current trick.
+  const opponentsAfter: string[] = [];
+  for (let offset = 1; offset < active.length; offset += 1) {
+    const p = active[(me + offset) % active.length];
+    if (!played.has(p.id) && isOpponent(p.id)) opponentsAfter.push(p.id);
+  }
+  if (!opponentsAfter.length) {
+    return { level: 'none', safe: true, hardHold: false, penalty: 0, reason: 'Az aktuális ütésben már nincs mögötte ellenpárti játékos, így nincs hátulról érkező Skíz-veszély.' };
+  }
+
+  const tarokkCount = hand.filter(c => c.kind === 'tarokk').length;
+  // The specialist material describes two complementary truths: the XXI is
+  // normally preserved against a possible rear-position Skíz, but in a rare
+  // deceptive position a good player may deliberately risk it once the safe
+  // escape window is closing. Therefore the policy is a graded one, not an
+  // absolute ban.
+  if (tarokkCount >= 4) {
+    return {
+      level: 'high', safe: false, hardHold: true, penalty: opponentsAfter.length > 1 ? 420 : 360,
+      tarokkCount, opponentsAfter,
+      reason: `Még ${tarokkCount} tarokk van kézben; a XXI-est a két utolsó tarokkig meg kell őrizni, mert mögötte még ellenpárti játékos marad.`,
+    };
+  }
+  if (tarokkCount === 3) {
+    return {
+      level: 'high', safe: false, hardHold: true, penalty: opponentsAfter.length > 1 ? 360 : 300,
+      tarokkCount, opponentsAfter,
+      reason: 'Három tarokk maradt; bizonytalan Skíz-veszély mellett a XXI-est még nem szabad elkockáztatni.',
+    };
+  }
+  if (tarokkCount === 2) {
+    return {
+      level: 'medium', safe: false, hardHold: false, penalty: opponentsAfter.length > 1 ? 28 : 18,
+      tarokkCount, opponentsAfter,
+      reason: 'Már csak két tarokk maradt; ez az a ritka, parti-függő szakasz, amikor a XXI-est az utolsó előtti tarokként már ki lehet kockáztatni a hátulról fogás elkerülésére.',
+    };
+  }
+  return {
+    level: 'low', safe: false, hardHold: false, penalty: 4,
+    tarokkCount, opponentsAfter,
+    reason: 'A XXI-es az utolsó tarokk; a megőrzési kötelezettség már nem indokol külön visszatartást.',
+  };
+}
 function selectStrategicRolloutCard(simulatedState: GameState, playerId: string, legalCards: Card[]): Card | undefined {
   const beliefs = deriveBeliefsFromPublicDeclarations(simulatedState);
   const scored = legalCards.map(card => scoreCard(simulatedState, playerId, card, beliefs));
+  // XXI-védelem: három vagy több kézben maradó tarokknál a XXI-es
+  // megőrzése erős stratégiai korlát. Ez nem abszolút szabály: ha nincs
+  // más szabályos lap, a XXI természetesen kényszerből kijátszható.
+  // Két maradó tarokknál az assessXXILeadRisk már csak puha büntetést ad,
+  // így a konkrét parti, az ütés szerkezete és a többi stratégiai cél dönthet.
+  if (state.singlePlayerPolicy === true) {
+    const xxiItem = scored.find(item => item.card.kind === 'tarokk' && item.card.rank === 21);
+    const xxiSafety = xxiItem ? assessXXILeadRisk(state, playerId) : undefined;
+    const xxiLock = state.lockedCards?.some(l => !l.resolved && l.cardId === 'T21') ?? false;
+    if (xxiItem && xxiSafety?.hardHold && !xxiLock && scored.length > 1) {
+      const bestAlternative = Math.max(...scored.filter(item => item !== xxiItem).map(item => item.score));
+      xxiItem.score = bestAlternative - 100000;
+      xxiItem.reasons.push('XXI-védelem: három vagy több tarokk mellett a XXI-est meg kell őrizni; csak kényszerhelyzet írhatja felül.');
+    }
+  }
   scored.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     if (a.card.points !== b.card.points) return a.card.points - b.card.points;
@@ -455,12 +554,22 @@ function communicationValueForArbitration(state: GameState, playerId: string, ca
 function scoreCard(state: GameState, playerId: string, card: Card, beliefs: PartnerBeliefState): AICardDecision {
   const reasons: string[] = [];
   const trick = state.trick!;
+  let score = 0;
+  if (card.kind === 'tarokk' && card.rank === 21) {
+    const safety = assessXXILeadRisk(state, playerId);
+    const activeXXILock = state.lockedCards?.some(l => !l.resolved && l.cardId === card.id) ?? false;
+    if (safety.penalty > 0 && !activeXXILock) {
+      score -= safety.penalty;
+      reasons.push(`XXI-védelem: ${safety.reason}`);
+    } else if (safety.reason) {
+      reasons.push(`XXI-biztonság: ${safety.reason}`);
+    }
+  }
   const playerSide = pairOf(playerId, state.takerId ?? '', state.partnerId);
   const partnerId = playerSide === 'taker'
     ? state.takerId === playerId ? state.partnerId : state.takerId
     : state.players.find(p => p.active && p.id !== playerId && pairOf(p.id, state.takerId ?? '', state.partnerId) === 'defence')?.id;
 
-  let score = 0;
   const cardPoints = card.points;
   const nextTrickNumber = state.completedTricks.length + 1;
   const highTarokkCost = isTarokk(card) ? Math.max(0, card.rank - 8) * 0.7 : 0;

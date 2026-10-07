@@ -442,19 +442,13 @@ export function chooseAIAuctionAction(
       }
     }
 
-    if (best.action.type === 'bid' && best.action.contract === 'solo' && !openingSoloExceptional) {
-      const nonSolo = scored.find(x => x.action.type === 'bid' && x.action.contract !== 'solo');
-      if (nonSolo) {
-        best = { ...nonSolo, reasons: [...nonSolo.reasons, 'Single-player kalibráció: nyitó Szóló csak a szűk kivételes kézprofilok egyikével engedett stratégiai cél.'] };
-      }
-    }
-
-    if (best.action.type === 'bid' && best.action.contract === 'two' && !openingTwoExceptional) {
-      const lower = scored.find(x => x.action.type === 'bid' && x.action.contract === 'one')
-        ?? scored.find(x => x.action.type === 'pass');
-      if (lower) {
-        best = { ...lower, reasons: [...lower.reasons, 'Single-player kalibráció: nyitó Kettes csak legalább 8 tarokknál, vagy 7 tarokk + két királynál megengedett.'] };
-      }
+    const forbiddenOpeningContracts = new Set<string>();
+    if (!openingSoloExceptional) forbiddenOpeningContracts.add('solo');
+    if (!openingTwoExceptional && !nagymadarOpeningOne) forbiddenOpeningContracts.add('two');
+    if (!openingSoloExceptional && !openingTwoExceptional && !nagymadarOpeningOne) forbiddenOpeningContracts.add('one');
+    const constrainedOpening = scored.find(x => x.action.type === 'pass' || (x.action.type === 'bid' && !forbiddenOpeningContracts.has(x.action.contract)));
+    if (constrainedOpening && best.action.type === 'bid' && forbiddenOpeningContracts.has(best.action.contract)) {
+      best = { ...constrainedOpening, reasons: [...constrainedOpening.reasons, 'Single-player nyitókalibráció: a túl magas nyitólicit keményen kizárva a kéz profilja alapján.'] };
     }
   }
   if (pass && best.action.type === 'bid') {

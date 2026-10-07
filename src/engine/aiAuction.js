@@ -326,6 +326,14 @@ export function chooseAIAuctionAction(auction, playerId, hand, hands, options = 
     const nagymadarRanks = [20, 19, 18, 17, 16];
     const nagymadarHighCount = tarokkRanks.filter(rank => nagymadarRanks.includes(rank)).length;
     const nagymadarOpeningOne = exceptionalOpeningProfile && nagymadarHighCount >= 4 && hasSuitKing;
+    // Single-player opening calibration: an opening Egyes is itself a very
+    // strong statement. It is reserved for the two concrete profiles already
+    // established above, plus the separately agreed very-strong opening hand:
+    // 8+ tarokks, or 7 tarokks with at least two kings. Do not let the generic
+    // scoring layers leak a normal hand into an opening Egyes.
+    const suitKings = hand.filter(card => card.kind === 'suit' && card.rank === 'K').length;
+    const veryStrongOpeningOne = hand.filter(isTarokk).length >= 8 || (hand.filter(isTarokk).length >= 7 && suitKings >= 2);
+    const veryStrongOpeningTwo = veryStrongOpeningOne;
     if (options.singlePlayer && !position.hasOpened) {
         if (openingSoloExceptional) {
             const solo = scored.find(x => x.action.type === 'bid' && x.action.contract === 'solo');
@@ -341,6 +349,19 @@ export function chooseAIAuctionAction(auction, playerId, hand, hands, options = 
             const two = scored.find(x => x.action.type === 'bid' && x.action.contract === 'two');
             if (two)
                 return { ...two, reasons: [...two.reasons, 'Single-player nyitókalibráció: a kivételes nagyhonőrös profil megvan, de a Szóló- és Egyes-küszöb nem teljesül; Kettes a következő nyitó lépcső.'] };
+        }
+        // Hard opening gates: outside the exceptional Solo profiles, Solo is not
+        // an opening option at all. Likewise, Egyes is reserved for the very strong
+        // 7-tarokk/2-king or 8+-tarokk hand (or the already established Nagymadár
+        // profile). This prevents downstream scoring layers from reintroducing a
+        // forbidden opening contract.
+        const forbiddenOpeningContracts = new Set();
+        if (!openingSoloExceptional) forbiddenOpeningContracts.add('solo');
+        if (!veryStrongOpeningTwo && !nagymadarOpeningOne) forbiddenOpeningContracts.add('two');
+        if (!veryStrongOpeningOne && !nagymadarOpeningOne) forbiddenOpeningContracts.add('one');
+        const constrainedOpening = scored.find(x => x.action.type === 'pass' || (x.action.type === 'bid' && !forbiddenOpeningContracts.has(x.action.contract)));
+        if (constrainedOpening && best.action.type === 'bid' && forbiddenOpeningContracts.has(best.action.contract)) {
+            return { ...constrainedOpening, reasons: [...constrainedOpening.reasons, 'Single-player nyitókalibráció: a túl magas nyitólicit keményen kizárva a kéz profilja alapján.'] };
         }
     }
     if (options.singlePlayer && !position.hasOpened && best.action.type === 'bid' && best.action.contract === 'solo' && !openingSoloExceptional) {
