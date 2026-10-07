@@ -12,6 +12,7 @@ import { legalDeclarationActions, applyDeclarationAction, createDeclarationWindo
 import { createRound, dealRound, distributeRoundTalon, skartRoundPlayer, announceSkartCount, roundToGameState } from './round.js';
 import { startDeclarations, startPlay, declareFigureInGame, playCard, legalCardsForPlay, recordPartnerCall, raiseGameContraInGame, raiseDeclarationContraInGame } from './game.js';
 import { resolveCalledPartner } from './partnership.js';
+import { publicPartnerId, privateSideForPlayer, publicRoleForPlayer } from './partnershipVisibility.js';
 import { chooseAICard } from './aiPlay.js';
 /**
  * Runs one complete AI-only deal from the auction through settlement.
@@ -224,6 +225,9 @@ function mapDeclarationDecision(actions, actionType) {
     return actions.find(a => a.type === 'declare' && a.declaration === actionType) ?? actions.find(a => a.type === 'pass') ?? actions[0];
 }
 function declarationContext(game, round, declarationWindow, id, hand) {
+    const publicPartner = publicPartnerId(game, round, declarationWindow);
+    const privateSide = privateSideForPlayer(game, id);
+    const publicRole = publicRoleForPlayer(game, round, declarationWindow, id);
     return {
         isTaker: id === game.takerId,
         invited: round.auctionOutcome?.calledTarokk !== undefined,
@@ -231,8 +235,11 @@ function declarationContext(game, round, declarationWindow, id, hand) {
         ...(round.contract ? { contract: round.contract } : {}),
         previousDeclarations: game.declarations.declarations.map(d => d.type),
         firstRound: declarationWindow.firstRound,
-        partnersKnown: true,
+        partnersKnown: Boolean(publicPartner),
         ...(id === game.partnerId ? { isPartner: true } : {}),
+        speakerIsDefence: privateSide === 'defence',
+        speakerRolePubliclyKnown: publicRole !== 'unknown',
+        allowHiddenDefenceFourKings: true,
         ...(round.calledTarokk !== undefined ? { calledTarokk: round.calledTarokk } : {}),
         ...(game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}),
         ...(id === game.takerId && round.calledTarokk === 19 && !game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}),

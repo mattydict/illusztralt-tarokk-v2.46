@@ -23,6 +23,12 @@ export interface DeclarationContext {
   pairDeclaredTypes?: DeclarationType[];
   /** Whether the player's partner has become unambiguous. */
   partnersKnown: boolean;
+  /** Speaker's own side, as inferred from their private information. */
+  speakerIsDefence?: boolean;
+  /** Whether the speaker's side is publicly identifiable to the table. */
+  speakerRolePubliclyKnown?: boolean;
+  /** AI-only planning hint: lets the AI consider Four Kings, then identify itself with a contra first. */
+  allowHiddenDefenceFourKings?: boolean;
   /** True when this player is the invited/partner side rather than the taker. */
   isPartner?: boolean;
   /** If the taker explicitly called a tarokk, this is the called card. */
@@ -81,11 +87,10 @@ export function availableDeclarations(hand: Card[], context: DeclarationContext)
   }
 
   if (!previous.has('volat')) {
-    result.push(
-      { type: 'tuletroa', required: false },
-      { type: 'fourKings', required: false },
-      { type: 'doubleGame', required: false },
-    );
+    result.push({ type: 'tuletroa', required: false });
+    const hiddenDefence = context.speakerIsDefence === true && context.speakerRolePubliclyKnown !== true && context.allowHiddenDefenceFourKings !== true;
+    if (!hiddenDefence) result.push({ type: 'fourKings', required: false });
+    result.push({ type: 'doubleGame', required: false });
   }
   result.push(
     { type: 'volat', required: false },

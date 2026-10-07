@@ -406,7 +406,7 @@ function runAiContraResponses() {
     const currentGame = game;
     const candidates = currentGame.players
       .filter(p => p.id !== HUMAN)
-      .map(p => ({ player: p, decision: chooseAIContra(currentGame, p.id) }))
+      .map(p => ({ player: p, decision: chooseAIContra(observerStateView(currentGame, p.id), p.id) }))
       .filter(x => x.decision !== undefined);
     if (!candidates.length) break;
     candidates.sort((a,b) => (b.decision?.score ?? -Infinity) - (a.decision?.score ?? -Infinity));
@@ -476,9 +476,10 @@ function runAiDeclarations(){
   const aiSide=id===game.takerId||id===game.partnerId?'taker':'defence';
   const pairAlreadyDeclaredThisTrick=game.declarations.declarations.some(d=>d.declaredAtTrick===currentTrickNumber&&((d.ownerId===game.takerId||d.ownerId===game.partnerId?'taker':'defence')===aiSide));
   const forcedCount=declarationWindow.pendingTarokkCountPlayerId===id?actions.find(a=>a.type==='tarokkCount'):undefined;
-  const worldBeliefs=buildAIBeliefSnapshot(game,id);
-  const handHypotheses=buildHandHypotheses(game,id,worldBeliefs);
-  const decision=chooseAIDeclaration(gp.hand,ctx,communicationBeliefs({previous:game.declarations.declarations.map(d=>d.type),...(round.calledTarokk!==undefined?{calledTarokk:round.calledTarokk as 18|19|20}: {})}),worldBeliefs,handHypotheses,game);
+  const aiVisibleGame=observerStateView(game,id);
+  const worldBeliefs=buildAIBeliefSnapshot(aiVisibleGame,id);
+  const handHypotheses=buildHandHypotheses(aiVisibleGame,id,worldBeliefs);
+  const decision=chooseAIDeclaration(gp.hand,ctx,communicationBeliefs({previous:game.declarations.declarations.map(d=>d.type),...(round.calledTarokk!==undefined?{calledTarokk:round.calledTarokk as 18|19|20}: {})}),worldBeliefs,handHypotheses,aiVisibleGame);
 
   let action: typeof actions[number]=actions[0]!;
   if(forcedCount) action=forcedCount;
@@ -608,7 +609,7 @@ function runAiPlay(){
     const beliefSnapshot=buildAIBeliefSnapshot(game,id);
     const partnerBeliefs=partnerBeliefsFromAIBeliefSnapshot(beliefSnapshot);
     const gameState=game;
-    const chosen=chooseAICardAtDifficulty(gameState,id,partnerBeliefs,aiDifficulty);
+    const chosen=chooseAICardAtDifficulty(observerStateView(gameState,id),id,partnerBeliefs,aiDifficulty,{observerRelative:true});
     game=playCard(gameState,id,chosen.card.id);
     setAiReason(id,chosen.reasons);
     if(round){

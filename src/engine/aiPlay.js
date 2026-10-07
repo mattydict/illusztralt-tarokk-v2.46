@@ -7,6 +7,7 @@ import { createPartnerBeliefState, updatePartnerBelief } from './beliefs.js';
 import { assessFigureCandidateValue, assessFigureGeometry, assessFigurePlayRisk } from './figureGeometry.js';
 import { preferredLeadAfterPartnerTarokkSignal, preferredLeadAfterTakerSuitReturnSignal, preferredOpeningLeadCard, preferredLeadAgainstHardFigure, scoreOpeningLeadConvention, scorePartnerTarokkReply, scoreResponseToPartnerOpeningLead, scorePartnerSignalAcknowledgement, scorePartnerFigureCommunicationLead } from './leadConventions.js';
 import { buildAIBeliefSnapshot } from './aiBeliefEngine.js';
+import { observerStateView } from './partnershipVisibility.js';
 import { buildHandHypotheses } from './aiHandHypotheses.js';
 import { evaluateCardContinuation } from './aiRollout.js';
 import { evaluateBirdFigureCandidate, activeOwnBirdDeclaration } from './aiFigurePlanner.js';
@@ -140,6 +141,7 @@ function selectStrategicRolloutCard(simulatedState, playerId, legalCards) {
  * opponent's hidden hand.
  */
 export function chooseAICard(state, playerId, beliefs, options = {}) {
+    if (options.observerRelative) state = observerStateView(state, playerId);
     const legal = legalCardsForPlay(state, playerId);
     if (!legal.length)
         throw new Error('Az AI-nak nincs szabályosan kijátszható lapja.');
@@ -449,6 +451,8 @@ function difficultyJitter(state, playerId, difficulty) {
     return (hash >>> 0) / 4294967296;
 }
 export function chooseAICardAtDifficulty(state, playerId, beliefs, difficulty = 'expert', options = {}) {
+    const observerRelative = options.observerRelative === true;
+    if (observerRelative) state = observerStateView(state, playerId);
     const decision = chooseAICard(state, playerId, beliefs, options);
     if (difficulty === 'expert' || !decision.alternatives || decision.alternatives.length < 2)
         return decision;

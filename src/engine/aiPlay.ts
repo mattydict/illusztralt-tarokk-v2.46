@@ -7,6 +7,7 @@ import { PartnerBeliefState, createPartnerBeliefState, updatePartnerBelief } fro
 import { assessFigureCandidateValue, assessFigureGeometry, assessFigurePlayRisk } from './figureGeometry.js';
 import { preferredLeadAfterPartnerTarokkSignal, preferredLeadAfterTakerSuitReturnSignal, preferredOpeningLeadCard, preferredLeadAgainstHardFigure, scoreOpeningLeadConvention, scorePartnerTarokkReply, scoreResponseToPartnerOpeningLead, scorePartnerSignalAcknowledgement, scorePartnerFigureCommunicationLead } from './leadConventions.js';
 import { buildAIBeliefSnapshot } from './aiBeliefEngine.js';
+import { observerStateView } from './partnershipVisibility.js';
 import { buildHandHypotheses } from './aiHandHypotheses.js';
 import { evaluateCardContinuation } from './aiRollout.js';
 import { evaluateBirdFigureCandidate, activeOwnBirdDeclaration } from './aiFigurePlanner.js';
@@ -168,6 +169,7 @@ function selectStrategicRolloutCard(simulatedState: GameState, playerId: string,
  * opponent's hidden hand.
  */
 export function chooseAICard(state: GameState, playerId: string, beliefs?: PartnerBeliefState, options: AICardDecisionOptions = {}): AICardDecision {
+  if ((options as any)?.observerRelative) state = observerStateView(state, playerId);
   const legal = legalCardsForPlay(state, playerId);
   if (!legal.length) throw new Error('Az AI-nak nincs szabályosan kijátszható lapja.');
   const partnerBeliefs = beliefs ?? deriveBeliefsFromPublicDeclarations(state);

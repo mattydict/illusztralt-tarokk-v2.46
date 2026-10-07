@@ -3,6 +3,7 @@ import { DeclarationType } from './declarations.js';
 import { ContraLevel, ContraState, canRaiseContra, initialContraState } from './contra.js';
 import { GameState, PlayerId } from './game.js';
 import { buildAIBeliefSnapshot } from './aiBeliefEngine.js';
+import { observerStateView } from './partnershipVisibility.js';
 import { buildHandHypotheses } from './aiHandHypotheses.js';
 import { simulateDeclarationWorlds } from './aiWorldSimulation.js';
 import { defenceOpeningRequestTargetFromPublicContra } from './leadConventions.js';

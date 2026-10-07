@@ -4,6 +4,7 @@ import { resolveCalledPartner, pairOf as pairOfEngine } from '../engine/partners
 import { createDeclarationWindow, declarationOrderFromTaker, currentDeclarer, legalDeclarationActions, applyDeclarationAction, markDeclarationTurnAction } from '../engine/declarationWindow.js';
 import { legalSkartCards } from '../engine/skart.js';
 import { nextContraLevel } from '../engine/contra.js';
+import { publicPartnerId, privateSideForPlayer, publicRoleForPlayer, isRolePublicForPlayer } from '../engine/partnershipVisibility.js';
 function cloneCard(card) { return card.kind === 'tarokk' ? { id: card.id, kind: card.kind, rank: card.rank, points: card.points } : { id: card.id, kind: card.kind, rank: card.rank, suit: card.suit, points: card.points }; }
 function handsMap(round) { return Object.fromEntries(round.players.map(p => [p.playerId, p.hand])); }
 function phaseOf(round, game) { return game ? game.phase : round.phase; }
@@ -171,10 +172,29 @@ export class AuthoritativeRoom {
       };
     });
     const auction = this.game ? undefined : { currentSeat: this.round.auction.currentSeat, highest: this.round.auction.highest, finished: this.round.auction.finished, out: [...this.round.auction.out], records: [...this.round.auction.records], outstandingInvite: this.round.auction.outstandingInvite, inviteAcceptedBy: this.round.auction.inviteAcceptedBy, holdOwnerId: this.round.auction.holdOwnerId };
-    const game = this.game ? this.publicGameView(this.game) : undefined;
+    const game = this.game ? this.publicGameView(this.game, playerId) : undefined;
     return { roomId: this.roomId, sequence: this.sequence, phase: phaseOf(this.round, this.game), ...(this.currentPlayerId ? { currentPlayerId: this.currentPlayerId } : {}), players, ...(auction ? { auction } : {}), ...(game ? { game } : {}), ...(this.lastSettlement ? { lastSettlement: this.lastSettlement } : {}), match: { rounds: this.matchRounds, dealsPerRound: this.playerIds.length, totalDeals: this.matchRounds * this.playerIds.length, completedDeals: this.settlementHistory.length, currentRound: Math.min(this.matchRounds, Math.floor(this.settlementHistory.length / this.playerIds.length) + 1), complete: phaseOf(this.round, this.game) === 'match-complete' }, scoreboard: { dealsPlayed: this.settlementHistory.length, scores: Object.fromEntries(this.playerIds.map(id => [id, Number(this.matchScores[id] ?? 0)])), history: this.settlementHistory.slice(-12), instantHistory: this.instantScoreHistory.slice(-12) }, publicEvents: this.publicEvents.slice(-30), legalActionTypes: this.legalActionTypes(playerId), legalActionHints: this.legalActionHints(playerId), ...(this.currentPlayerId ? { turnTimeoutMs: this.turnTimeoutMs(), turnDeadlineAt: this.lastActionAt + this.turnTimeoutMs() } : {}) };
   }
-  publicGameView(game) { return { phase: game.phase, contract: game.contract, takerId: game.takerId, partnerId: game.partnerId, calledTarokk: game.calledTarokk, gameContra: game.gameContraState?.level ?? game.gameContra, trick: game.trick ? { leader: game.trick.leader, cards: game.trick.cards.map(x => ({ player: x.player, card: cloneCard(x.card) })) } : null, completedTricks: game.completedTricks.map(t => ({ leader: t.leader, winner: t.winner, cards: t.cards.map(x => ({ player: x.player, card: cloneCard(x.card) })) })), declarations: game.declarations.declarations.map(d => ({ id: d.id, type: d.type, ownerId: d.ownerId, status: d.status, contra: d.contra.level })), finalPoints: game.finalPoints, settlement: game.settlement }; }
+  publicGameView(game, viewerId) {
+    const publicPartner = publicPartnerId(game, this.round, this.declarationWindow);
+    const viewerRole = publicRoleForPlayer(game, this.round, this.declarationWindow, viewerId);
+    const privateSide = privateSideForPlayer(game, viewerId);
+    const partnerForViewer = publicPartner ?? (privateSide === 'partner' ? game.takerId : undefined);
+    return {
+      phase: game.phase,
+      contract: game.contract,
+      takerId: game.takerId,
+      ...(partnerForViewer ? { partnerId: partnerForViewer } : {}),
+      ...(viewerRole !== 'unknown' ? { publicRole: viewerRole } : {}),
+      calledTarokk: game.calledTarokk,
+      gameContra: game.gameContraState?.level ?? game.gameContra,
+      trick: game.trick ? { leader: game.trick.leader, cards: game.trick.cards.map(x => ({ player: x.player, card: cloneCard(x.card) })) } : null,
+      completedTricks: game.completedTricks.map(t => ({ leader: t.leader, winner: t.winner, cards: t.cards.map(x => ({ player: x.player, card: cloneCard(x.card) })) })),
+      declarations: game.declarations.declarations.map(d => ({ id: d.id, type: d.type, ownerId: d.ownerId, status: d.status, contra: d.contra.level })),
+      finalPoints: game.finalPoints,
+      settlement: game.settlement,
+    };
+  }
   legalActionTypes(playerId) {
     if (!this.connected.has(playerId)) return [];
     const phase = phaseOf(this.round, this.game);
@@ -337,7 +357,7 @@ export class AuthoritativeRoom {
     }
     const partnerId = resolveCalledPartner(playerId, rank, hands);
     if (!partnerId) throw new Error(`A ${rank}. tarokk nem ad egyértelmű partnert.`);
-    const g0 = createInitialState(this.playerIds, this.dealerIndex); const players = g0.players.map(p => { const source = this.round.players.find(x => x.playerId === p.id); return { ...p, hand: [...(source?.hand ?? [])], score: source?.score ?? 0, active: true }; }); let game = setPartnership({ ...g0, players, talon: [], contract: this.round.contract, startingPlayerId: this.round.startingPlayerId, skartsByPlayer: Object.fromEntries(this.round.players.map(p => [p.playerId, [...p.skart]])), preSkartSuitCountsByPlayer: Object.fromEntries(this.round.players.map(p => [p.playerId, p.preSkartSuitCounts ?? {}])) }, playerId, partnerId); game = recordPartnerCall(game, rank, partnerId); const takerIndex = game.players.findIndex(p => p.id === playerId); game = startDeclarations(game, takerIndex); this.game = game;
+    const g0 = createInitialState(this.playerIds, this.dealerIndex); const players = g0.players.map(p => { const source = this.round.players.find(x => x.playerId === p.id); return { ...p, hand: [...(source?.hand ?? [])], score: source?.score ?? 0, active: true }; }); let game = setPartnership({ ...g0, players, talon: [], contract: this.round.contract, startingPlayerId: this.round.startingPlayerId, skartsByPlayer: Object.fromEntries(this.round.players.map(p => [p.playerId, [...p.skart]])), preSkartSuitCountsByPlayer: Object.fromEntries(this.round.players.map(p => [p.playerId, p.preSkartSuitCounts ?? {}])), ...(this.round.auctionOutcome?.calledTarokk !== undefined ? { publicPartnerId: partnerId } : {}) }, playerId, partnerId); game = recordPartnerCall(game, rank, partnerId); const takerIndex = game.players.findIndex(p => p.id === playerId); game = startDeclarations(game, takerIndex); this.game = game;
     // The mandatory partner call happens in the preceding partner-call phase.
     // The declaration phase itself always starts with the taker. The declaration
     // window separately excludes the taker's first actual declaration turn from
@@ -352,7 +372,12 @@ export class AuthoritativeRoom {
     const pairDeclaredTypes = this.game.declarations.declarations
       .filter(d => pairOfId(d.ownerId, this.game.takerId, this.game.partnerId) === side)
       .map(d => d.type);
-    return { isTaker: playerId === this.game.takerId, invited: this.round.auctionOutcome?.calledTarokk !== undefined, ...(this.round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: this.round.auctionOutcome.calledTarokk } : {}), ...(this.round.contract ? { contract: this.round.contract } : {}), previousDeclarations: this.game.declarations.declarations.map(d => d.type), pairDeclaredTypes, firstRound: this.declarationWindow?.firstRound ?? true, partnersKnown: true, ...(playerId === this.game.partnerId ? { isPartner: true } : {}), ...(this.round.calledTarokk !== undefined ? { calledTarokk: this.round.calledTarokk } : {}), ...(this.game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}), ...(playerId === this.game.takerId && this.round.calledTarokk === 19 && !this.game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}), speakerSeat: this.game.players.findIndex(p => p.id === playerId), ...(this.game.partnerId ? { partnerSeat: this.game.players.findIndex(p => p.id === this.game.partnerId) } : {}), ...(this.game.startingPlayerId ? { starterSeat: this.game.players.findIndex(p => p.id === this.game.startingPlayerId) } : {}), xxiThreatScore: this.game.declarations.declarations.some(d => d.type === 'fourKings') ? 6 : 0, skizCapturePressure: gp.hand.some(c => c.kind === 'tarokk' && c.rank === 22) ? 5 : 0 };
+    const publicPartner = publicPartnerId(this.game, this.round, this.declarationWindow);
+    const privateSide = privateSideForPlayer(this.game, playerId);
+    const publicRole = publicRoleForPlayer(this.game, this.round, this.declarationWindow, playerId);
+    const rolePublic = publicRole !== 'unknown';
+    const visiblePairDeclaredTypes = rolePublic || privateSide === 'partner' || privateSide === 'taker' ? pairDeclaredTypes : [];
+    return { isTaker: playerId === this.game.takerId, invited: this.round.auctionOutcome?.calledTarokk !== undefined, ...(this.round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: this.round.auctionOutcome.calledTarokk } : {}), ...(this.round.contract ? { contract: this.round.contract } : {}), previousDeclarations: this.game.declarations.declarations.map(d => d.type), pairDeclaredTypes: visiblePairDeclaredTypes, firstRound: this.declarationWindow?.firstRound ?? true, partnersKnown: Boolean(publicPartner), ...(playerId === this.game.partnerId ? { isPartner: true } : {}), ...(publicPartner ? { partnerSeat: this.game.players.findIndex(p => p.id === publicPartner) } : (privateSide === 'partner' ? { partnerSeat: this.game.players.findIndex(p => p.id === this.game.takerId) } : {})), speakerIsDefence: privateSide === 'defence', speakerRolePubliclyKnown: rolePublic, ...(this.round.calledTarokk !== undefined ? { calledTarokk: this.round.calledTarokk } : {}), ...(this.game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}), ...(playerId === this.game.takerId && this.round.calledTarokk === 19 && !this.game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}), speakerSeat: this.game.players.findIndex(p => p.id === playerId), ...(this.game.startingPlayerId ? { starterSeat: this.game.players.findIndex(p => p.id === this.game.startingPlayerId) } : {}), xxiThreatScore: this.game.declarations.declarations.some(d => d.type === 'fourKings') ? 6 : 0, skizCapturePressure: gp.hand.some(c => c.kind === 'tarokk' && c.rank === 22) ? 5 : 0 };
   }
   applyDeclaration(playerId, payload) {
     if (!this.game || this.game.phase !== 'declarations' || !this.declarationWindow) throw new Error('Most nincs bemondási fázis.');

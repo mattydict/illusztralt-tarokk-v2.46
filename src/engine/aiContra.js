@@ -1,6 +1,7 @@
 import { isTarokk } from './cards.js';
 import { canRaiseContra, initialContraState } from './contra.js';
 import { buildAIBeliefSnapshot } from './aiBeliefEngine.js';
+import { observerStateView } from './partnershipVisibility.js';
 import { buildHandHypotheses } from './aiHandHypotheses.js';
 import { simulateDeclarationWorlds } from './aiWorldSimulation.js';
 import { defenceOpeningRequestTargetFromPublicContra } from './leadConventions.js';

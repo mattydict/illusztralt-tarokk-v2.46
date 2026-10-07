@@ -28,6 +28,8 @@ export interface GameState {
   startingPlayerId?: PlayerId;
   takerId?: PlayerId;
   partnerId?: PlayerId;
+  /** Publicly established partner identity; internal partnerId remains authoritative. */
+  publicPartnerId?: PlayerId;
   /** Tarokk explicitly named by the taker as the partner call. */
   calledTarokk?: 18 | 19 | 20;
   /** The auction contract, when this GameState came from the full round flow. */

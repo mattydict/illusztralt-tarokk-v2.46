@@ -29,7 +29,14 @@ export function availableDeclarations(hand, context) {
             result.push({ type: 'tarokk9', required: false });
     }
     if (!previous.has('volat')) {
-        result.push({ type: 'tuletroa', required: false }, { type: 'fourKings', required: false }, { type: 'doubleGame', required: false });
+        result.push({ type: 'tuletroa', required: false });
+        // A defence player may not use Four Kings while their opposition side
+        // is still publicly unidentified. They must first identify themselves
+        // with a contra, unless the invitation/declaration/play has already
+        // made the defence side public.
+        const hiddenDefence = context.speakerIsDefence === true && context.speakerRolePubliclyKnown !== true && context.allowHiddenDefenceFourKings !== true;
+        if (!hiddenDefence) result.push({ type: 'fourKings', required: false });
+        result.push({ type: 'doubleGame', required: false });
     }
     result.push({ type: 'volat', required: false }, { type: 'pagatUltimo', required: false }, { type: 'sasUltimo', required: false }, { type: 'kingUltimo', required: false, reason: 'A Király ultimóhoz a jelzett királyt külön kell megadni, ha a felület kéri.' }, { type: 'pagatUhu', required: false }, { type: 'sasUhu', required: false }, { type: 'kingUhu', required: false, reason: 'A Király uhuhoz a jelzett királyt külön kell megadni, ha a felület kéri.' });
     // Undefined means the caller has not supplied an explicit Trull context.

@@ -14,6 +14,7 @@ import { legalSkartCards } from '../engine/skart.js';
 import type { DeclarationContext } from '../engine/declarations.js';
 import type { RoundState } from '../engine/round.js';
 import type { PlayerAction, AuthoritativeView, PublicEvent, PublicPlayerView, PublicCard } from './protocol.js';
+import { publicPartnerId, privateSideForPlayer, publicRoleForPlayer } from '../engine/partnershipVisibility.js';
 
 export interface RoomOptions {
   roomId: string;
@@ -401,7 +402,7 @@ export class AuthoritativeRoom {
       inviteAcceptedBy: this.round.auction.inviteAcceptedBy,
       holdOwnerId: this.round.auction.holdOwnerId,
     } satisfies Partial<AuctionState>;
-    const game = this.game ? this.publicGameView(this.game) : undefined;
+    const game = this.game ? this.publicGameView(this.game, playerId) : undefined;
     return {
       roomId: this.roomId,
       sequence: this.sequence,
@@ -418,12 +419,17 @@ export class AuthoritativeRoom {
     };
   }
 
-  private publicGameView(game: GameState) {
+  private publicGameView(game: GameState, viewerId: string) {
+    const publicPartner = publicPartnerId(game, this.round, this.declarationWindow);
+    const privateSide = privateSideForPlayer(game, viewerId);
+    const viewerRole = publicRoleForPlayer(game, this.round, this.declarationWindow, viewerId);
+    const partnerForViewer = publicPartner ?? (privateSide === 'partner' ? game.takerId : undefined);
     return {
       phase: game.phase,
       contract: game.contract,
       takerId: game.takerId,
-      partnerId: game.partnerId,
+      ...(partnerForViewer ? { partnerId: partnerForViewer } : {}),
+      ...(viewerRole !== 'unknown' ? { publicRole: viewerRole } : {}),
       calledTarokk: game.calledTarokk,
       gameContra: game.gameContraState?.level ?? game.gameContra,
       trick: game.trick ? { leader: game.trick.leader, cards: game.trick.cards.map(x => ({ player: x.player, card: cloneCard(x.card) })) } : null,
@@ -546,7 +552,7 @@ export class AuthoritativeRoom {
       const source = this.round.players.find(x => x.playerId === p.id)!;
       return { ...p, hand: [...source.hand], active: true };
     });
-    let game = setPartnership({ ...g0, players, talon: [], startingPlayerId: this.round.startingPlayerId }, playerId, partnerId);
+    let game = setPartnership({ ...g0, players, talon: [], startingPlayerId: this.round.startingPlayerId, ...(this.round.auctionOutcome?.calledTarokk !== undefined ? { publicPartnerId: partnerId } : {}) }, playerId, partnerId);
     game = recordPartnerCall(game, rank, partnerId);
     const takerIndex = game.players.findIndex(p => p.id === playerId);
     game = startDeclarations(game, takerIndex);
@@ -567,22 +573,29 @@ export class AuthoritativeRoom {
     const pairDeclaredTypes = this.game.declarations.declarations
       .filter(d => pairOfId(d.ownerId, this.game!.takerId, this.game!.partnerId) === side)
       .map(d => d.type);
+    const publicPartner = publicPartnerId(this.game, this.round, this.declarationWindow);
+    const privateSide = privateSideForPlayer(this.game, playerId);
+    const publicRole = publicRoleForPlayer(this.game, this.round, this.declarationWindow, playerId);
+    const rolePublic = publicRole !== 'unknown';
+    const visiblePairDeclaredTypes = rolePublic || privateSide === 'partner' || privateSide === 'taker' ? pairDeclaredTypes : [];
     return {
       isTaker: playerId === this.game.takerId,
       invited: this.round.auctionOutcome?.calledTarokk !== undefined,
       ...(this.round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: this.round.auctionOutcome.calledTarokk as 18 | 19 | 20 } : {}),
       ...(this.round.contract ? { contract: this.round.contract } : {}),
       previousDeclarations: this.game.declarations.declarations.map(d => d.type),
-      pairDeclaredTypes,
+      pairDeclaredTypes: visiblePairDeclaredTypes,
       firstRound: this.declarationWindow?.firstRound ?? true,
-      partnersKnown: true,
+      partnersKnown: Boolean(publicPartner),
       ...(playerId === this.game.partnerId ? { isPartner: true } : {}),
+      ...(publicPartner ? { partnerSeat: this.game.players.findIndex(p => p.id === publicPartner) } : (privateSide === 'partner' ? { partnerSeat: this.game.players.findIndex(p => p.id === this.game.takerId) } : {})),
+      speakerIsDefence: privateSide === 'defence',
+      speakerRolePubliclyKnown: rolePublic,
       ...(this.round.calledTarokk !== undefined ? { calledTarokk: this.round.calledTarokk as 18 | 19 | 20 } : {}),
       ...(this.game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}),
       ...(playerId === this.game.takerId && this.round.calledTarokk === 19 && !this.game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}),
       xxiThreatScore: this.game.declarations.declarations.some(d => d.type === 'fourKings') ? 6 : 0,
       skizCapturePressure: gp.hand.some(c => c.kind === 'tarokk' && c.rank === 22) ? 5 : 0,
-
     };
   }
 

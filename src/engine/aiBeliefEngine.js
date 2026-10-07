@@ -65,8 +65,9 @@ export function buildAIBeliefSnapshot(state, observerId) {
     if (!observer)
         throw new Error('Az AI játékosa nem található.');
     const observerSeat = state.players.findIndex(p => p.id === observerId);
-    const partnerId = observerId === state.takerId ? state.partnerId :
-        observerId === state.partnerId ? state.takerId : undefined;
+    const effectivePartnerId = state.partnerId === '__UNKNOWN_PARTNER__' ? undefined : state.partnerId;
+    const partnerId = observerId === state.takerId ? effectivePartnerId :
+        observerId === effectivePartnerId ? state.takerId : undefined;
     const partnerSeat = partnerId ? state.players.findIndex(p => p.id === partnerId) : undefined;
     const starterSeat = state.startingPlayerId ? state.players.findIndex(p => p.id === state.startingPlayerId) : undefined;
     // Visible/known tarokks are observer-relative. The AI may always know its

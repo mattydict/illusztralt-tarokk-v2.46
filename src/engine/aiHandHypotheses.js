@@ -56,7 +56,7 @@ export function buildHandHypotheses(state, observerId, beliefs, beamWidth = 64) 
         ...world,
         weight: world.weight / weightSum,
     }));
-    const partnerId = observerId === state.takerId ? state.partnerId : observerId === state.partnerId ? state.takerId : undefined;
+    const partnerId = beliefs.partnerId ?? undefined;
     const partnerTarokkProfile = partnerId
         ? ranks.map(rank => ({ rank, probability: probabilityOwner(publicBeam, rank, partnerId) })).sort((a, b) => b.probability - a.probability)
         : [];
