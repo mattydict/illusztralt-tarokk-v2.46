@@ -361,7 +361,27 @@ export function chooseAIAuctionAction(
   const position = auctionPosition(auction, playerId);
   const scored = legal.map(action => scoreAuctionAction(action, auction, profile, position, hand));
   scored.sort((a, b) => b.score - a.score);
-  return scored[0]!;
+
+  // Calibration guard: the strategic layers above intentionally contain many
+  // positive tactical incentives (XXI protection, Skíz pressure, weak-Pagát
+  // loss minimisation, talon denial). Without a final opportunity-cost check
+  // those bonuses can make a marginal bid beat a perfectly reasonable pass by
+  // a fraction of a point. The published material treats silence as a real
+  // information-preserving action, so require a meaningful edge before entering
+  // the auction. Strong conventions (invites/holds) remain untouched.
+  const pass = scored.find(x => x.action.type === 'pass');
+  const best = scored[0]!;
+  if (pass && best.action.type === 'bid') {
+    const margin = best.action.contract === 'solo' ? 5 : best.action.contract === 'three' ? 2.5 : 3.5;
+    if (best.score < pass.score + margin) {
+      return {
+        action: pass.action,
+        score: pass.score,
+        reasons: [...pass.reasons, `Licittartalék-kalibráció: a ${best.action.contract} csak ${ (best.score - pass.score).toFixed(1) } ponttal volt jobb a passznál, ezért a kisebb információs kockázatú passz marad.`],
+      };
+    }
+  }
+  return best;
 }
 
 function profileHand(hand: Card[]): HandProfile {

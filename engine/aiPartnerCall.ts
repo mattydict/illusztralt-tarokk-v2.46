@@ -17,31 +17,31 @@ export interface AIPartnerCallDecision {
  * an input: the real game reveals the partner only after the rank is called.
  */
 export function chooseAIPartnerCall(hand: Card[], context: AIPartnerCallContext = {}): AIPartnerCallDecision {
+  // An accepted invite fixes the called tarokk.  This is a hard rule, not a
+  // strategic preference.
   if (context.requiredTarokk !== undefined) {
-    if (hasTarokk(hand, context.requiredTarokk) && context.requiredTarokk !== 20) {
-      return {
-        rank: context.requiredTarokk,
-        reasons: [`A licit rögzített meghívása miatt a ${context.requiredTarokk}. tarokkot kell hívni.`],
-      };
-    }
     return {
       rank: context.requiredTarokk,
-      reasons: [`A licitben rögzített ${context.requiredTarokk}. tarokk hívása kötelező.`],
+      reasons: [`A licit rögzített ${context.requiredTarokk}. tarokkos invit miatt ezt a tarokkot kell meghívni.`],
     };
   }
 
-  const preferred = [19, 18, 20] as const;
-  const available = preferred.filter(rank => !hasTarokk(hand, rank) || rank === 20);
-  const rank = (available[0] ?? 19) as 18 | 19 | 20;
-  const reasons = [
-    rank === 20
-      ? 'A magasabb hívások nem maradtak szabadon a saját kézben; XX-önhívás csak kivételesen marad opciónak.'
-      : `Partnerhívás: a ${rank}. tarokk szabad a saját kézben, ezért a hívás csak a nyílt tarokkszámot jelöli, nem a partner személyét.`,
-  ];
+  // Normal Illustrated Tarokk: the taker calls XX.  The important exception
+  // is the XX-in-hand case: when the taker holds XX, calling XIX is legal and
+  // is the standard way to avoid calling oneself.  XIX without XX is illegal
+  // (unless it was explicitly fixed by an XIX-invite above).
+  const hasXX = hasTarokk(hand, 20);
+  const rank: 18 | 19 | 20 = hasXX ? 19 : 20;
+  const reasons = hasXX
+    ? ['A felvevőnél van a XX-as, ezért a partnerhívásban szabályosan a XIX-es hívható meg.']
+    : ['Nincs XIX-invit és a XX-as nincs a kézben: a szabályos partnerhívás a XX-as.'];
+
   if (context.invitedTarokk !== undefined) {
-    reasons.push(`A korábbi invitált ${context.invitedTarokk}. tarokk közismert licit-információ, ezért a hívást ahhoz igazítjuk.`);
+    reasons.push(`A licitben szereplő ${context.invitedTarokk}. tarokkos információt figyelembe vettük.`);
   }
-  if (context.contract === 'solo') reasons.push('Szóló esetén a partnerhívás csak akkor jelenik meg, ha a konkrét játékállapot ezt megköveteli.');
+  if (context.contract === 'solo') {
+    reasons.push('Szóló mellett is csak a konkrét játékállapot által engedett partnerhívás hajtható végre.');
+  }
   return { rank, reasons };
 }
 

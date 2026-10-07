@@ -5,7 +5,7 @@ import { beats, determineWinner, TrickCard, TrickState } from './play.js';
 import { pairOf } from './partnership.js';
 import { PartnerBeliefState, createPartnerBeliefState, updatePartnerBelief } from './beliefs.js';
 import { assessFigureCandidateValue, assessFigureGeometry, assessFigurePlayRisk } from './figureGeometry.js';
-import { preferredLeadAfterPartnerTarokkSignal, preferredLeadAfterTakerSuitReturnSignal, preferredOpeningLeadCard, scoreOpeningLeadConvention, scorePartnerTarokkReply, scoreResponseToPartnerOpeningLead, scorePartnerSignalAcknowledgement, scorePartnerFigureCommunicationLead } from './leadConventions.js';
+import { preferredLeadAfterPartnerTarokkSignal, preferredLeadAfterTakerSuitReturnSignal, preferredOpeningLeadCard, preferredLeadAgainstHardFigure, scoreOpeningLeadConvention, scorePartnerTarokkReply, scoreResponseToPartnerOpeningLead, scorePartnerSignalAcknowledgement, scorePartnerFigureCommunicationLead } from './leadConventions.js';
 import { buildAIBeliefSnapshot } from './aiBeliefEngine.js';
 import { buildHandHypotheses } from './aiHandHypotheses.js';
 import { evaluateCardContinuation } from './aiRollout.js';
@@ -510,6 +510,19 @@ function scoreCard(state: GameState, playerId: string, card: Card, beliefs: Part
   }
 
   if (trick.cards.length === 0) {
+    // If the opposition has declared an Ultimó/Uhu, defend by colouring the
+    // opponent rather than opening tarokk. This is a hard strategic priority
+    // over the generic defensive opening convention.
+    if (playerSide === 'defence') {
+      const hardFigureLead = preferredLeadAgainstHardFigure(state, playerId);
+      if (hardFigureLead?.id === card.id) {
+        score += 55;
+        reasons.push('Az ellenfél Ultimó/Uhu bemondása él: színezni kell az ellenfelet, nem tarokkal indulni.');
+      } else if (hardFigureLead && card.kind === 'tarokk') {
+        score -= 35;
+      }
+    }
+
     // Leading: avoid donating points, while retaining high tarokks/honours.
     // Specialist Illustrated-Tarokk opening conventions resolve to a concrete
     // preferred card. Give that card a strong but still overridable preference

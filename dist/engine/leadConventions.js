@@ -100,6 +100,39 @@ function chooseShortestHeadlessCard(state, playerId) {
         || ['hearts', 'diamonds', 'spades', 'clubs'].indexOf(a.suit) - ['hearts', 'diamonds', 'spades', 'clubs'].indexOf(b.suit));
     return candidates[0]?.card;
 }
+/**
+ * Defence against a live Ultimó/Uhu: do not help the declared tarokk figure
+ * by opening trump.  "Színezés" means leading a suit; for a declared king
+ * figure we preferentially lead that king's suit, otherwise the shortest
+ * available headless suit is the cleanest pressure.
+ */
+export function preferredLeadAgainstHardFigure(state, playerId) {
+    const leaderSide = pairOf(playerId, state.takerId ?? '', state.partnerId);
+    if (leaderSide !== 'defence')
+        return undefined;
+    const active = state.declarations.declarations
+        .filter(d => d.status !== 'failed' && d.status !== 'fulfilled')
+        .filter(d => ['pagatUltimo', 'pagatUhu', 'sasUltimo', 'sasUhu', 'kingUltimo', 'kingUhu'].includes(d.type))
+        .at(-1);
+    if (!active)
+        return undefined;
+    const ownerSide = pairOf(active.ownerId, state.takerId ?? '', state.partnerId);
+    if (ownerSide !== 'taker')
+        return undefined;
+    const hand = state.players.find(p => p.id === playerId)?.hand ?? [];
+    if (active.type === 'kingUltimo' || active.type === 'kingUhu') {
+        const targetSuit = active.targetCardId?.split('-')[0];
+        if (targetSuit) {
+            const headless = chooseLowest(headlessSuitCards(hand, targetSuit));
+            if (headless)
+                return headless;
+            const king = hand.find(c => c.kind === 'suit' && c.suit === targetSuit && c.rank === 'K');
+            if (king)
+                return king;
+        }
+    }
+    return chooseShortestHeadlessCard(state, playerId);
+}
 export function chooseDefensiveBirdLeadCard(state, playerId) {
     const hand = state.players.find(p => p.id === playerId)?.hand ?? [];
     for (const suit of ['hearts', 'diamonds']) {

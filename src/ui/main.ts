@@ -74,8 +74,11 @@ function recordUiError(error: unknown, fallback = 'Váratlan alkalmazáshiba.') 
 }
 
 function aiDelayMs() {
-  return aiDifficulty === 'expert' ? 160 : aiDifficulty === 'standard' ? 320 : 520;
+  return aiDifficulty === 'expert' ? 850 : aiDifficulty === 'standard' ? 1100 : 1450;
 }
+function aiAuctionDelayMs() { return aiDifficulty === 'expert' ? 900 : aiDifficulty === 'standard' ? 1200 : 1600; }
+function aiDeclarationDelayMs() { return aiDifficulty === 'expert' ? 1050 : aiDifficulty === 'standard' ? 1350 : 1750; }
+function aiSkartDelayMs() { return aiDifficulty === 'expert' ? 700 : aiDifficulty === 'standard' ? 900 : 1200; }
 
 function setAiReason(playerId: string, reasons: string[]) {
   if (!reasons.length) return;
@@ -142,6 +145,10 @@ function startNextDeal() {
   game=null; declarationWindow=null; selectedSkart.clear(); calledTarokk=undefined; message=''; seed += 1;
   const dealPlayers = orderedDealPlayers(match);
   round=createRound(dealPlayers,0);
+  // Single-player uses the same parallel skart state model as multiplayer.
+  // The taker does not get a separate 'announce discarded tarokks' turn; the
+  // authoritative round engine handles the public disclosure rules.
+  round={...round,parallelSkart:true};
   round=dealRound(round,rng(seed));
   talon=round.talon;
 
@@ -224,15 +231,21 @@ function labelAction(a: AuctionAction) {
   return `invit ${a.target}. tarokk`;
 }
 function runAiAuction() {
+  clearAiTimer();
   if(!round || round.auction.finished) { if(round) finishAuctionFlow(); return; }
-  let guard=20;
-  while(round && !round.auction.finished && round.auction.seats[round.auction.currentSeat]?.playerId!==HUMAN && guard-- > 0) {
-    const id: string = round.auction.seats[round.auction.currentSeat]!.playerId;
-    const action=aiAuctionAction(round.auction,id);
-    try { round={...round,auction:applyAuctionAction(round.auction,action,handsMap()),eventLog:[...round.eventLog,`${playerName(id)}: ${labelAction(action)}`]}; }
-    catch(e) { round={...round,auction:{...round.auction,finished:true},eventLog:[...round.eventLog,'Az AI licitje hibás lett; a parti leállt.']}; message=e instanceof Error?e.message:'AI licithiba'; }
+  const id=round.auction.seats[round.auction.currentSeat]?.playerId;
+  if(!id || id===HUMAN) { render(); return; }
+  const action=aiAuctionAction(round.auction,id);
+  try {
+    round={...round,auction:applyAuctionAction(round.auction,action,handsMap()),eventLog:[...round.eventLog,`${playerName(id)}: ${labelAction(action)}`]};
+    message=`${playerName(id)} licitált: ${labelAction(action)}.`;
+  } catch(e) {
+    round={...round,auction:{...round.auction,finished:true},eventLog:[...round.eventLog,'Az AI licitje hibás lett; a parti leállt.']};
+    message=e instanceof Error?e.message:'AI licithiba';
   }
-  if(round?.auction.finished) finishAuctionFlow(); else render();
+  render();
+  if(round.auction.finished) finishAuctionFlow();
+  else aiTimer=window.setTimeout(runAiAuction,aiAuctionDelayMs());
 }
 
 function finishAuctionFlow() {
@@ -248,47 +261,80 @@ function finishAuctionFlow() {
 }
 
 function runAiSkart() {
-  if(!round || round.phase!=='skart') { render(); return; }
-  let guard=12;
-  while(round && round.phase==='skart' && round.currentPlayerId!==HUMAN && guard-- > 0) {
-    const currentPlayerId: string | undefined = round.currentPlayerId;
-    if (!currentPlayerId) break;
-    const p: RoundState['players'][number] | undefined = round.players.find(x => x.playerId === currentPlayerId);
-    if (!p) break;
-    if(p.skart.length < p.receivedTalon.length) {
-      const n=p.receivedTalon.length;
-      const decision=chooseAISkart(p.hand,n,{
-        isTaker:p.playerId===round.takerId,
+  clearAiTimer();
+  if(!round || !['skart','skart-announcement'].includes(round.phase)) {
+    if(round?.phase==='partner-call') runAiPartnerCall();
+    else if(round?.phase==='declarations') { if(!game) autoPartnerIfPossible(); else runAiDeclarations(); }
+    else render();
+    return;
+  }
+
+  if(round.phase==='skart') {
+    const pendingAI=round.players.find(p=>p.playerId!==HUMAN && p.skart.length<p.receivedTalon.length);
+    if(pendingAI) {
+      const n=pendingAI.receivedTalon.length;
+      const decision=chooseAISkart(pendingAI.hand,n,{
+        isTaker:pendingAI.playerId===round.takerId,
         ...(round.invitedTarokk!==undefined ? { invitedTarokk: round.invitedTarokk } : {}),
         ...(round.contract ? { contract: round.contract } : {}),
-        ...(p.preSkartSuitCounts ? { preSkartSuitCounts: p.preSkartSuitCounts } : {}),
+        ...(pendingAI.preSkartSuitCounts ? { preSkartSuitCounts: pendingAI.preSkartSuitCounts } : {}),
       });
       try {
-        round=skartRoundPlayer(round,p.playerId,decision.cards);
-        if (decision.reasons.length) { setAiReason(p.playerId, decision.reasons); round={...round,eventLog:[...round.eventLog,`${playerName(p.playerId)} fektetési döntés: ${decision.reasons.join(' | ')}`]}; }
-      }
-      catch { message=`${playerName(p.playerId)} nem tudott szabályos fektetést választani.`; break; }
-    } else {
-      try { round=announceSkartCount(round,p.playerId); } catch(e){ message=e instanceof Error?e.message:'Fektetési hiba'; break; }
+        round=skartRoundPlayer(round,pendingAI.playerId,decision.cards);
+        setAiReason(pendingAI.playerId,decision.reasons);
+        round={...round,eventLog:[...round.eventLog,`${playerName(pendingAI.playerId)} fektetett ${decision.cards.filter(isTarokk).length} tarokkot.`]};
+        message=`${playerName(pendingAI.playerId)} befejezte a fektetést.`;
+      } catch(e) { message=e instanceof Error?e.message:`${playerName(pendingAI.playerId)} nem tudott szabályos fektetést választani.`; }
+      render();
+      if(round.phase==='skart') aiTimer=window.setTimeout(runAiSkart,aiSkartDelayMs());
+      else runAiSkart();
+      return;
+    }
+    // The human can fektet independently in the parallel phase.
+    if(round.players.find(p=>p.playerId===HUMAN)?.skart.length !== round.players.find(p=>p.playerId===HUMAN)?.receivedTalon.length) {
+      message='A gépek fektetnek; te közben kijelölheted és leadhatod a saját fektetésedet.';
+      render();
+      return;
     }
   }
-  if(round?.phase==='skart' && round.currentPlayerId===HUMAN) message='Válaszd ki a fektetendő lapokat, majd nyomd meg a Fektetés gombot.';
-  if(round?.phase==='partner-call') runAiPartnerCall();
-  if(round?.phase==='declarations') { if(!game) autoPartnerIfPossible(); else runAiDeclarations(); }
-  render();
+
+  if(round.phase==='skart-announcement') {
+    const pendingAI=round.players.find(p=>p.playerId!==HUMAN && p.playerId!==round.takerId && (p.skartTarokkCount??0)>0 && !p.skartAnnounced);
+    if(pendingAI) {
+      try {
+        round=announceSkartCount(round,pendingAI.playerId);
+        round={...round,eventLog:[...round.eventLog,`${playerName(pendingAI.playerId)} közölte: ${pendingAI.skartTarokkCount} tarokkot fektetett.`]};
+        message=`${playerName(pendingAI.playerId)} közölte a fektetését.`;
+      } catch(e) { message=e instanceof Error?e.message:'Fektetésközlési hiba.'; }
+      render();
+      if(round.phase==='skart-announcement') aiTimer=window.setTimeout(runAiSkart,aiSkartDelayMs());
+      else runAiSkart();
+      return;
+    }
+    const hp=round.players.find(p=>p.playerId===HUMAN);
+    if(hp && hp.playerId!==round.takerId && (hp.skartTarokkCount??0)>0 && !hp.skartAnnounced) {
+      message='A fektetett tarokkok közlése következik.';
+      render();
+      return;
+    }
+  }
+
+  if(round.phase==='partner-call') runAiPartnerCall();
+  else if(round.phase==='declarations') { if(!game) autoPartnerIfPossible(); else runAiDeclarations(); }
+  else render();
 }
 
 function humanSkart() {
-  if(!round || round.phase!=='skart' || round.currentPlayerId!==HUMAN) return;
-  const p=humanRound(); if(!p) return;
+  if(!round || round.phase!=='skart') return;
+  const p=humanRound(); if(!p || p.skart.length===p.receivedTalon.length) return;
   const count=p.receivedTalon.length;
   const cards=p.hand.filter(c=>selectedSkart.has(c.id));
   try { round=skartRoundPlayer(round,HUMAN,cards); selectedSkart.clear(); message='Fektetés megtörtént.'; render(); runAiSkart(); }
   catch(e) { message=e instanceof Error?e.message:'Szabálytalan fektetés.'; render(); }
 }
 function humanSkartAnnounce() {
-  if(!round || round.phase!=='skart' || round.currentPlayerId!==HUMAN) return;
-  try { round=announceSkartCount(round,HUMAN); message='A fektetés bejelentve.'; render(); runAiSkart(); } catch(e){ message=e instanceof Error?e.message:'Hiba'; render(); }
+  if(!round || round.phase!=='skart-announcement') return;
+  try { round=announceSkartCount(round,HUMAN); message='A fektetésközlés megtörtént.'; render(); runAiSkart(); } catch(e){ message=e instanceof Error?e.message:'Hiba'; render(); }
 }
 
 function callPartner(rank: 18|19|20) {
@@ -356,108 +402,90 @@ function targetCardForKingDeclaration(type: 'kingUltimo'|'kingUhu', hand: Card[]
 }
 
 function runAiDeclarations(){
+  clearAiTimer();
   if(!game || game.phase!=='declarations' || !round || !declarationWindow) return;
-  let guard=40;
-  let activeTurnPlayer: string | undefined;
-  let nonPassActionsInTurn = 0;
-  let declaredFigureInTurn = false;
-  while(!declarationWindow.finished && guard-- > 0){
-    const id=currentDeclarer(declarationWindow); if(!id) break;
-    const gameState = game;
-    if(!gameState) break;
-    const gp = gameState.players.find(p=>p.id===id);
-    if(!gp) break;
-    if(activeTurnPlayer !== id){ activeTurnPlayer=id; nonPassActionsInTurn=0; declaredFigureInTurn=false; }
-    const ctx = {
-      isTaker: id===game.takerId,
-      invited: round.auctionOutcome?.calledTarokk!==undefined,
-      ...(round.auctionOutcome?.calledTarokk!==undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk as 18|19|20 } : {}),
-      ...(round.contract ? { contract: round.contract } : {}),
-      previousDeclarations: game.declarations.declarations.map(d=>d.type),
-      firstRound: declarationWindow.firstRound,
-      partnersKnown:true,
-      ...(id===game.partnerId ? { isPartner:true } : {}),
-      ...(round.calledTarokk!==undefined ? { calledTarokk: round.calledTarokk as 18|19|20 } : {}),
-      ...(gameState.declarations.declarations.some(d=>d.type==='tuletroa') ? { trullDeclared:true } : {}),
-      ...(id===gameState.takerId && round.calledTarokk===19 && !gameState.declarations.declarations.some(d=>d.type==='tuletroa') ? { trullOmittedByTaker:true } : {}),
-      speakerSeat: gameState.players.findIndex(p=>p.id===id),
-      ...(gameState.partnerId ? { partnerSeat: gameState.players.findIndex(p=>p.id===gameState.partnerId) } : {}),
-      ...(gameState.startingPlayerId ? { starterSeat: gameState.players.findIndex(p=>p.id===gameState.startingPlayerId) } : {}),
-      xxiThreatScore: gameState.declarations.declarations.some(d=>d.type==='fourKings') ? 6 : 0,
-      skizCapturePressure: gp.hand.some(c=>c.kind==='tarokk' && c.rank===22) ? 5 : 0,
-      partnerSupport: communicationBeliefs({ previous: gameState.declarations.declarations.map(d=>d.type), ...(round.calledTarokk!==undefined ? {calledTarokk: round.calledTarokk as 18|19|20} : {}) }).encouragements.figure?.score ?? 0
-    };
-    const actions = legalDeclarationActions(declarationWindow,id,gp.hand,ctx);
-    if(!actions.length){ message=`A bemondási állapothoz nincs elérhető akció (${playerName(id)}).`; break; }
-    const currentTrickNumber=gameState.completedTricks.length+1;
-    const aiSide=id===gameState.takerId || id===gameState.partnerId ? 'taker' : 'defence';
-    const pairAlreadyDeclaredThisTrick=gameState.declarations.declarations.some(d=>d.declaredAtTrick===currentTrickNumber && ((d.ownerId===gameState.takerId || d.ownerId===gameState.partnerId ? 'taker' : 'defence')===aiSide));
-    // A pending tarokkszám-bemondás kötelező: itt nem engedünk stratégiai
-    // passzt választani, mert az érvénytelen állapotot hagyna maga után.
-    const forcedCount = declarationWindow.pendingTarokkCountPlayerId===id
-      ? actions.find(a=>a.type==='tarokkCount')
-      : undefined;
-    // Declaration availability intentionally exposes makeable and unmakeable
-    // figures alike. The AI must therefore choose through its strategy layer,
-    // not simply take the first button.
-    const worldBeliefs = buildAIBeliefSnapshot(gameState, id);
-    const handHypotheses = buildHandHypotheses(gameState, id, worldBeliefs);
-    const decision = chooseAIDeclaration(gp.hand, ctx, communicationBeliefs({ previous: gameState.declarations.declarations.map(d=>d.type), ...(round.calledTarokk!==undefined ? {calledTarokk: round.calledTarokk as 18|19|20} : {}) }), worldBeliefs, handHypotheses, gameState);
-    let action: typeof actions[number] = actions[0]!;
-    if(forcedCount){
-      action=forcedCount;
-    } else if(declaredFigureInTurn || pairAlreadyDeclaredThisTrick){
-      const pass=actions.find(a=>a.type==='pass');
-      action=pass ?? actions[0]!;
-    } else if(nonPassActionsInTurn >= 3){
-      const pass=actions.find(a=>a.type==='pass');
-      action=pass ?? actions[0]!;
-    } else if (decision.action.type === 'pass') {
-      action=actions.find(a=>a.type==='pass') ?? actions[0]!;
-    } else if (decision.action.type === 'tarokk8' || decision.action.type === 'tarokk9') {
-      const countAction = actions.find(a=>a.type==='tarokkCount' && a.count === Number(decision.action.type === 'tarokk8' ? 8 : 9));
-      if (countAction) action = countAction;
-    } else {
-      const declarationAction = actions.find(a=>a.type==='declare' && a.declaration===decision.action.type);
-      if (declarationAction) action = declarationAction;
-      else action=actions.find(a=>a.type==='pass') ?? actions[0]!;
-    }
-    // Apply the authoritative game mutation BEFORE advancing the declaration
-    // window. If the engine rejects the declaration, the UI window must remain
-    // untouched; otherwise the human/AI turn state can desynchronise from the
-    // actual game state.
-    if(action.type==='declare') {
-      try {
-        const targetCardId = (action.declaration==='kingUltimo' || action.declaration==='kingUhu')
-          ? targetCardForKingDeclaration(action.declaration, gp.hand)
-          : undefined;
-        if((action.declaration==='kingUltimo' || action.declaration==='kingUhu') && !targetCardId) {
-          action = actions.find(a=>a.type==='pass') ?? action;
-        } else {
-          game=declareFigureInGame(game,action.declaration,id,game.completedTricks.length+1,targetCardId);
-          declaredFigureInTurn=true;
-        }
-      } catch(e){
-        const pass=actions.find(a=>a.type==='pass');
-        if(!pass) { message=e instanceof Error?e.message:'Szabálytalan bemondás.'; break; }
-        action=pass;
-        round={...round,eventLog:[...round.eventLog,`${playerName(id)}: bemondási fallback passz (${e instanceof Error ? e.message : 'szabályossági ütközés'})`]};
-      }
+  const id=currentDeclarer(declarationWindow);
+  if(!id) return;
+
+  // Human declarations are never automated.  The UI remains on this player
+  // until they explicitly choose a declaration or Passz.
+  if(id===HUMAN){
+    round={...round,currentPlayerId:HUMAN};
+    message='Te következel a bemondásban. A saját bemondásaidat neked kell megtenned.';
+    render();
+    return;
+  }
+
+  const gp = game.players.find(p=>p.id===id);
+  if(!gp) return;
+  const ctx = {
+    isTaker: id===game.takerId,
+    invited: round.auctionOutcome?.calledTarokk!==undefined,
+    ...(round.auctionOutcome?.calledTarokk!==undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk as 18|19|20 } : {}),
+    ...(round.contract ? { contract: round.contract } : {}),
+    previousDeclarations: game.declarations.declarations.map(d=>d.type),
+    firstRound: declarationWindow.firstRound,
+    partnersKnown:true,
+    ...(id===game.partnerId ? { isPartner:true } : {}),
+    ...(round.calledTarokk!==undefined ? { calledTarokk: round.calledTarokk as 18|19|20 } : {}),
+    ...(game.declarations.declarations.some(d=>d.type==='tuletroa') ? { trullDeclared:true } : {}),
+    ...(id===game.takerId && round.calledTarokk===19&&!game.declarations.declarations.some(d=>d.type==='tuletroa') ? { trullOmittedByTaker:true } : {}),
+    speakerSeat: game.players.findIndex(p=>p.id===id),
+    ...(game.partnerId ? { partnerSeat: game.players.findIndex(p=>p.id===game.partnerId) } : {}),
+    ...(game.startingPlayerId ? { starterSeat: game.players.findIndex(p=>p.id===game.startingPlayerId) } : {}),
+    xxiThreatScore: game.declarations.declarations.some(d=>d.type==='fourKings') ? 6 : 0,
+    skizCapturePressure: gp.hand.some(c=>c.kind==='tarokk'&&c.rank===22) ? 5 : 0,
+    partnerSupport: communicationBeliefs({previous:game.declarations.declarations.map(d=>d.type), ...(round.calledTarokk!==undefined?{calledTarokk:round.calledTarokk as 18|19|20}: {})}).encouragements.figure?.score ?? 0
+  };
+  const actions=legalDeclarationActions(declarationWindow,id,gp.hand,ctx);
+  if(!actions.length){ message=`A bemondási állapothoz nincs elérhető akció (${playerName(id)}).`; render(); return; }
+
+  const currentTrickNumber=game.completedTricks.length+1;
+  const aiSide=id===game.takerId||id===game.partnerId?'taker':'defence';
+  const pairAlreadyDeclaredThisTrick=game.declarations.declarations.some(d=>d.declaredAtTrick===currentTrickNumber&&((d.ownerId===game.takerId||d.ownerId===game.partnerId?'taker':'defence')===aiSide));
+  const forcedCount=declarationWindow.pendingTarokkCountPlayerId===id?actions.find(a=>a.type==='tarokkCount'):undefined;
+  const worldBeliefs=buildAIBeliefSnapshot(game,id);
+  const handHypotheses=buildHandHypotheses(game,id,worldBeliefs);
+  const decision=chooseAIDeclaration(gp.hand,ctx,communicationBeliefs({previous:game.declarations.declarations.map(d=>d.type),...(round.calledTarokk!==undefined?{calledTarokk:round.calledTarokk as 18|19|20}: {})}),worldBeliefs,handHypotheses,game);
+
+  let action: typeof actions[number]=actions[0]!;
+  if(forcedCount) action=forcedCount;
+  else if(pairAlreadyDeclaredThisTrick) action=actions.find(a=>a.type==='pass')??actions[0]!;
+  else if(decision.action.type==='pass') action=actions.find(a=>a.type==='pass')??actions[0]!;
+  else if(decision.action.type==='tarokk8'||decision.action.type==='tarokk9') action=actions.find(a=>a.type==='tarokkCount'&&a.count===Number(decision.action.type==='tarokk8'?8:9))??actions.find(a=>a.type==='pass')??actions[0]!;
+  else action=actions.find(a=>a.type==='declare'&&a.declaration===decision.action.type)??actions.find(a=>a.type==='pass')??actions[0]!;
+
+  try {
+    if(action.type==='declare'){
+      const targetCardId=(action.declaration==='kingUltimo'||action.declaration==='kingUhu')?targetCardForKingDeclaration(action.declaration,gp.hand):undefined;
+      if((action.declaration==='kingUltimo'||action.declaration==='kingUhu')&&!targetCardId) action=actions.find(a=>a.type==='pass')??action;
+      else game=declareFigureInGame(game,action.declaration,id,game.completedTricks.length+1,targetCardId);
     }
     declarationWindow=applyDeclarationAction(declarationWindow,action,gp.hand);
-    if(action.type!=='pass') nonPassActionsInTurn += 1;
-    // Contra is a side-to-side action, so evaluate the best eligible AI after each declaration action.
+    const actionText=action.type==='pass'?'Passz':action.type==='tarokkCount'?`${action.count} tarokk`:declarationLabel(action.declaration);
+    round={...round,eventLog:[...round.eventLog,`${playerName(id)}: ${actionText}`]};
+    message=`${playerName(id)}: ${actionText}.`;
     runAiContraResponses();
-    if(action.type==='tarokkCount') { round={...round,eventLog:[...round.eventLog,`${playerName(id)}: ${action.count} tarokk`]}; }
-    else if(action.type==='declare') {
-      round={...round,eventLog:[...round.eventLog,`${playerName(id)}: ${action.declaration}`]};
-    }
+  } catch(e){
+    message=e instanceof Error?e.message:'Szabálytalan AI-bemondás.';
+    render();
+    return;
   }
-  if(declarationWindow.finished && game && round){
-    const g=game; const startingPlayerId=round.startingPlayerId; const leaderIndex=g.players.findIndex(p=>p.id===startingPlayerId);
-    game=startPlay({...g,startingPlayerId},leaderIndex); round={...round,phase:'play',currentPlayerId:game.players[leaderIndex]!.id}; message='A lejátszás kezdődik.'; runAiPlay();
-  }
+
   render();
+  if(declarationWindow.finished&&game&&round){
+    const g=game; const startingPlayerId=round.startingPlayerId; const leaderIndex=g.players.findIndex(p=>p.id===startingPlayerId);
+    game=startPlay({...g,startingPlayerId},leaderIndex);
+    round={...round,phase:'play',currentPlayerId:game.players[leaderIndex]!.id};
+    message='A lejátszás kezdődik.';
+    render();
+    runAiPlay();
+    return;
+  }
+  const next=currentDeclarer(declarationWindow);
+  round=next?{...round,currentPlayerId:next}:round;
+  if(next===HUMAN){ message='Te következel a bemondásban.'; render(); return; }
+  aiTimer=window.setTimeout(runAiDeclarations,aiDeclarationDelayMs());
 }
 
 function choosePartner(rank:18|19|20) {
@@ -547,7 +575,10 @@ function runAiPlay(){
     const chosen=chooseAICardAtDifficulty(gameState,id,partnerBeliefs,aiDifficulty);
     game=playCard(gameState,id,chosen.card.id);
     setAiReason(id,chosen.reasons);
-    if(round&&chosen.reasons.length) round={...round,eventLog:[...round.eventLog,`${playerName(id)} kijátszás: ${chosen.card.id} — ${chosen.reasons.slice(0,3).join(' | ')}`]};
+    if(round){
+      const reasonText=chosen.reasons.length ? ` — ${chosen.reasons.slice(0,2).join(' | ')}` : '';
+      round={...round,eventLog:[...round.eventLog,`${playerName(id)} kijátszotta: ${cardName(chosen.card)}${reasonText}`]};
+    }
   } catch(e) {
     recordUiError(e,'Az AI nem tudott szabályosan lépni.'); render(); return;
   }
@@ -563,8 +594,9 @@ function actionButtons(){
     const actions=legalAuctionActions(round.auction,HUMAN,handsMap());
     return actions.map((a,i)=>`<button class="action" data-bid="${i}">${labelAction(a)}</button>`).join('');
   }
-  if(round.phase==='skart'&&round.currentPlayerId===HUMAN){const p=humanRound()!;if(p.skart.length<p.receivedTalon.length)return `<button class="primary" id="skart">Fektetés (${p.receivedTalon.length} lap)</button>`;return `<button class="primary" id="announce">Fektetett tarokkok számának bemondása</button>`;}
-  if(round.phase==='partner-call'&&round.currentPlayerId===HUMAN){const ranks=([19,18,20] as const).filter(r=>resolveCalledPartner(HUMAN,r,round!.players.map(p=>({id:p.playerId,hand:p.hand})))!==undefined);return ranks.map(r=>`<button class="action" data-call="${r}">${r===20 && HUMAN===round!.takerId ? 'XX-önhívás' : `${r}. tarokk hívása`}</button>`).join('') || '<span class="muted">Nincs egyértelműen hívható tarokk.</span>';}
+  if(round.phase==='skart'){const p=humanRound()!;if(p.skart.length<p.receivedTalon.length)return `<button class="primary" id="skart">Fektetés (${p.receivedTalon.length} lap)</button>`;}
+  if(round.phase==='skart-announcement'){const p=humanRound()!;if(p.playerId!==round.takerId && (p.skartTarokkCount??0)>0 && !p.skartAnnounced)return `<button class="primary" id="announce">Bejelentem: ${p.skartTarokkCount} tarokkot fektettem</button>`;}
+  if(round.phase==='partner-call'&&round.currentPlayerId===HUMAN){const required=round.auctionOutcome?.calledTarokk;const humanHand=activeHand(HUMAN);const ranks=(required!==undefined ? [required] : (humanHand.some(c=>c.kind==='tarokk'&&c.rank===20) ? [19,20] as const : [20] as const)).filter(r=>resolveCalledPartner(HUMAN,r,round!.players.map(p=>({id:p.playerId,hand:p.hand})))!==undefined);return ranks.map(r=>`<button class="action" data-call="${r}">${r===20 && HUMAN===round!.takerId ? 'XX-önhívás' : `${r}. tarokk hívása`}</button>`).join('') || '<span class="muted">Nincs egyértelműen hívható tarokk.</span>';}
   if(round.phase==='declarations'&&game&&declarationWindow&&currentDeclarer(declarationWindow)===HUMAN){
     const hp=game.players.find(p=>p.id===HUMAN);
     if(hp){
@@ -637,11 +669,11 @@ function render(){
   const humanIsDealer = match?.playerCount === 5 && match.playerIds[match.dealerIndex] === HUMAN;
   const hand=[...(human?.hand??[])].sort((a,b)=>{
     if(a.kind!==b.kind) return a.kind==='tarokk' ? -1 : 1;
-    if(a.kind==='tarokk' && b.kind==='tarokk') return a.rank-b.rank;
+    if(a.kind==='tarokk' && b.kind==='tarokk') return Number(b.rank)-Number(a.rank);
     if(a.kind==='suit' && b.kind==='suit'){
-      const suitOrder={hearts:0,diamonds:1,spades:2,clubs:3} as const;
-      const rankOrder={A:0,'10':1,J:2,C:3,Q:4,K:5} as const;
-      return suitOrder[a.suit]-suitOrder[b.suit] || rankOrder[a.rank]-rankOrder[b.rank];
+      const suitOrder={hearts:0,diamonds:1,clubs:2,spades:3} as const;
+      const rankOrder={K:5,Q:4,C:3,J:2,'10':1,A:0} as const;
+      return suitOrder[a.suit]-suitOrder[b.suit] || rankOrder[b.rank]-rankOrder[a.rank];
     }
     return 0;
   });
@@ -650,15 +682,21 @@ function render(){
   const phase=game?.phase??round.phase;
   const skartMode = round?.phase === 'skart' && round.currentPlayerId === HUMAN;
   const skartLegal = skartMode ? new Set(legalSkartCards(hand, round!.invitedTarokk).map(c => c.id)) : new Set<string>();
-  const cards=hand.map(c=>{
+  const renderCard=(c:Card)=>{
     const canSkart = skartMode && skartLegal.has(c.id);
     const selected = skartMode && selectedSkart.has(c.id);
     const canPlay = phase === 'play' && legal.has(c.id);
     const enabled = canSkart || canPlay;
     const label = canPlay ? `${cardName(c)} – szabályosan kijátszható` : canSkart ? `${cardName(c)} – fektetéshez választható` : `${cardName(c)} – jelenleg nem választható`;
-    return `<button type="button" class="card ${isTarokk(c)?'tarokk':''} ${canPlay?'legal':''} ${canSkart?'skartable':''} ${selected?'selected':''} ${enabled?'':'disabled'}" data-card="${c.id}" aria-label="${label}" title="${label}" ${enabled?'':'aria-disabled=\"true\" disabled'}>${cardName(c)}</button>`;
-  }).join('');
-  const skartInfo=round.phase==='skart'&&round.currentPlayerId===HUMAN?`<p>Fektetendő lapok: ${round.players.find(p=>p.playerId===HUMAN)!.receivedTalon.length}. Kijelölve: ${selectedSkart.size}</p>`:'';
+    const suitClass=c.kind==='suit'?`suit-${c.suit}`:'';
+    return `<button type="button" class="card ${c.kind==='tarokk'?'tarokk':suitClass} ${canPlay?'legal':''} ${canSkart?'skartable':''} ${selected?'selected':''} ${enabled?'active':'disabled'}" data-card="${c.id}" aria-label="${label}" title="${label}" ${enabled?'':'aria-disabled=\"true\" disabled'}><strong>${cardName(c)}</strong><small>${c.points} pont</small></button>`;
+  };
+  const suitGroups: Array<{key:string;label:string;cards:Card[]}>=[
+    {key:'tarokk',label:'Tarokkok',cards:hand.filter(c=>c.kind==='tarokk')},
+    ...(['hearts','diamonds','clubs','spades'] as const).map(suit=>({key:suit,label:({hearts:'♥ Kőr',diamonds:'♦ Káró',clubs:'♣ Treff',spades:'♠ Pikk'} as const)[suit],cards:hand.filter(c=>c.kind==='suit'&&c.suit===suit)})),
+  ];
+  const cards=suitGroups.filter(g=>g.cards.length).map(g=>`<section class="hand-group hand-group-${g.key}"><h3>${g.label}</h3><div class="hand-grid">${g.cards.map(renderCard).join('')}</div></section>`).join('');
+  const skartInfo=round.phase==='skart'?`<p>Fektetendő lapok: ${round.players.find(p=>p.playerId===HUMAN)!.receivedTalon.length}. Kijelölve: ${selectedSkart.size}</p>`:round.phase==='skart-announcement'?`<p>A fektetett tarokkok közlése a fektető védők feladata.</p>`:'';
   const opponents=round.players.filter(p=>p.playerId!==HUMAN).map(p=>`<div class="opponent"><strong>${playerName(p.playerId)}</strong><span>${p.hand.length} lap</span><span>${round!.takerId===p.playerId?'felvevő':game?.partnerId===p.playerId?'felvevő párja':'ellenfél'}</span></div>`).join('');
   const trick=game?.trick?.cards??[];
   const trickNo=game ? game.completedTricks.length + 1 : 0;
@@ -671,7 +709,7 @@ function render(){
     : '<span class="muted">Még nincs lezárt ütés.</span>';
   const declarationHistory=game?.declarations.declarations.slice(-8) ?? [];
   const declarationHtml=declarationHistory.length ? declarationHistory.map(d=>`<li>${playerName(d.ownerId)}: ${declarationLabel(d.type)}${d.status==='fulfilled'?' ✓':d.status==='failed'?' ✗':''}</li>`).join('') : '<li class="muted">Még nincs bemondás.</li>';
-  const auctionLog=round.eventLog.slice(-10).map(x=>`<li>${x}</li>`).join('');
+  const auctionLog=round.eventLog.slice(-30).map((x,i)=>`<li><span class="event-index">${i+1}.</span> ${x}</li>`).join('');
   const settlementLines = game?.settlement?.lines?.length ? game.settlement.lines.map(line=>`${declarationLabel(line.type ?? 'game')}: ${line.positiveForTakerPair ? '+' : '-'}${line.points}`).join(' · ') : '';
   const result=game?.finalPoints?`<div class="result"><strong>${game.finalPoints.result==='taker'?'A felvevő pár nyert.':'Az ellenpár nyert.'}</strong> · ütés ${game.finalPoints.takerPair}–${game.finalPoints.defencePair}${game.settlement?` · nettó ${game.settlement.netForTakerPair>0?'+':''}${game.settlement.netForTakerPair}`:''}${settlementLines?`<br><small>${settlementLines}</small>`:''}</div>`:'';
   const matchInfo=match?`<div class="match-info">Forduló ${match.roundNumber}/${match.targetRounds} · Leosztás ${Math.min(match.dealNumberInRound, match.playerCount)}/${match.playerCount} · Osztó: ${playerName(match.playerIds[match.dealerIndex]!)}</div>`:'';
@@ -696,7 +734,7 @@ function render(){
   const turnBadge = current ? `<span class="turn-badge">${current===HUMAN?'TE JÖSSZ':playerName(current)+' gondolkodik'}</span>` : '';
   const progressHtml = phase==='play' ? `<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="9" aria-valuenow="${Math.min(9, trickNo-1)}" aria-label="Lejátszás előrehaladása"><span style="width:${handProgress}%"></span></div><div class="compact muted">${Math.min(9, trickNo-1)}/9 ütés lezárva · ${hand.length} lap nálad · ${legal.size} legális kijátszás</div>` : '';
   const focusNote = phase==='play' && current===HUMAN ? `<div class="focus-note" role="status"><strong>Te jössz.</strong> A világos kártyák kijátszhatók. <span class="muted">${legal.size} legális lehetőség.</span></div>` : '';
-  app.innerHTML=`<div class="toolbar"><button id="new">Új mérkőzés</button><button id="newDeal" class="action">Új osztás</button>${aiControls}<span class="phase">${phaseLabel(phase)}</span>${result}</div>${errorHtml}${matchInfo}${dealSummary}${scoreTable}<div class="status"><strong>${current?`${playerName(current)} jön`:'Leosztás vége'}</strong>${turnBadge}<span>${message}</span></div>${progressHtml}${focusNote}<div class="compact muted" aria-live="polite">${lastUiAction}</div><div class="opponents">${opponents}</div><section class="panel"><h3>Aktív szakasz</h3><div class="actions">${actionButtons()}</div>${skartInfo}</section>${aiReasonHtml}${takerSkartHtml}<section class="trick"><h3>Aktuális ütés${game&&game.phase==='play'?` · ${trickNo}.`:''}</h3><div class="trick-grid">${trickHtml}</div></section><section class="hand"><h3>Az én lapjaim <small>(${humanIsDealer?'osztó / kimarad':hand.length})</small></h3><div class="cards">${cards}</div></section><section class="history-grid"><details open><summary>Utolsó lezárt ütés</summary>${lastTrickHtml}</details><details><summary>Bemondások</summary><ul>${declarationHtml}</ul></details></section><details><summary>Eseménynapló</summary><ul>${auctionLog}</ul></details>`;
+  app.innerHTML=`<div class="toolbar"><button id="new">Új mérkőzés</button><button id="newDeal" class="action">Új osztás</button>${aiControls}<span class="phase">${phaseLabel(phase)}</span>${result}</div>${errorHtml}${matchInfo}${dealSummary}${scoreTable}<div class="status"><strong>${current?`${playerName(current)} jön`:'Leosztás vége'}</strong>${turnBadge}<span>${message}</span></div>${progressHtml}<div class="compact muted" aria-live="polite">${lastUiAction}</div><section class="panel event-log-panel"><h2>Eseménynapló</h2><ol class="event-log">${auctionLog}</ol></section>${focusNote}<div class="opponents">${opponents}</div><section class="panel"><h3>Aktív szakasz</h3><div class="actions">${actionButtons()}</div>${skartInfo}</section>${aiReasonHtml}${takerSkartHtml}<section class="trick"><h3>Aktuális ütés${game&&game.phase==='play'?` · ${trickNo}.`:''}</h3><div class="trick-grid">${trickHtml}</div></section><section class="hand"><h3>Az én lapjaim <small>(${humanIsDealer?'osztó / kimarad':hand.length})</small></h3><div class="cards">${cards}</div></section><section class="history-grid"><details open><summary>Utolsó lezárt ütés</summary>${lastTrickHtml}</details><details><summary>Bemondások</summary><ul>${declarationHtml}</ul></details></section>`;
   document.querySelector('#new')?.addEventListener('click',()=>{clearAiTimer();round=null;game=null;match=null;paused=false;uiError='';lastAiReason=undefined;render();});
   document.querySelector('#newDeal')?.addEventListener('click',restartCurrentDeal);
   document.querySelector('#pauseAi')?.addEventListener('click',()=>paused?resumeAI():pauseAI());
@@ -722,7 +760,9 @@ function render(){
         game=declareFigureInGame(game,a.declaration,HUMAN,game.completedTricks.length+1,targetCardId);
       }
       declarationWindow=applyDeclarationAction(declarationWindow,a,hp.hand);
-      if(a.type==='tarokkCount') round={...round,eventLog:[...round.eventLog,`Te: ${a.count} tarokk`]};
+      const humanActionText=a.type==='pass'?'Passz':a.type==='tarokkCount'?`${a.count} tarokk`:declarationLabel(a.declaration);
+      round={...round,eventLog:[...round.eventLog,`Te: ${humanActionText}`]};
+      message=`Te: ${humanActionText}.`;
       if(declarationWindow.finished){const g=game; const startingPlayerId=round.startingPlayerId; const li=g.players.findIndex(p=>p.id===startingPlayerId);game=startPlay({...g,startingPlayerId},li);round={...round,phase:'play',currentPlayerId:game.players[li]!.id};message='A lejátszás kezdődik.';runAiPlay();}
       else {const next=currentDeclarer(declarationWindow);round=next?{...round,currentPlayerId:next}:round;message='A bemondási kör folytatódik.';runAiDeclarations();}
       render();
