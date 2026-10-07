@@ -113,10 +113,10 @@ function selectStrategicRolloutCard(simulatedState, playerId, legalCards) {
     // más szabályos lap, a XXI természetesen kényszerből kijátszható.
     // Két maradó tarokknál az assessXXILeadRisk már csak puha büntetést ad,
     // így a konkrét parti, az ütés szerkezete és a többi stratégiai cél dönthet.
-    if (state.singlePlayerPolicy === true) {
+    if (simulatedState.singlePlayerPolicy === true) {
         const xxiItem = scored.find(item => item.card.kind === 'tarokk' && item.card.rank === 21);
-        const xxiSafety = xxiItem ? assessXXILeadRisk(state, playerId) : undefined;
-        const xxiLock = state.lockedCards?.some(l => !l.resolved && l.cardId === 'T21') ?? false;
+        const xxiSafety = xxiItem ? assessXXILeadRisk(simulatedState, playerId) : undefined;
+        const xxiLock = simulatedState.lockedCards?.some(l => !l.resolved && l.cardId === 'T21') ?? false;
         if (xxiItem && xxiSafety?.hardHold && !xxiLock && scored.length > 1) {
             const bestAlternative = Math.max(...scored.filter(item => item !== xxiItem).map(item => item.score));
             xxiItem.score = bestAlternative - 100000;
@@ -511,6 +511,63 @@ function scoreCard(state, playerId, card, beliefs) {
     const reasons = [];
     const trick = state.trick;
     let score = 0;
+    // Csendes Pagát/Sasultimó veszteségminimalizálása: a 8. ütésben, ha a
+    // célkártya nincs bemondott Ultimó/Uhu kötelezettség alatt, és a nyilvánosan
+    // számolható tarokkállás szerint a jelenlegi ütés után még legalább két másik
+    // tarokk marad játékban, a célkártya kiadását erősen preferáljuk. Ellenkező
+    // esetben a csendes figura megőrzése még indokolt lehet.
+    if (card.id === 'T1' || card.id === 'T2') {
+        const trickNumber = state.completedTricks.length + 1;
+        if (trickNumber === 8) {
+            const targetType = card.id === 'T1' ? 'pagat' : 'sas';
+            const lockedByDeclaredUltimo = state.declarations?.declarations?.some(d => d.ownerId === playerId && d.status !== 'failed' && d.status !== 'fulfilled' &&
+                ((targetType === 'pagat' && (d.type === 'pagatUltimo' || d.type === 'pagatUhu')) ||
+                 (targetType === 'sas' && (d.type === 'sasUltimo' || d.type === 'sasUhu'))));
+            if (!lockedByDeclaredUltimo) {
+                const playedTarokks = new Set();
+                for (const completed of state.completedTricks ?? []) {
+                    for (const item of completed.cards ?? [])
+                        if (isTarokk(item.card)) playedTarokks.add(item.card.id);
+                }
+                for (const item of state.trick?.cards ?? [])
+                    if (isTarokk(item.card)) playedTarokks.add(item.card.id);
+                const ownTarokkCount = state.players.find(p => p.id === playerId)?.hand.filter(isTarokk).length ?? 0;
+                const otherAfterCurrent = Math.max(0, 22 - playedTarokks.size - ownTarokkCount);
+                // ownTarokkCount includes the candidate itself; all other unseen
+                // tarokks are therefore genuine remaining opponents/partner cards.
+                                if (otherAfterCurrent >= 2) {
+                                        score += 110;
+                    reasons.push(`Csendes ${card.id === 'T1' ? 'Pagát' : 'Sas'}ultimó veszteségminimalizálása: a 8. ütés után még legalább két másik tarokk marad játékban, ezért a célkártyát inkább most kell kiengedni.`);
+                }
+                else if (otherAfterCurrent === 0) {
+                    score -= 18;
+                    reasons.push(`Csendes ${card.id === 'T1' ? 'Pagát' : 'Sas'}ultimó: a többi tarokk már kiesett vagy az aktuális ütésben kifut, ezért a célkártya megőrzése előnyös.`);
+                }
+            }
+        }
+    }
+    // Csendes Pagát/Sasultimó a 9. ütésben: ha a céllap nem tudja megnyerni
+    // az aktuális ütést, és van más legális lap, a célkártya kijátszása közvetlenül
+    // 5 pontos csendes figura-bukás kockázatát teremti meg. A játékosok ilyenkor
+    // a veszteség minimalizálása miatt inkább másik tarokkal / lappal szabadulnak,
+    // kivéve, ha a szabályok egyetlen kényszerű kijátszást hagynak.
+    if ((card.id === 'T1' || card.id === 'T2') && state.completedTricks.length + 1 === 9) {
+        const targetType = card.id === 'T1' ? 'pagat' : 'sas';
+        const lockedByDeclaredUltimo = state.declarations?.declarations?.some(d => d.ownerId === playerId && d.status !== 'failed' && d.status !== 'fulfilled' &&
+            ((targetType === 'pagat' && (d.type === 'pagatUltimo' || d.type === 'pagatUhu')) ||
+             (targetType === 'sas' && (d.type === 'sasUltimo' || d.type === 'sasUhu'))));
+        if (!lockedByDeclaredUltimo && trick.cards.length > 0) {
+            const targetCanWin = doesCandidateWinCurrentTrick(state, playerId, card);
+            if (!targetCanWin) {
+                score -= 120;
+                reasons.push(`9. ütés: a csendes ${card.id === 'T1' ? 'Pagát' : 'Sas'} nem tudja megnyerni az ütést; a figura 5 pontos bukásának elkerülése miatt másik lap előnyösebb.`);
+            }
+            else {
+                score += 18;
+                reasons.push(`9. ütés: a csendes ${card.id === 'T1' ? 'Pagát' : 'Sas'} várhatóan maga viszi az utolsó ütést, ezért a figura megőrzése most kifizetődő.`);
+            }
+        }
+    }
     if (card.kind === 'tarokk' && card.rank === 21) {
         const safety = assessXXILeadRisk(state, playerId);
         const activeXXILock = state.lockedCards?.some(l => !l.resolved && l.cardId === card.id) ?? false;

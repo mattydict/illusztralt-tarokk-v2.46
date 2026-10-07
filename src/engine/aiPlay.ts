@@ -142,10 +142,10 @@ function selectStrategicRolloutCard(simulatedState: GameState, playerId: string,
   // más szabályos lap, a XXI természetesen kényszerből kijátszható.
   // Két maradó tarokknál az assessXXILeadRisk már csak puha büntetést ad,
   // így a konkrét parti, az ütés szerkezete és a többi stratégiai cél dönthet.
-  if (state.singlePlayerPolicy === true) {
+  if (simulatedState.singlePlayerPolicy === true) {
     const xxiItem = scored.find(item => item.card.kind === 'tarokk' && item.card.rank === 21);
-    const xxiSafety = xxiItem ? assessXXILeadRisk(state, playerId) : undefined;
-    const xxiLock = state.lockedCards?.some(l => !l.resolved && l.cardId === 'T21') ?? false;
+    const xxiSafety = xxiItem ? assessXXILeadRisk(simulatedState, playerId) : undefined;
+    const xxiLock = simulatedState.lockedCards?.some(l => !l.resolved && l.cardId === 'T21') ?? false;
     if (xxiItem && xxiSafety?.hardHold && !xxiLock && scored.length > 1) {
       const bestAlternative = Math.max(...scored.filter(item => item !== xxiItem).map(item => item.score));
       xxiItem.score = bestAlternative - 100000;

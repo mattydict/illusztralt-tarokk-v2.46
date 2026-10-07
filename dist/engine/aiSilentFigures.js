@@ -76,6 +76,15 @@ export function assessSilentFigurePlay(state, observerId, candidate, hypotheses,
     const reasons = [];
     for (const threat of currentLandscape.threats) {
         const delta = candidateEffect(state, observerId, candidate, candidateWinner, candidateSide, closes, threat, context);
+        if ((threat.type === 'pagatUltimo' || threat.type === 'sasUltimo') && candidate.id === targetForSilentUltimo(state, observerId, threat)) {
+            const timing = silentUltimoTiming(state, observerId, candidate.id, candidateWinner, candidate);
+            if (timing > 0 && state.completedTricks.length + 1 === 8)
+                reasons.push('8. ütés: a még játékban lévő másik tarokkok miatt a Pagát/Sas kiadása veszteségminimalizáló döntés lehet.');
+            else if (timing < 0 && state.completedTricks.length + 1 === 8)
+                reasons.push('8. ütés: a többi tarokk már kiesőben vagy nincs játékban, ezért a Pagát/Sas megőrzése indokolt.');
+            else if (state.completedTricks.length + 1 === 9 && delta < 0)
+                reasons.push('9. ütés: a céllap várhatóan nem tud ütni, ezért a célfigura kockázata közvetlen veszteséggé válhat.');
+        }
         if (Math.abs(delta) < 0.015)
             continue;
         const weight = threat.importance * (0.65 + 0.35 * threat.urgency) * Math.max(0.25, threat.probability);
@@ -424,6 +433,49 @@ function ownerIdForSilentUltimo(state, observerId, side, type, hypotheses, conte
     }
     return undefined;
 }
+function visibleOtherTarokksRemaining(state, observerId) {
+    const playedTarokks = new Set();
+    for (const trick of state.completedTricks ?? []) {
+        for (const item of trick.cards ?? []) {
+            if (isTarokk(item.card))
+                playedTarokks.add(item.card.id);
+        }
+    }
+    for (const item of state.trick?.cards ?? []) {
+        if (isTarokk(item.card))
+            playedTarokks.add(item.card.id);
+    }
+    const ownTarokks = (state.players.find(p => p.id === observerId)?.hand ?? []).filter(isTarokk).map(c => c.id);
+    // From the player's perspective the only unobserved tarokks are those not
+    // yet seen in completed/current tricks and not in their own hand. Because the
+    // current trick has already been added to playedTarokks above, this value is
+    // already the number remaining after the current trick; do not subtract the
+    // current-trick tarokks a second time. This deliberately does not look into
+    // opponent hands, even though the single-player state contains them.
+    return Math.max(0, 22 - playedTarokks.size - ownTarokks.length);
+}
+function silentUltimoTiming(state, observerId, targetId, candidateWinner, candidate) {
+    if (candidate.id !== targetId)
+        return 0;
+    const trickNumber = state.completedTricks.length + 1;
+    if (trickNumber === 9) {
+        const winnerIsOwner = candidateWinner === observerId;
+        return winnerIsOwner ? 1.20 : -1.55;
+    }
+    if (trickNumber !== 8)
+        return 0;
+    const otherAfterCurrent = visibleOtherTarokksRemaining(state, observerId);
+    if (otherAfterCurrent === 0)
+        return -1.35;
+    if (otherAfterCurrent === 1)
+        return -0.20;
+    // With two or more other tarokks still expected to remain after the current
+    // trick, a strong player normally gives up the silent Ultimó attempt in the
+    // 8th rather than carry the Pagát/Sas into a very likely 9th-trick capture.
+    // This is a loss-minimising decision, not a declaration that the figure is
+    // mathematically impossible.
+    return 2.40;
+}
 function targetForSilentUltimo(state, observerId, threat) {
     if (threat.type === 'pagatUltimo')
         return 'T1';
@@ -446,7 +498,7 @@ function candidateEffect(state, observerId, candidate, candidateWinner, candidat
         if (threat.type === 'volat' && goodWinner && isTarokk(candidate) && candidate.rank <= 12)
             return -0.04;
         if ((threat.type === 'pagatUltimo' || threat.type === 'sasUltimo') && candidate.id === (threat.type === 'pagatUltimo' ? 'T1' : 'T2'))
-            return -0.35;
+            return -1.25;
         return 0;
     }
     const hasHonour = trick.cards.some(x => isHonour(x.card));
@@ -456,6 +508,11 @@ function candidateEffect(state, observerId, candidate, candidateWinner, candidat
     const hasKing = trick.cards.some(x => x.card.kind === 'suit' && x.card.rank === 'K');
     const target = threat.type === 'pagatUltimo' ? 'T1' : threat.type === 'sasUltimo' ? 'T2' : undefined;
     const hasTarget = target ? trick.cards.some(x => x.card.id === target) : false;
+    if (target) {
+        const timing = silentUltimoTiming(state, observerId, target, candidateWinner, candidate);
+        if (timing !== 0)
+            return timing;
+    }
     if (!closes) {
         if ((threat.type === 'pagatUltimo' || threat.type === 'sasUltimo') && candidate.id === targetForSilentUltimo(state, observerId, threat) && trickNumber < 9) {
             return -1.25;
@@ -490,7 +547,7 @@ function candidateEffect(state, observerId, candidate, candidateWinner, candidat
     }
     if (threat.type === 'pagatUltimo' || threat.type === 'sasUltimo') {
         if (hasTarget && trickNumber === 9)
-            return goodWinner ? 0.98 : -0.98;
+            return goodWinner ? 0.98 : -1.15;
         if (candidate.id === target && trickNumber < 9)
             return -0.8;
         if (partnerWinner && trickNumber >= 7)

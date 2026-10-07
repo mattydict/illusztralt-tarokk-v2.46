@@ -81,9 +81,24 @@ test('single-player: XXI + Skíz + 6 tarokk, de XIII vagy király nélkül nem n
   }
 });
 
-test('single-player: négy Nagymadárig szükséges magas tarokk + király esetén nyitó Egyes', () => {
+test('single-player: gyenge 4 tarokkos XXI-es élből Hármast nyit, Egyesre csak későbbi licitnyomásra megy', () => {
   const auction = createAuction(['A','B','C','D'], 0);
-  const hand = [c(22), c(21), c(20), c(19), c(18), c(17), c(12), { kind:'suit' as const, suit:'hearts' as const, rank:'K' as const, id:'hearts-K', points:5 }];
+  const hand = [
+    { kind:'suit' as const, suit:'clubs' as const, rank:'Q' as const, id:'clubs-Q', points:4 },
+    { kind:'suit' as const, suit:'hearts' as const, rank:'K' as const, id:'hearts-K', points:5 },
+    { kind:'suit' as const, suit:'hearts' as const, rank:'Q' as const, id:'hearts-Q', points:4 },
+    { kind:'suit' as const, suit:'spades' as const, rank:'Q' as const, id:'spades-Q', points:4 },
+    { kind:'suit' as const, suit:'spades' as const, rank:'10' as const, id:'spades-10', points:1 },
+    c(5), c(6), c(14), c(21),
+  ];
+  const d = chooseAIAuctionAction(auction, 'A', hand, {A:hand}, { singlePlayer: true });
+  assert.equal(d.action.type, 'bid');
+  assert.equal(d.action.contract, 'three');
+});
+
+test('single-player: 8+ tarokk + nagyhonőr + legalább négy Nagymadárig szükséges magas tarokk + király esetén nyitó Egyes', () => {
+  const auction = createAuction(['A','B','C','D'], 0);
+  const hand = [c(22), c(21), c(20), c(19), c(18), c(17), c(16), c(15), { kind:'suit' as const, suit:'hearts' as const, rank:'K' as const, id:'hearts-K', points:5 }];
   const d = chooseAIAuctionAction(auction, 'A', hand, {A:hand}, { singlePlayer: true });
   assert.equal(d.action.type, 'bid');
   assert.equal(d.action.contract, 'one');

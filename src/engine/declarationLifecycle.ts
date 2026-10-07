@@ -357,16 +357,16 @@ export function evaluateDeclarations(progress: DeclarationProgress, tricks: Figu
     }
   }
 
-  // Silent Pagát/Sas Ultimó is earned only when the target card is won by its
-  // holder in the ninth (last) trick. Playing Pagát/Sas earlier does not create
-  // a failed silent figure.
+  // A silent Pagát/Sas Ultimó is an outcome of the actual ninth-trick play:
+  // winning with the target fulfils it, while playing the target on 9th and being
+  // caught creates the corresponding silent failure. Playing the target before
+  // the ninth simply abandons the silent Ultimó attempt without a 5-point loss.
   if (tricks.length === 9) {
     const finalTrick = tricks[8];
     if (finalTrick) {
       for (const [targetId, silentType] of [['T1', 'pagatUltimo'], ['T2', 'sasUltimo']] as const) {
         const played = finalTrick.cards.find(e => e.card.id === targetId);
         if (!played) continue;
-        if (finalTrick.winner !== played.player) continue;
         // A silent Ultimó is an independent figure, but it is still a
         // one-outcome objective for the deal. Do not create another silent
         // record if the authoritative lifecycle already contains an active or
@@ -382,7 +382,7 @@ export function evaluateDeclarations(progress: DeclarationProgress, tricks: Figu
           type: silentType,
           ownerId: played.player,
           trickNumber: 9,
-          status: 'fulfilled',
+          status: finalTrick.winner === played.player ? 'fulfilled' : 'failed',
           sourceDeclarationId: sourceUhu?.id ?? `silent:${silentType}`,
         });
       }

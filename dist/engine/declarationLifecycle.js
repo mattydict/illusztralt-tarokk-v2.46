@@ -301,12 +301,12 @@ export function evaluateDeclarations(progress, tricks, sideOf, currentTrickNumbe
                 const played = finalTrick.cards.find(e => e.card.id === targetId);
                 if (!played)
                     continue;
-                if (finalTrick.winner !== played.player)
-                    continue;
-                // A silent Ultimó is an independent figure, but it is still a
-                // one-outcome objective for the deal. Do not create another silent
-                // record if the authoritative lifecycle already contains an active or
-                // fulfilled/failed outcome for this target.
+                // A silent Pagát/Sas Ultimó is an outcome of the actual ninth-trick
+                // play. Winning the final trick fulfils it; playing the target on 9th
+                // and getting caught is the corresponding silent failure (the player
+                // has exposed the target and lost the 5-point figure). An explicit
+                // Ultimó/Uhu declaration is handled separately by the declaration
+                // lifecycle and must not receive a duplicate silent record.
                 if (declarations.some(d => d.type === silentType && d.status !== 'failed'))
                     continue;
                 if (silentFigures.some(s => s.type === silentType))
@@ -317,7 +317,7 @@ export function evaluateDeclarations(progress, tricks, sideOf, currentTrickNumbe
                     type: silentType,
                     ownerId: played.player,
                     trickNumber: 9,
-                    status: 'fulfilled',
+                    status: finalTrick.winner === played.player ? 'fulfilled' : 'failed',
                     sourceDeclarationId: sourceUhu?.id ?? `silent:${silentType}`,
                 });
             }

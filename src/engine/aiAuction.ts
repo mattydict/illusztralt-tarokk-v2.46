@@ -400,23 +400,33 @@ export function chooseAIAuctionAction(
     lowestTarokkRank !== undefined &&
     lowestTarokkRank >= 13 &&
     hasSuitKing;
-  // A Nagymadár klasszikus magas-tarokk lépcsője: XX-XIX-XVIII-XVII-XVI.
-  // Nyitó Egyeshez ebből legalább négy szükséges, és ugyanúgy kell legalább
-  // egy színes király. Ez a két kivételes nagyhonőrös profil mindegyikére
-  // vonatkozik, függetlenül attól, hogy a Szóló szűk feltétele teljesül-e.
-  const nagymadarRanks = [20, 19, 18, 17, 16];
+  // A nagyon gyenge XXI-es élből Hármast mond. TAROKK-ŐR konkrét példája
+  // szerint a gyenge XXI-es lehet a felvevő A egy 3→2→1 licitban; az Egyes
+  // csak későbbi licitnyomás eredménye.
+  const nagymadarRanks = [22, 21, 20, 19, 18, 17, 16];
   const nagymadarHighCount = tarokkRanks.filter(rank => nagymadarRanks.includes(rank)).length;
-  const nagymadarOpeningOne = exceptionalOpeningProfile && nagymadarHighCount >= 4 && hasSuitKing;
-  // A nyitó Kettes sem általános erősségi licit. Single-playerben csak a
-  // klasszikus nagyon erős két-királyos / nyolc-tarokkos kéz nyithat Kettessel:
-  // 7 tarokk + legalább két király, vagy legalább 8 tarokk.
+  const weakXxiOpeningThree = profile.xxi && !profile.skiz && !profile.pagat && profile.tarokks <= 5;
+
+  // Nyitó Egyeshez legalább 8 tarokk, legalább egy nagyhonőr, a Skíztől
+  // XVI-ig terjedő 7 magas tarokk közül legalább 4, valamint egy színes király kell.
+  const veryStrongOpeningOne =
+    profile.tarokks >= 8 &&
+    profile.bigHonours >= 1 &&
+    nagymadarHighCount >= 4 &&
+    hasSuitKing;
+
+  // Nyitó Ketteshez 8+ tarokk, vagy 7 tarokk + legalább két színes király kell.
   const kingCount = hand.filter(card => card.kind === 'suit' && card.rank === 'K').length;
   const openingTwoExceptional = tarokkRanks.length >= 8 || (tarokkRanks.length >= 7 && kingCount >= 2);
 
   if (options.singlePlayer && !position.hasOpened) {
-    // These opening conventions are hard single-player policy gates, not
-    // scoring bonuses: if the exceptional Solo profile is present, generic
-    // opportunity-cost calibration must not turn it back into a lower bid.
+    if (weakXxiOpeningThree) {
+      const three = scored.find(x => x.action.type === 'bid' && x.action.contract === 'three');
+      if (three) {
+        return { ...three, reasons: [...three.reasons, 'Single-player nyitókalibráció: a gyenge, 4–5 tarokkos XXI-es élből Hármast mond; az Egyesre csak későbbi licitnyomásra megy le.'] };
+      }
+    }
+
     if (openingSoloExceptional) {
       const solo = scored.find(x => x.action.type === 'bid' && x.action.contract === 'solo');
       if (solo) {
@@ -424,28 +434,17 @@ export function chooseAIAuctionAction(
       }
     }
 
-    if (exceptionalOpeningProfile && nagymadarOpeningOne) {
+    if (veryStrongOpeningOne) {
       const one = scored.find(x => x.action.type === 'bid' && x.action.contract === 'one');
       if (one) {
-        return { ...one, reasons: [...one.reasons, 'Single-player nyitókalibráció: legalább négy Nagymadárig szükséges magas tarokk + király esetén Egyes az elsődleges nyitás.'] };
-      }
-    }
-
-    // A két kivételes, nagyhonőrös nyitóprofilnál, ha a Szólóhoz szükséges
-    // szűk feltétel nem áll fenn és az Egyes Nagymadár-küszöbe sem teljesül,
-    // a nyitó Kettes legyen az alapértelmezett emelés. Ezt is csak single-player
-    // módban alkalmazzuk.
-    if (exceptionalOpeningProfile && !openingSoloExceptional && !nagymadarOpeningOne) {
-      const two = scored.find(x => x.action.type === 'bid' && x.action.contract === 'two');
-      if (two) {
-        return { ...two, reasons: [...two.reasons, 'Single-player nyitókalibráció: a kivételes nagyhonőrös profil megvan, de a Szóló- és Egyes-küszöb nem teljesül; Kettes a következő nyitó lépcső.'] };
+        return { ...one, reasons: [...one.reasons, 'Single-player nyitókalibráció: legalább négy Skíz–XVI magas tarokk + nagyhonőr + király + legalább 8 tarokk esetén Egyes az elsődleges nyitás.'] };
       }
     }
 
     const forbiddenOpeningContracts = new Set<string>();
     if (!openingSoloExceptional) forbiddenOpeningContracts.add('solo');
-    if (!openingTwoExceptional && !nagymadarOpeningOne) forbiddenOpeningContracts.add('two');
-    if (!openingSoloExceptional && !openingTwoExceptional && !nagymadarOpeningOne) forbiddenOpeningContracts.add('one');
+    if (!openingTwoExceptional) forbiddenOpeningContracts.add('two');
+    if (!veryStrongOpeningOne) forbiddenOpeningContracts.add('one');
     const constrainedOpening = scored.find(x => x.action.type === 'pass' || (x.action.type === 'bid' && !forbiddenOpeningContracts.has(x.action.contract)));
     if (constrainedOpening && best.action.type === 'bid' && forbiddenOpeningContracts.has(best.action.contract)) {
       best = { ...constrainedOpening, reasons: [...constrainedOpening.reasons, 'Single-player nyitókalibráció: a túl magas nyitólicit keményen kizárva a kéz profilja alapján.'] };

@@ -323,42 +323,48 @@ export function chooseAIAuctionAction(auction, playerId, hand, hands, options = 
     const lowestTarokkRank = tarokkRanks.length ? Math.min(...tarokkRanks) : undefined;
     const hasSuitKing = hand.some(card => card.kind === 'suit' && card.rank === 'K');
     const openingSoloExceptional = exceptionalOpeningProfile && lowestTarokkRank !== undefined && lowestTarokkRank >= 13 && hasSuitKing;
-    const nagymadarRanks = [20, 19, 18, 17, 16];
+    const nagymadarRanks = [22, 21, 20, 19, 18, 17, 16];
     const nagymadarHighCount = tarokkRanks.filter(rank => nagymadarRanks.includes(rank)).length;
-    const nagymadarOpeningOne = exceptionalOpeningProfile && nagymadarHighCount >= 4 && hasSuitKing;
-    // Single-player opening calibration: an opening Egyes is itself a very
-    // strong statement. It is reserved for the two concrete profiles already
-    // established above, plus the separately agreed very-strong opening hand:
-    // 8+ tarokks, or 7 tarokks with at least two kings. Do not let the generic
-    // scoring layers leak a normal hand into an opening Egyes.
     const suitKings = hand.filter(card => card.kind === 'suit' && card.rank === 'K').length;
-    const veryStrongOpeningOne = hand.filter(isTarokk).length >= 8 || (hand.filter(isTarokk).length >= 7 && suitKings >= 2);
-    const veryStrongOpeningTwo = veryStrongOpeningOne;
+    // A very weak XXI is still a genuine opening Hármas. TAROKK-ŐR gives the
+    // canonical line A:3, B:2, C:1 with A explicitly described as a weak XXI.
+    // The later descent to Egyes is a response to pressure from players behind,
+    // not something the XXI should announce from the outset.
+    const weakXxiOpeningThree = profile.xxi && !profile.skiz && !profile.pagat && profile.tarokks <= 5;
+    // Opening Egyes is deliberately much rarer than a generic score-based
+    // evaluator might suggest: at least eight tarokks, at least one big honour,
+    // at least four of the seven high tarokks from Skíz through XVI, and a suit
+    // king. Five such high tarokks is the more comfortable expert profile, but
+    // four is the hard threshold.
+    const veryStrongOpeningOne = profile.tarokks >= 8 && profile.bigHonours >= 1 && nagymadarHighCount >= 4 && hasSuitKing;
+    // Opening Kettes has the separately established distributional threshold:
+    // 8+ tarokks, or 7+ tarokks together with two suit kings.
+    const veryStrongOpeningTwo = profile.tarokks >= 8 || (profile.tarokks >= 7 && suitKings >= 2);
     if (options.singlePlayer && !position.hasOpened) {
+        if (weakXxiOpeningThree) {
+            const three = scored.find(x => x.action.type === 'bid' && x.action.contract === 'three');
+            if (three) {
+                return { ...three, reasons: [...three.reasons, 'Single-player nyitókalibráció: a gyenge, 4–5 tarokkos XXI-es élből Hármast mond; az Egyesre csak későbbi licitnyomásra megy le.'] };
+            }
+        }
         if (openingSoloExceptional) {
             const solo = scored.find(x => x.action.type === 'bid' && x.action.contract === 'solo');
             if (solo)
                 return { ...solo, reasons: [...solo.reasons, 'Single-player nyitókalibráció: kivételes Szóló-kéz, ezért a nyitó Szóló elsődleges és nem csak pontozási opció.'] };
         }
-        if (nagymadarOpeningOne) {
+        if (veryStrongOpeningOne) {
             const one = scored.find(x => x.action.type === 'bid' && x.action.contract === 'one');
             if (one)
                 return { ...one, reasons: [...one.reasons, 'Single-player nyitókalibráció: legalább négy Nagymadárig szükséges magas tarokk + király esetén Egyes az elsődleges nyitás.'] };
         }
-        if (exceptionalOpeningProfile && !nagymadarOpeningOne) {
-            const two = scored.find(x => x.action.type === 'bid' && x.action.contract === 'two');
-            if (two)
-                return { ...two, reasons: [...two.reasons, 'Single-player nyitókalibráció: a kivételes nagyhonőrös profil megvan, de a Szóló- és Egyes-küszöb nem teljesül; Kettes a következő nyitó lépcső.'] };
-        }
-        // Hard opening gates: outside the exceptional Solo profiles, Solo is not
-        // an opening option at all. Likewise, Egyes is reserved for the very strong
-        // 7-tarokk/2-king or 8+-tarokk hand (or the already established Nagymadár
-        // profile). This prevents downstream scoring layers from reintroducing a
-        // forbidden opening contract.
+        // Hard opening gates: outside the exceptional Solo profile, Solo is not
+        // an opening option at all. Egyes and Kettes are independently gated by
+        // their concrete expert thresholds above, so downstream scoring cannot
+        // reintroduce an otherwise forbidden opening contract.
         const forbiddenOpeningContracts = new Set();
         if (!openingSoloExceptional) forbiddenOpeningContracts.add('solo');
-        if (!veryStrongOpeningTwo && !nagymadarOpeningOne) forbiddenOpeningContracts.add('two');
-        if (!veryStrongOpeningOne && !nagymadarOpeningOne) forbiddenOpeningContracts.add('one');
+        if (!veryStrongOpeningTwo) forbiddenOpeningContracts.add('two');
+        if (!veryStrongOpeningOne) forbiddenOpeningContracts.add('one');
         const constrainedOpening = scored.find(x => x.action.type === 'pass' || (x.action.type === 'bid' && !forbiddenOpeningContracts.has(x.action.contract)));
         if (constrainedOpening && best.action.type === 'bid' && forbiddenOpeningContracts.has(best.action.contract)) {
             return { ...constrainedOpening, reasons: [...constrainedOpening.reasons, 'Single-player nyitókalibráció: a túl magas nyitólicit keményen kizárva a kéz profilja alapján.'] };
