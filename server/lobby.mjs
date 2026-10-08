@@ -3,7 +3,10 @@ import { createAuthoritativeRoom } from '../src/server/authoritativeRoom.js';
 import { JsonRoomStore } from './persistence.mjs';
 import { PostgresRoomStore } from './postgresPersistence.mjs';
 
-const SEAT_IDS = ['P1', 'P2', 'P3', 'P4'];
+const FOUR_SEAT_IDS = ['P1', 'P2', 'P3', 'P4'];
+const FIVE_SEAT_IDS = ['P1', 'P2', 'P3', 'P4', 'P5'];
+function seatIdsForCount(playerCount) { return Number(playerCount) === 5 ? FIVE_SEAT_IDS : FOUR_SEAT_IDS; }
+function normalizePlayerCount(value) { const n = Number(value); return n === 5 ? 5 : 4; }
 
 function defaultStore() {
   return process.env.DATABASE_URL ? new PostgresRoomStore() : new JsonRoomStore();
@@ -46,8 +49,11 @@ export class LobbyService {
     for (const record of records) {
       try {
         const rawTokens = Object.fromEntries(Object.entries(record.tokenHashes ?? {}).map(([id, hash]) => [id, null]));
+        const playerIds = Array.isArray(record.roomState?.playerIds) && (record.roomState.playerIds.length === 4 || record.roomState.playerIds.length === 5)
+          ? [...record.roomState.playerIds]
+          : (Array.isArray(record.seats) && record.seats.length === 5 ? FIVE_SEAT_IDS : FOUR_SEAT_IDS);
         const meta = {
-          room: createAuthoritativeRoom({ roomId: record.roomId, playerIds: SEAT_IDS, dealerIndex: record.dealerIndex ?? 0, matchRounds: record.roomState?.matchRounds ?? 4, persisted: record.roomState, onCommit: state => this.persistMeta(meta, state) }),
+          room: createAuthoritativeRoom({ roomId: record.roomId, playerIds, dealerIndex: record.dealerIndex ?? 0, matchRounds: record.roomState?.matchRounds ?? 4, persisted: record.roomState, onCommit: state => this.persistMeta(meta, state) }),
           tokens: rawTokens,
           tokenHashes: { ...record.tokenHashes },
           seats: record.seats,
@@ -61,19 +67,21 @@ export class LobbyService {
     }
   }
 
-  createInternal({ displayName, matchRounds = 4 } = {}) {
+  createInternal({ displayName, matchRounds = 4, playerCount = 4 } = {}) {
     if (this.rooms.size >= this.maxRooms) throw new Error('A szerver elérte az aktív szobák maximális számát.');
     let roomId;
     do roomId = makeCode(); while (this.rooms.has(roomId));
     const metaRef = { current: null };
-    const room = createAuthoritativeRoom({ roomId, playerIds: SEAT_IDS, dealerIndex: 0, matchRounds: normalizeMatchRounds(matchRounds), onCommit: state => this.persistMeta(metaRef.current, state) });
-    for (const id of SEAT_IDS.slice(1)) room.disconnect(id);
-    const tokens = Object.fromEntries(SEAT_IDS.map(id => [id, makeToken()]));
-    const tokenHashes = Object.fromEntries(SEAT_IDS.map(id => [id, hashToken(tokens[id])]));
+    const normalizedPlayerCount = normalizePlayerCount(playerCount);
+    const seatIds = seatIdsForCount(normalizedPlayerCount);
+    const room = createAuthoritativeRoom({ roomId, playerIds: seatIds, dealerIndex: 0, matchRounds: normalizeMatchRounds(matchRounds), onCommit: state => this.persistMeta(metaRef.current, state) });
+    for (const id of seatIds.slice(1)) room.disconnect(id);
+    const tokens = Object.fromEntries(seatIds.map(id => [id, makeToken()]));
+    const tokenHashes = Object.fromEntries(seatIds.map(id => [id, hashToken(tokens[id])]));
     const meta = {
       room,
       tokens,
-      seats: Object.fromEntries(SEAT_IDS.map((id, index) => [id, {
+      seats: Object.fromEntries(seatIds.map((id, index) => [id, {
         playerId: id,
         displayName: index === 0 ? cleanName(displayName, 'Játékos 1') : `Játékos ${index + 1}`,
         joined: index === 0,
@@ -87,16 +95,16 @@ export class LobbyService {
     return { meta, credentials: this.credentials(meta, 'P1', tokens.P1) };
   }
 
-  create({ displayName, matchRounds = 4 } = {}) {
+  create({ displayName, matchRounds = 4, playerCount = 4 } = {}) {
     if (this.asyncStore) throw new Error('Ez a szerver aszinkron persistence-t használ; használd a createAsync() metódust.');
-    const { meta, credentials } = this.createInternal({ displayName, matchRounds });
+    const { meta, credentials } = this.createInternal({ displayName, matchRounds, playerCount });
     this.persistMeta(meta, meta.room.exportPersistedState());
     return credentials;
   }
 
-  async createAsync({ displayName, matchRounds = 4 } = {}) {
+  async createAsync({ displayName, matchRounds = 4, playerCount = 4 } = {}) {
     await this.waitUntilReady();
-    const { meta, credentials } = this.createInternal({ displayName, matchRounds });
+    const { meta, credentials } = this.createInternal({ displayName, matchRounds, playerCount });
     await this.persistMetaAsync(meta, meta.room.exportPersistedState());
     return credentials;
   }
@@ -111,7 +119,7 @@ export class LobbyService {
       if (token) throw new Error('A hely még nincs lefoglalva; token nélkül csatlakozz.');
       seat = playerId;
     } else {
-      seat = SEAT_IDS.find(id => !meta.seats[id].joined);
+      seat = meta.room.playerIds.find(id => !meta.seats[id]?.joined);
     }
     if (!seat) throw new Error('A szoba megtelt.');
     let presentedToken = token;
@@ -174,7 +182,7 @@ export class LobbyService {
     for (const [roomId, meta] of this.rooms) {
       if (now - (meta.updatedAt ?? meta.createdAt) < maxAgeMs) continue;
       if (meta.room.isReady()) continue;
-      if (SEAT_IDS.some(id => meta.room.isConnected(id))) continue;
+      if (meta.room.playerIds.some(id => meta.room.isConnected(id))) continue;
       this.rooms.delete(roomId);
       try { this.store.remove(roomId); } catch { /* best effort cleanup */ }
       removed += 1;
@@ -187,14 +195,17 @@ export class LobbyService {
     return {
       roomId,
       ready: meta.room.isReady(),
-      seats: SEAT_IDS.map(id => ({
+      playerCount: meta.room.playerIds.length,
+      dealerPlayerId: meta.room.dealerPlayerId,
+      activePlayerIds: meta.room.activePlayerIds,
+      seats: meta.room.playerIds.map(id => ({
         playerId: id,
         displayName: meta.seats[id].displayName,
         joined: meta.seats[id].joined,
         connected: meta.room.isConnected(id),
       })),
-      connectedCount: SEAT_IDS.filter(id => meta.room.isConnected(id)).length,
-      joinedCount: SEAT_IDS.filter(id => meta.seats[id].joined).length,
+      connectedCount: meta.room.playerIds.filter(id => meta.room.isConnected(id)).length,
+      joinedCount: meta.room.playerIds.filter(id => meta.seats[id].joined).length,
       matchRounds: Number(meta.room.matchRounds ?? 4),
     };
   }

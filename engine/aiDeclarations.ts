@@ -31,6 +31,26 @@ export function chooseAIDeclaration(
   const options = availableDeclarations(hand, context);
   if (!options.length) return { action: { type: 'pass', reason: 'Nincs elérhető bemondás.' }, score: 0, reasons: [] };
 
+  // Hard communication convention: when the called partner is XIX and the
+  // partner holds both big honours with at least eight tarokks, Trull is
+  // mandatory.
+  if (context.isPartner === true
+    && context.calledTarokk === 19
+    && tarokkCount(hand) >= 8
+    && hasTarokk(hand, 22)
+    && hasTarokk(hand, 21)
+    && !context.trullDeclared
+    && !context.trullOmittedByTaker) {
+    const trull = options.find(o => o.type === 'tuletroa');
+    if (trull) {
+      return {
+        action: trull,
+        score: 1000,
+        reasons: ['Kötelező Trull: XIX a hívott partnerlap, és a partner kezében 8+ tarokk mellett Skíz + XXI van. A nagyhonőrök együttes jelzése itt nem hagyható el.'],
+      };
+    }
+  }
+
   const strategicContext = { ...(context as AIStrategyContext), worldBeliefs, handHypotheses, gameState } as AIStrategyContext;
   const scored = options.map(option => {
     const base = scoreDeclaration(option, hand, context, beliefs);
@@ -103,6 +123,10 @@ function declarationFeasibilityGate(type: DeclarationType, hand: Card[], context
   const big = has(21) || has(22);
   const chain = context.trullDeclared === true || context.trullOmittedByTaker === true || context.previousDeclarations.includes('fourKings');
   if (type === 'centrum') {
+    if (context.calledTarokk === 19) {
+      const strictXixCentrumCore = has(22) && has(21) && has(20) && has(18);
+      if (!strictXixCentrumCore) return { allowed: false, reason: 'XIX-hívás után a Centrum csak Skíz–XXI–XX–XVIII kézzel szabályos.' };
+    }
     const strongXixCentrumChain = chain && has(20) && t >= 5 && (has(21) || has(22));
     const baseCore = has(20) && (has(21) || has(22)) && t >= 5;
     if (!baseCore && !strongXixCentrumChain) return { allowed: false, reason: 'Centrum: az AI-nál hiányzik a saját XX + nagyhonőr mag; a kommunikáció önmagában nem elég.' };

@@ -495,7 +495,7 @@ function runAiDeclarations(){
       else game=declareFigureInGame(game,action.declaration,id,game.completedTricks.length+1,targetCardId);
     }
     declarationWindow=applyDeclarationAction(declarationWindow,action,gp.hand);
-    if(action.type==='tarokkCount') recordInstantTarokkScore(id,action.count);
+    if(action.type==='tarokkCount'){ recordInstantTarokkScore(id,action.count); game={...game,announcedTarokkCounts:{...(game.announcedTarokkCounts??{}),[id]:action.count}}; }
     const actionText=action.type==='pass'?'Passz':action.type==='tarokkCount'?`${action.count} tarokk`:declarationLabel(action.declaration);
     round={...round,eventLog:[...round.eventLog,`${playerName(id)}: ${actionText}`]};
     message=`${playerName(id)}: ${actionText}.`;
@@ -534,7 +534,7 @@ function startGame(partnerId:string) {
   const g0=createInitialState(round.players.map(p=>p.playerId),0);
   const players=g0.players.map(p=>{const rp=round!.players.find(x=>x.playerId===p.id)!;return {...p,hand:[...rp.hand],active:true};});
   const startingPlayerId=round.startingPlayerId;
-  let g=setPartnership({...g0,players,talon:[],startingPlayerId},round.takerId,partnerId);
+  let g=setPartnership({...g0,players,talon:[],startingPlayerId,contract:round.contract,announcedTarokkCounts:{}},round.takerId,partnerId);
   if (calledTarokk === undefined) throw new Error('A partnerhívás nincs rögzítve.');
   g=recordPartnerCall(g,calledTarokk,partnerId);
   const takerIndex=g.players.findIndex(p=>p.id===round!.takerId);
@@ -748,7 +748,7 @@ function render(){
     : '<span class="muted">Még nincs lezárt ütés.</span>';
   const declarationHistory=game?.declarations.declarations.slice(-8) ?? [];
   const declarationHtml=declarationHistory.length ? declarationHistory.map(d=>`<li>${playerName(d.ownerId)}: ${declarationLabel(d.type)}${d.status==='fulfilled'?' ✓':d.status==='failed'?' ✗':''}</li>`).join('') : '<li class="muted">Még nincs bemondás.</li>';
-  const auctionLog=round.eventLog.slice(-30).map((x,i)=>`<li><span class="event-index">${i+1}.</span> ${x}</li>`).join('');
+  const auctionLog=round.eventLog.slice(-30).reverse().map((x,i)=>`<li><span class="event-index">${i+1}.</span> ${x}</li>`).join('');
   const settlementLines = game?.settlement?.lines?.length ? game.settlement.lines.map(line=>`${declarationLabel(line.type ?? 'game')}: ${line.positiveForTakerPair ? '+' : '-'}${line.points}`).join(' · ') : '';
   const result=game?.finalPoints?`<div class="result"><strong>${game.finalPoints.result==='taker'?'A felvevő pár nyert.':'Az ellenpár nyert.'}</strong> · ütés ${game.finalPoints.takerPair}–${game.finalPoints.defencePair}${game.settlement?` · nettó ${game.settlement.netForTakerPair>0?'+':''}${game.settlement.netForTakerPair}`:''}<br><small>Leosztás elszámolása: ${playerIds.map(id=>`${playerName(id)} ${currentDealDeltas[id]>0?'+':''}${currentDealDeltas[id]??0}`).join(' · ')}</small>${settlementLines?`<br><small>${settlementLines}</small>`:''}</div>`:'';
   const matchInfo=match?`<div class="match-info">Forduló ${match.roundNumber}/${match.targetRounds} · Leosztás ${Math.min(match.dealNumberInRound, match.playerCount)}/${match.playerCount} · Osztó: ${playerName(match.playerIds[match.dealerIndex]!)}</div>`:'';
@@ -799,7 +799,7 @@ function render(){
         game=declareFigureInGame(game,a.declaration,HUMAN,game.completedTricks.length+1,targetCardId);
       }
       declarationWindow=applyDeclarationAction(declarationWindow,a,hp.hand);
-      if(a.type==='tarokkCount') recordInstantTarokkScore(HUMAN,a.count);
+      if(a.type==='tarokkCount'){ recordInstantTarokkScore(HUMAN,a.count); game={...game,announcedTarokkCounts:{...(game.announcedTarokkCounts??{}),[HUMAN]:a.count}}; }
       const humanActionText=a.type==='pass'?'Passz':a.type==='tarokkCount'?`${a.count} tarokk`:declarationLabel(a.declaration);
       round={...round,eventLog:[...round.eventLog,`Te: ${humanActionText}`]};
       message=`Te: ${humanActionText}.`;

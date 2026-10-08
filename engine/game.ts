@@ -28,8 +28,12 @@ export interface GameState {
   startingPlayerId?: PlayerId;
   takerId?: PlayerId;
   partnerId?: PlayerId;
+  /** Publicly established partner identity; internal partnerId remains authoritative. */
+  publicPartnerId?: PlayerId;
   /** Tarokk explicitly named by the taker as the partner call. */
   calledTarokk?: 18 | 19 | 20;
+  /** Public 8/9-tarokk declarations made during the announcement phase. */
+  announcedTarokkCounts?: Record<PlayerId, 8 | 9>;
   /** The auction contract, when this GameState came from the full round flow. */
   contract?: Contract;
   /** Game-level contra; declaration-specific contras live on each declaration. */
@@ -243,6 +247,9 @@ export function playCard(state: GameState, playerId: PlayerId, cardId: string): 
         defencePairVolat: scoreTricks.length === 9 && scoreTricks.every(t => sideOf(t.winner) === 'defence'),
         gameContra: state.gameContraState?.level ?? state.gameContra ?? 'none',
         figures: figureSettlementsFromProgress(declarations, state.takerId, state.partnerId),
+        playerIds: state.players.filter(p => p.active).map(p => p.id),
+        takerId: state.takerId,
+        partnerId: state.partnerId,
       })
     : undefined;
   return {

@@ -201,7 +201,7 @@ export function createServer({ lobby = new LobbyService(), maxBodyBytes = 64 * 1
       if (req.method === 'POST' && parts[0] === 'lobby' && parts[1] === 'rooms' && parts.length === 2) {
         const body = await readJson(req);
         await lobby.waitUntilReady();
-        const created = lobby.asyncStore ? await lobby.createAsync({ displayName: body.displayName, matchRounds: body.matchRounds }) : lobby.create({ displayName: body.displayName, matchRounds: body.matchRounds });
+        const created = lobby.asyncStore ? await lobby.createAsync({ displayName: body.displayName, matchRounds: body.matchRounds, playerCount: body.playerCount }) : lobby.create({ displayName: body.displayName, matchRounds: body.matchRounds, playerCount: body.playerCount });
         ensureRoomSubscription(created.roomId);
         return send(res, 201, created);
       }

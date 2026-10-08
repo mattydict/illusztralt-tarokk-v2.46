@@ -52,7 +52,7 @@ function repairPersistedTalonState(round) {
 }
 export class AuthoritativeRoom {
   constructor(options) {
-    if (options.playerIds.length !== 4) throw new Error('A multiplayer szobához jelenleg pontosan 4 játékos szükséges.');
+    if (options.playerIds.length !== 4 && options.playerIds.length !== 5) throw new Error('A multiplayer szobához 4 vagy 5 játékos szükséges.');
     if (new Set(options.playerIds).size !== options.playerIds.length) throw new Error('A játékosazonosítóknak egyedieknek kell lenniük.');
     this.roomId = options.roomId; this.playerIds = [...options.playerIds]; this.dealerIndex = options.dealerIndex ?? 0; this.random = options.random ?? Math.random; this.matchRounds = [1, 2, 4].includes(Number(options.matchRounds)) ? Number(options.matchRounds) : Number(options.persisted?.matchRounds ?? 4);
     this.onCommit = options.onCommit;
@@ -93,9 +93,27 @@ export class AuthoritativeRoom {
       this.connected = new Set();
       return;
     }
-    const base = createRound(this.playerIds, (this.dealerIndex + 1) % 4);
+    const base = this.createActiveRound();
     this.round = dealRound(base, this.random); this.round.parallelSkart = true; this.game = null; this.declarationWindow = null; this.sequence = 0; this.connected = new Set(this.playerIds); this.publicEvents = [];
   }
+
+  get activePlayerIds() {
+    return this.playerIds.length === 5
+      ? this.playerIds.filter((_, index) => index !== this.dealerIndex)
+      : [...this.playerIds];
+  }
+  get dealerPlayerId() { return this.playerIds[this.dealerIndex]; }
+  get startingPlayerIdForDealer() { return this.playerIds[(this.dealerIndex + 1) % this.playerIds.length]; }
+  get startingPlayerIndexForDealer() {
+    const index = this.activePlayerIds.indexOf(this.startingPlayerIdForDealer);
+    return index >= 0 ? index : 0;
+  }
+  activePlayerIdsForDealer(dealerIndex) {
+    return this.playerIds.length === 5
+      ? this.playerIds.filter((_, index) => index !== dealerIndex)
+      : [...this.playerIds];
+  }
+  createActiveRound() { return createRound(this.activePlayerIds, this.startingPlayerIndexForDealer); }
 
   exportPersistedState() {
     return structuredClone({ schemaVersion: 1, roomId: this.roomId, playerIds: this.playerIds, dealerIndex: this.dealerIndex, matchRounds: this.matchRounds, round: this.round, game: this.game, declarationWindow: this.declarationWindow, sequence: this.sequence, publicEvents: this.publicEvents, lastSettlement: this.lastSettlement, matchScores: this.matchScores, settlementHistory: this.settlementHistory, instantScoreHistory: this.instantScoreHistory, lastActionAt: this.lastActionAt });
@@ -108,7 +126,7 @@ export class AuthoritativeRoom {
   dispatch(playerId, expectedSequence, action) {
     this.assertPlayer(playerId);
     if (!this.connected.has(playerId)) throw new Error('A játékos nincs csatlakoztatva ehhez a szobához.');
-    if (phaseOf(this.round, this.game) === 'auction' && !this.isReady()) throw new Error('A szoba még nem teljes; várd meg mind a négy játékost.');
+    if (phaseOf(this.round, this.game) === 'auction' && !this.isReady()) throw new Error(`A szoba még nem teljes; várd meg mind a négy aktív játékost és az osztó bejelentkezését. (${this.playerIds.length} fő szükséges.)`);
     const parallelSkartStale = (action.type === 'skart' || action.type === 'skart-announce') && (this.round.phase === 'skart' || this.round.phase === 'skart-announcement') && this.round.parallelSkart && Number.isFinite(expectedSequence) && expectedSequence <= this.sequence;
     if (expectedSequence !== this.sequence && !parallelSkartStale) throw new Error(`Elavult játékállapot: várt szekvencia ${this.sequence}.`);
     const before = this.exportPersistedState();
@@ -131,7 +149,7 @@ export class AuthoritativeRoom {
   async dispatchAsync(playerId, expectedSequence, action) {
     this.assertPlayer(playerId);
     if (!this.connected.has(playerId)) throw new Error('A játékos nincs csatlakoztatva ehhez a szobához.');
-    if (phaseOf(this.round, this.game) === 'auction' && !this.isReady()) throw new Error('A szoba még nem teljes; várd meg mind a négy játékost.');
+    if (phaseOf(this.round, this.game) === 'auction' && !this.isReady()) throw new Error(`A szoba még nem teljes; várd meg mind a négy aktív játékost és az osztó bejelentkezését. (${this.playerIds.length} fő szükséges.)`);
     const parallelSkartStale = (action.type === 'skart' || action.type === 'skart-announce') && (this.round.phase === 'skart' || this.round.phase === 'skart-announcement') && this.round.parallelSkart && Number.isFinite(expectedSequence) && expectedSequence <= this.sequence;
     if (expectedSequence !== this.sequence && !parallelSkartStale) throw new Error(`Elavult játékállapot: várt szekvencia ${this.sequence}.`);
     const before = this.exportPersistedState();
@@ -155,25 +173,30 @@ export class AuthoritativeRoom {
   eventsSince(sequence) { return this.publicEvents.filter(event => event.sequence > sequence); }
   snapshotFor(playerId) {
     this.assertPlayer(playerId);
-    const players = this.round.players.map(p => {
-      const own = p.playerId === playerId;
-      const revealed = p.skartRevealed ? p.skart.map(cloneCard) : undefined;
-      const announcedCount = this.round.parallelSkart ? (p.skartAnnounced || p.skartRevealed) : true;
+    const roundById = new Map(this.round.players.map(p => [p.playerId, p]));
+    const activeIds = new Set(this.activePlayerIds);
+    const players = this.playerIds.map(id => {
+      const p = roundById.get(id);
+      const own = id === playerId;
+      const revealed = p?.skartRevealed ? p.skart.map(cloneCard) : undefined;
+      const announcedCount = p ? (this.round.parallelSkart ? (p.skartAnnounced || p.skartRevealed) : true) : false;
       return {
-        id: p.playerId,
-        cardCount: p.hand.length,
-        score: Number(this.matchScores[p.playerId] ?? this.game?.players.find(x => x.id === p.playerId)?.score ?? p.score ?? 0),
-        connected: this.connected.has(p.playerId),
-        ...(own ? { hand: p.hand.map(cloneCard) } : {}),
-        ...(own ? { receivedTalon: p.receivedTalon.map(cloneCard), receivedTalonCount: p.receivedTalon.length } : {}),
-        ...(own && p.skart.length ? { ownSkart: p.skart.map(cloneCard) } : {}),
-        ...(announcedCount ? { skartCount: p.skart.length } : {}),
+        id,
+        active: activeIds.has(id),
+        dealer: id === this.dealerPlayerId,
+        cardCount: p?.hand?.length ?? 0,
+        score: Number(this.matchScores[id] ?? 0),
+        connected: this.connected.has(id),
+        ...(own && p ? { hand: p.hand.map(cloneCard) } : {}),
+        ...(own && p ? { receivedTalon: p.receivedTalon.map(cloneCard), receivedTalonCount: p.receivedTalon.length } : {}),
+        ...(own && p?.skart?.length ? { ownSkart: p.skart.map(cloneCard) } : {}),
+        ...(p && announcedCount ? { skartCount: p.skart.length } : {}),
         ...(revealed ? { revealedSkart: revealed } : {})
       };
     });
     const auction = this.game ? undefined : { currentSeat: this.round.auction.currentSeat, highest: this.round.auction.highest, finished: this.round.auction.finished, out: [...this.round.auction.out], records: [...this.round.auction.records], outstandingInvite: this.round.auction.outstandingInvite, inviteAcceptedBy: this.round.auction.inviteAcceptedBy, holdOwnerId: this.round.auction.holdOwnerId };
     const game = this.game ? this.publicGameView(this.game, playerId) : undefined;
-    return { roomId: this.roomId, sequence: this.sequence, phase: phaseOf(this.round, this.game), ...(this.currentPlayerId ? { currentPlayerId: this.currentPlayerId } : {}), players, ...(auction ? { auction } : {}), ...(game ? { game } : {}), ...(this.lastSettlement ? { lastSettlement: this.lastSettlement } : {}), match: { rounds: this.matchRounds, dealsPerRound: this.playerIds.length, totalDeals: this.matchRounds * this.playerIds.length, completedDeals: this.settlementHistory.length, currentRound: Math.min(this.matchRounds, Math.floor(this.settlementHistory.length / this.playerIds.length) + 1), complete: phaseOf(this.round, this.game) === 'match-complete' }, scoreboard: { dealsPlayed: this.settlementHistory.length, scores: Object.fromEntries(this.playerIds.map(id => [id, Number(this.matchScores[id] ?? 0)])), history: this.settlementHistory.slice(-12), instantHistory: this.instantScoreHistory.slice(-12) }, publicEvents: this.publicEvents.slice(-30), legalActionTypes: this.legalActionTypes(playerId), legalActionHints: this.legalActionHints(playerId), ...(this.currentPlayerId ? { turnTimeoutMs: this.turnTimeoutMs(), turnDeadlineAt: this.lastActionAt + this.turnTimeoutMs() } : {}) };
+    return { roomId: this.roomId, sequence: this.sequence, phase: phaseOf(this.round, this.game), ...(this.currentPlayerId ? { currentPlayerId: this.currentPlayerId } : {}), players, ...(auction ? { auction } : {}), ...(game ? { game } : {}), ...(this.lastSettlement ? { lastSettlement: this.lastSettlement } : {}), match: { rounds: this.matchRounds, playerCount: this.playerIds.length, dealsPerRound: this.playerIds.length, totalDeals: this.matchRounds * this.playerIds.length, completedDeals: this.settlementHistory.length, currentRound: Math.min(this.matchRounds, Math.floor(this.settlementHistory.length / this.playerIds.length) + 1), dealerPlayerId: this.dealerPlayerId, activePlayerIds: this.activePlayerIds, complete: phaseOf(this.round, this.game) === 'match-complete' }, scoreboard: { dealsPlayed: this.settlementHistory.length, scores: Object.fromEntries(this.playerIds.map(id => [id, Number(this.matchScores[id] ?? 0)])), history: this.settlementHistory.slice(-12), instantHistory: this.instantScoreHistory.slice(-12) }, publicEvents: this.publicEvents.slice(-30), legalActionTypes: this.legalActionTypes(playerId), legalActionHints: this.legalActionHints(playerId), ...(this.currentPlayerId ? { turnTimeoutMs: this.turnTimeoutMs(), turnDeadlineAt: this.lastActionAt + this.turnTimeoutMs() } : {}) };
   }
   publicGameView(game, viewerId) {
     const publicPartner = publicPartnerId(game, this.round, this.declarationWindow);
@@ -307,7 +330,7 @@ export class AuthoritativeRoom {
       return;
     }
     if (!this.round.auction.highest) {
-      this.redeal('Mind a négy játékos passzolt a licitben.');
+      this.redeal('Minden aktív játékos passzolt a licitben.');
       return;
     }
     this.round = finishAuction(this.round, this.round.talon);
@@ -357,12 +380,12 @@ export class AuthoritativeRoom {
     }
     const partnerId = resolveCalledPartner(playerId, rank, hands);
     if (!partnerId) throw new Error(`A ${rank}. tarokk nem ad egyértelmű partnert.`);
-    const g0 = createInitialState(this.playerIds, this.dealerIndex); const players = g0.players.map(p => { const source = this.round.players.find(x => x.playerId === p.id); return { ...p, hand: [...(source?.hand ?? [])], score: source?.score ?? 0, active: true }; }); let game = setPartnership({ ...g0, players, talon: [], contract: this.round.contract, startingPlayerId: this.round.startingPlayerId, skartsByPlayer: Object.fromEntries(this.round.players.map(p => [p.playerId, [...p.skart]])), preSkartSuitCountsByPlayer: Object.fromEntries(this.round.players.map(p => [p.playerId, p.preSkartSuitCounts ?? {}])), ...(this.round.auctionOutcome?.calledTarokk !== undefined ? { publicPartnerId: partnerId } : {}) }, playerId, partnerId); game = recordPartnerCall(game, rank, partnerId); const takerIndex = game.players.findIndex(p => p.id === playerId); game = startDeclarations(game, takerIndex); this.game = game;
+    const activeIds = this.activePlayerIds; const startingIndex = Math.max(0, activeIds.indexOf(this.round.startingPlayerId)); const g0 = createInitialState(activeIds, startingIndex); const players = g0.players.map(p => { const source = this.round.players.find(x => x.playerId === p.id); return { ...p, hand: [...(source?.hand ?? [])], score: Number(this.matchScores[p.id] ?? source?.score ?? 0), active: true }; }); let game = setPartnership({ ...g0, players, talon: [], contract: this.round.contract, startingPlayerId: this.round.startingPlayerId, skartsByPlayer: Object.fromEntries(this.round.players.map(p => [p.playerId, [...p.skart]])), preSkartSuitCountsByPlayer: Object.fromEntries(this.round.players.map(p => [p.playerId, p.preSkartSuitCounts ?? {}])), ...(this.round.auctionOutcome?.calledTarokk !== undefined ? { publicPartnerId: partnerId } : {}) }, playerId, partnerId); game = recordPartnerCall(game, rank, partnerId); const takerIndex = game.players.findIndex(p => p.id === playerId); game = startDeclarations(game, takerIndex); this.game = game;
     // The mandatory partner call happens in the preceding partner-call phase.
     // The declaration phase itself always starts with the taker. The declaration
     // window separately excludes the taker's first actual declaration turn from
     // the three-pass closing streak.
-    const declarationOrder = declarationOrderFromTaker(this.playerIds, playerId);
+    const declarationOrder = declarationOrderFromTaker(this.activePlayerIds, playerId);
     this.declarationWindow = createDeclarationWindow(declarationOrder, true);
     this.round = { ...this.round, phase: 'declarations', currentPlayerId: declarationOrder[0], calledTarokk: rank }; }
   declarationContext(playerId) {
@@ -417,11 +440,10 @@ export class AuthoritativeRoom {
     const settlement = this.game.settlement;
     if (!final || !settlement) throw new Error('A végelszámolás nem készült el.');
     const net = settlement.netForTakerPair ?? 0;
-    const byPlayer = {
-      [this.game.takerId]: net,
-      [this.game.partnerId]: net,
-    };
-    for (const p of this.playerIds) if (!(p in byPlayer)) byPlayer[p] = -net;
+    const byPlayer = Object.fromEntries(this.playerIds.map(id => [id, 0]));
+    byPlayer[this.game.takerId] = net;
+    byPlayer[this.game.partnerId] = net;
+    for (const p of this.activePlayerIds) if (!(p in byPlayer) || p !== this.game.takerId && p !== this.game.partnerId) byPlayer[p] = -net;
     this.lastSettlement = {
       contract: this.game.contract,
       takerId: this.game.takerId,
@@ -451,7 +473,7 @@ export class AuthoritativeRoom {
       return;
     }
     this.dealerIndex = (this.dealerIndex + 1) % this.playerIds.length;
-    const base = createRound(this.playerIds, (this.dealerIndex + 1) % this.playerIds.length);
+    const base = this.createActiveRound();
     base.players = base.players.map(p => ({ ...p, score: accumulated[p.playerId] ?? 0 }));
     this.round = dealRound(base, this.random);
     this.round.parallelSkart = true;
@@ -462,13 +484,17 @@ export class AuthoritativeRoom {
   recordInstantTarokkScore(playerId, count) {
     const pointsEach = count === 9 ? 2 : count === 8 ? 1 : 0;
     if (!pointsEach) return;
-    const deltas = Object.fromEntries(this.playerIds.map(id => [id, id === playerId ? pointsEach * 3 : -pointsEach]));
+    const activeIds = this.activePlayerIds;
+    if (!activeIds.includes(playerId)) throw new Error('Az osztó nem vesz részt az aktív játék elszámolásában.');
+    const deltas = Object.fromEntries(this.playerIds.map(id => [id, 0]));
+    deltas[playerId] = pointsEach * 3;
+    for (const id of activeIds) if (id !== playerId) deltas[id] = -pointsEach;
     for (const id of this.playerIds) this.matchScores[id] = Number(this.matchScores[id] ?? 0) + Number(deltas[id] ?? 0);
     this.instantScoreHistory = [...this.instantScoreHistory, { type: 'tarokk-count', playerId, count, pointsEach, totalWon: pointsEach * 3, deltas, immediate: true }].slice(-100);
     this.publicEvents = [...this.publicEvents, { type: 'instant-score', message: `${playerId} ${count} tarokkot mondott: ${pointsEach} pont játékosonként, azonnal elszámolva.` }].slice(-100);
   }
   redeal(reason) {
-    const base = createRound(this.playerIds, (this.dealerIndex + 1) % 4);
+    const base = this.createActiveRound();
     base.players = base.players.map(p => ({ ...p, score: Number(this.matchScores[p.playerId] ?? 0) }));
     this.round = dealRound(base, this.random);
     this.round.parallelSkart = true;

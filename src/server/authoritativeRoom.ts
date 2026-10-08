@@ -123,7 +123,7 @@ export class AuthoritativeRoom {
   private instantScoreHistory: any[];
 
   constructor(options: RoomOptions) {
-    if (options.playerIds.length !== 4) throw new Error('A multiplayer szobához jelenleg pontosan 4 játékos szükséges.');
+    if (options.playerIds.length !== 4 && options.playerIds.length !== 5) throw new Error('A multiplayer szobához 4 vagy 5 játékos szükséges.');
     if (new Set(options.playerIds).size !== options.playerIds.length) throw new Error('A játékosazonosítóknak egyedieknek kell lenniük.');
     this.roomId = options.roomId;
     this.playerIds = [...options.playerIds];
@@ -176,9 +176,19 @@ export class AuthoritativeRoom {
       this.connected = new Set();
       return;
     }
-    const base = createRound(this.playerIds, (this.dealerIndex + 1) % 4);
+    const base = createRound(this.activePlayerIds, this.startingPlayerIndexForDealer);
     this.round = { ...dealRound(base, this.random), parallelSkart: true };
     for (const id of this.playerIds) this.connected.add(id);
+  }
+
+  get activePlayerIds(): string[] {
+    return this.playerIds.length === 5 ? this.playerIds.filter((_, index) => index !== this.dealerIndex) : [...this.playerIds];
+  }
+  get dealerPlayerId(): string { return this.playerIds[this.dealerIndex]!; }
+  get startingPlayerIdForDealer(): string { return this.playerIds[(this.dealerIndex + 1) % this.playerIds.length]!; }
+  get startingPlayerIndexForDealer(): number {
+    const index = this.activePlayerIds.indexOf(this.startingPlayerIdForDealer);
+    return index >= 0 ? index : 0;
   }
 
   exportPersistedState(): PersistedRoomState {
@@ -547,7 +557,7 @@ export class AuthoritativeRoom {
     const partnerId = resolveCalledPartner(playerId, rank, this.round.players.map(p => ({ id: p.playerId, hand: p.hand })));
     if (!partnerId) throw new Error(`A ${rank}. tarokk nem ad egyértelmű partnert.`);
 
-    const g0 = createInitialState(this.playerIds, this.dealerIndex);
+    const activeIds = this.activePlayerIds; const startingIndex = Math.max(0, activeIds.indexOf(this.round.startingPlayerId)); const g0 = createInitialState(activeIds, startingIndex);
     const players = g0.players.map(p => {
       const source = this.round.players.find(x => x.playerId === p.id)!;
       return { ...p, hand: [...source.hand], active: true };
@@ -561,7 +571,7 @@ export class AuthoritativeRoom {
     // The declaration phase itself always starts with the taker. The declaration
     // window separately excludes the taker's first actual declaration turn from
     // the three-pass closing streak.
-    const declarationOrder = declarationOrderFromTaker(this.playerIds, playerId);
+    const declarationOrder = declarationOrderFromTaker(this.activePlayerIds, playerId);
     this.declarationWindow = createDeclarationWindow(declarationOrder, true);
     this.round = { ...this.round, phase: 'declarations', currentPlayerId: declarationOrder[0], calledTarokk: rank };
   }
@@ -656,8 +666,10 @@ export class AuthoritativeRoom {
       throw new Error('A végelszámolás nem készült el.');
     }
     const net = settlement.netForTakerPair ?? 0;
-    const byPlayer: Record<string, number> = { [this.game.takerId]: net, [this.game.partnerId]: net };
-    for (const id of this.playerIds) if (!(id in byPlayer)) byPlayer[id] = -net;
+    const byPlayer: Record<string, number> = Object.fromEntries(this.playerIds.map(id => [id, 0]));
+    byPlayer[this.game.takerId] = net;
+    byPlayer[this.game.partnerId] = net;
+    for (const id of this.activePlayerIds) if (id !== this.game.takerId && id !== this.game.partnerId) byPlayer[id] = -net;
     this.lastSettlement = {
       contract: this.game.contract, takerId: this.game.takerId, partnerId: this.game.partnerId, calledTarokk: this.game.calledTarokk,
       result: final.result, takerPairPoints: final.takerPair, defencePairPoints: final.defencePair, netForTakerPair: net, byPlayer,
@@ -672,7 +684,7 @@ export class AuthoritativeRoom {
     this.lastSettlement = { ...this.lastSettlement, dealNumber, dealerIndex: this.dealerIndex };
     this.settlementHistory = [...this.settlementHistory, this.lastSettlement].slice(-100);
     this.dealerIndex = (this.dealerIndex + 1) % this.playerIds.length;
-    const base = createRound(this.playerIds, (this.dealerIndex + 1) % this.playerIds.length);
+    const base = createRound(this.activePlayerIds, this.startingPlayerIndexForDealer);
     base.players = base.players.map(p => ({ ...p, score: accumulated[p.playerId] ?? 0 }));
     this.round = dealRound(base, this.random);
     this.round.parallelSkart = true;
@@ -682,13 +694,16 @@ export class AuthoritativeRoom {
 
   private recordInstantTarokkScore(playerId: string, count: 8|9): void {
     const pointsEach = count === 9 ? 2 : 1;
-    const deltas: Record<string, number> = Object.fromEntries(this.playerIds.map(id => [id, id === playerId ? pointsEach * 3 : -pointsEach]));
+    if (!this.activePlayerIds.includes(playerId)) throw new Error('Az osztó nem vesz részt az aktív játék elszámolásában.');
+    const deltas: Record<string, number> = Object.fromEntries(this.playerIds.map(id => [id, 0]));
+    deltas[playerId] = pointsEach * 3;
+    for (const id of this.activePlayerIds) if (id !== playerId) deltas[id] = -pointsEach;
     for (const id of this.playerIds) this.matchScores[id] = Number(this.matchScores[id] ?? 0) + Number(deltas[id] ?? 0);
     this.instantScoreHistory = [...this.instantScoreHistory, { type: 'tarokk-count', playerId, count, pointsEach, totalWon: pointsEach * 3, deltas, immediate: true }].slice(-100);
     this.publicEvents.push({ sequence: this.sequence, type: 'deal-complete', message: `${playerId} ${count} tarokkot mondott: ${pointsEach} pont játékosonként, azonnal elszámolva.` });
   }
   private redeal(reason: string): void {
-    const base = createRound(this.playerIds, (this.dealerIndex + 1) % 4);
+    const base = createRound(this.activePlayerIds, this.startingPlayerIndexForDealer);
     base.players = base.players.map(p => ({ ...p, score: Number(this.matchScores[p.playerId] ?? 0) }));
     this.round = dealRound(base, this.random);
     this.round.parallelSkart = true;

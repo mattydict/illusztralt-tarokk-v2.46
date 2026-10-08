@@ -28,7 +28,7 @@ export function createInitialState(playerIds, dealerIndex = 0) {
     if (playerIds.length !== 4 && playerIds.length !== 5)
         throw new Error('Illusztrált Tarokkhoz 4 vagy 5 játékos szükséges.');
     const startingIndex = nextIndex(dealerIndex, playerIds.length);
-    return { playerCount: playerIds.length, players: playerIds.map((id, i) => ({ id, hand: [], score: 0, active: playerIds.length === 4 || i !== dealerIndex })), dealerIndex, startingPlayerId: playerIds[startingIndex], phase: 'deal', talon: [], trick: null, completedTricks: [], leadSuit: null, nextPlayerIndex: startingIndex, lockedCards: [], declarations: initialDeclarationProgress() };
+    return { playerCount: playerIds.length, players: playerIds.map((id, i) => ({ id, hand: [], score: 0, active: playerIds.length === 4 || i !== dealerIndex })), dealerIndex, startingPlayerId: playerIds[startingIndex], phase: 'deal', talon: [], trick: null, completedTricks: [], leadSuit: null, nextPlayerIndex: startingIndex, lockedCards: [], declarations: initialDeclarationProgress(), announcedTarokkCounts: {} };
 }
 /** Tournament/reference dealing: first 6 cards are talon, then 5 and 4 to each active player, clockwise. */
 export function dealNineCards(state, random = Math.random) {
@@ -236,6 +236,9 @@ export function playCard(state, playerId, cardId) {
             defencePairVolat: scoreTricks.length === 9 && scoreTricks.every(t => sideOf(t.winner) === 'defence'),
             gameContra: state.gameContraState?.level ?? state.gameContra ?? 'none',
             figures: figureSettlementsFromProgress(declarations, state.takerId, state.partnerId),
+            playerIds: state.players.filter(p => p.active).map(p => p.id),
+            takerId: state.takerId,
+            partnerId: state.partnerId,
         })
         : undefined;
     return {

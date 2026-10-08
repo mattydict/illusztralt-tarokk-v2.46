@@ -377,6 +377,20 @@ export function chooseAIAuctionAction(auction, playerId, hand, hands, options = 
             best.reasons = [...best.reasons, 'Single-player kalibráció: nyitó Szóló csak kivételesen erős kézzel; a normál nyitó licit kapott elsőbbséget.'];
         }
     }
+    if (options.singlePlayer && best.action.type === 'bid' && best.action.contract === 'one') {
+        // After the opening, Egyes remains a specialist contract rather than a
+        // generic way to protect every good-looking XXI hand.
+        const highControlCount = tarokkRanks.filter(rank => rank >= 16 && rank <= 22).length;
+        const xxiRisk = assessXXICaptureRisk(auction, profile, position).risk;
+        const strongOneAfterOpen = profile.tarokks >= 7 && profile.bigHonours >= 1 && highControlCount >= 4 && hasSuitKing;
+        const xxiPressureException = profile.xxi && !profile.skiz && !profile.pagat && profile.tarokks <= 5 && xxiRisk >= 4 && position.bidCount >= 2;
+        if (!strongOneAfterOpen && !xxiPressureException) {
+            const fallback = scored.find(x => x.action.type === 'bid' && x.action.contract !== 'one') ?? pass;
+            if (fallback) {
+                return { ...fallback, reasons: [...fallback.reasons, 'Szakértői Egyes-kalibráció: Egyes csak erős, hosszú tarokkos kontrollra vagy valós XXI-fogási nyomásra; nem általános köztes licit.'] };
+            }
+        }
+    }
     if (pass && best.action.type === 'bid') {
         const margin = best.action.contract === 'solo' ? 5 : best.action.contract === 'three' ? 2.5 : 3.5;
         if (best.score < pass.score + margin) {

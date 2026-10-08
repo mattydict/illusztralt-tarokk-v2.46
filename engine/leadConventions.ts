@@ -645,6 +645,13 @@ export function preferredOpeningLeadCard(
   const isTakerPartner = playerId === state.partnerId;
   if (isTakerPartner) {
     if (oppositionHasContra(state, playerId)) return chooseShortestHeadlessCard(state, playerId);
+    const publicTarokkCount = Number(state.announcedTarokkCounts?.[state.takerId] ?? 0);
+    // Public 8/9 tarokk count: partner colors instead of leading trump,
+    // attacking the long-trump side's possible silent Ultimo.
+    if (publicTarokkCount >= 8) {
+      const suitLead = chooseShortestHeadlessCard(state, playerId);
+      if (suitLead) return suitLead;
+    }
     const tarokks = hand.filter(isTarokk);
     if (tarokks.length) {
       if (takerLikelySkiz) return [...tarokks].sort((a,b) => b.rank-a.rank)[0];
@@ -711,6 +718,15 @@ export function scoreOpeningLeadConvention(
   const reasons: string[] = [];
 
   if (isTakerPartner) {
+    const publicTarokkCount = Number(state.announcedTarokkCounts?.[state.takerId] ?? 0);
+    if (publicTarokkCount >= 8) {
+      if (card.kind === 'suit' && card.rank !== 'K') {
+        score += 22;
+        reasons.push(`A felvevő ${publicTarokkCount} tarokkot jelentett: a partner színez, hogy kihasználja a hosszú tarokkos képet és bontsa az esetleges csendes ultimót.`);
+      } else if (isTarokk(card)) {
+        score -= 18;
+      }
+    }
     // Core convention: taker's partner normally opens with a trump.
     if (isTarokk(card)) {
       score += 9;
