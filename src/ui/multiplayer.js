@@ -1,5 +1,5 @@
 const app = document.querySelector('#app');
-const storageKey = 'illusztralt-tarokk-multiplayer-session-v268';
+const storageKey = 'illusztralt-tarokk-multiplayer-session-v288';
 let session = null;
 let socket = null;
 let reconnectTimer = null;

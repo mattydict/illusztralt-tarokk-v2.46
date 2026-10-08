@@ -112,6 +112,10 @@ export interface GameSettlementInput {
   defencePairVolat?: boolean;
   gameContra: ContraLevel;
   figures: FigureSettlement[];
+  /** Optional player identities for an explicit per-player settlement map. */
+  playerIds?: string[];
+  takerId?: string;
+  partnerId?: string;
 }
 
 export interface SettlementLine {
@@ -253,6 +257,7 @@ export interface SettlementResult {
   defencePairPoints: number;
   netForTakerPair: number;
   gameWonBy: 'taker' | 'defence';
+  byPlayer?: Record<string, number>;
 }
 
 /**
@@ -267,11 +272,15 @@ export function calculateSettlement(input: GameSettlementInput): SettlementResul
     0,
   );
   const takerPairPoints = (input.takerTrickPoints ?? 0) + (input.takerSkartPoints ?? 0);
+  const byPlayer = input.playerIds?.length && input.takerId && input.partnerId
+    ? Object.fromEntries(input.playerIds.map(id => [id, (id === input.takerId || id === input.partnerId) ? netForTakerPair : -netForTakerPair]))
+    : undefined;
   return {
     lines,
     takerPairPoints,
     defencePairPoints: 94 - takerPairPoints,
     netForTakerPair,
     gameWonBy: input.takerPairWon ? 'taker' : 'defence',
+    ...(byPlayer ? { byPlayer } : {}),
   };
 }

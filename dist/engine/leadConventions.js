@@ -548,6 +548,16 @@ export function preferredOpeningLeadCard(state, playerId, beliefs) {
     if (isTakerPartner) {
         if (oppositionHasContra(state, playerId))
             return chooseShortestHeadlessCard(state, playerId);
+        const publicTarokkCount = Number(state.announcedTarokkCounts?.[state.takerId] ?? 0);
+        // A public 8/9-tarokk declaration by the taker means the taker side is
+        // expected to be very long in trumps. The partner therefore colors
+        // rather than spending a trump, both to exploit the long-trump shape and
+        // to reduce the chance of a silent Ultimo surviving.
+        if (publicTarokkCount >= 8) {
+            const suitLead = chooseShortestHeadlessCard(state, playerId);
+            if (suitLead)
+                return suitLead;
+        }
         const tarokks = hand.filter(isTarokk);
         if (tarokks.length) {
             if (takerLikelySkiz)
@@ -607,6 +617,15 @@ export function scoreOpeningLeadConvention(state, playerId, card, beliefs) {
     let score = 0;
     const reasons = [];
     if (isTakerPartner) {
+        const publicTarokkCount = Number(state.announcedTarokkCounts?.[state.takerId] ?? 0);
+        if (publicTarokkCount >= 8) {
+            if (card.kind === 'suit' && card.rank !== 'K') {
+                score += 22;
+                reasons.push(`A felvevő ${publicTarokkCount} tarokkot jelentett: a partner színez, hogy kihasználja a hosszú tarokkos képet és bontsa az esetleges csendes ultimót.`);
+            } else if (isTarokk(card)) {
+                score -= 18;
+            }
+        }
         // Core convention: taker's partner normally opens with a trump.
         if (isTarokk(card)) {
             score += 9;

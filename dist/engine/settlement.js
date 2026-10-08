@@ -200,11 +200,15 @@ export function calculateSettlement(input) {
     const lines = settlementLines(input);
     const netForTakerPair = lines.reduce((sum, line) => sum + (line.positiveForTakerPair ? line.points : -line.points), 0);
     const takerPairPoints = (input.takerTrickPoints ?? 0) + (input.takerSkartPoints ?? 0);
+    const byPlayer = input.playerIds?.length && input.takerId && input.partnerId
+        ? Object.fromEntries(input.playerIds.map(id => [id, (id === input.takerId || id === input.partnerId) ? netForTakerPair : -netForTakerPair]))
+        : undefined;
     return {
         lines,
         takerPairPoints,
         defencePairPoints: 94 - takerPairPoints,
         netForTakerPair,
         gameWonBy: input.takerPairWon ? 'taker' : 'defence',
+        ...(byPlayer ? { byPlayer } : {}),
     };
 }

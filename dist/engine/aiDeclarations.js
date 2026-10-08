@@ -12,6 +12,26 @@ export function chooseAIDeclaration(hand, context, beliefs = { tarokk: {}, tarok
     const options = availableDeclarations(hand, context);
     if (!options.length)
         return { action: { type: 'pass', reason: 'Nincs elérhető bemondás.' }, score: 0, reasons: [] };
+    // Hard communication convention: when the called partner is XIX and the
+    // partner holds both big honours with at least eight tarokks, Trull is
+    // mandatory. This is stronger than the generic score because the omission
+    // would contradict the high-honour communication convention.
+    if (context.isPartner === true
+        && context.calledTarokk === 19
+        && tarokkCount(hand) >= 8
+        && hasTarokk(hand, 22)
+        && hasTarokk(hand, 21)
+        && !context.trullDeclared
+        && !context.trullOmittedByTaker) {
+        const trull = options.find(o => o.type === 'tuletroa');
+        if (trull) {
+            return {
+                action: trull,
+                score: 1000,
+                reasons: ['Kötelező Trull: XIX a hívott partnerlap, és a partner kezében 8+ tarokk mellett Skíz + XXI van. A nagyhonőrök együttes jelzése itt nem hagyható el.'],
+            };
+        }
+    }
     const strategicContext = { ...context, worldBeliefs, handHypotheses, gameState };
     const scored = options.map(option => {
         const base = scoreDeclaration(option, hand, context, beliefs);

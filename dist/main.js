@@ -42,6 +42,7 @@ let matchScores = {};
 let instantScoreHistory = [];
 let currentDealSettlementApplied = false;
 let currentDealDeltas = {};
+let aiSkartCountsRevealed = false;
 let aiDifficulty = 'expert';
 let showAiReasons = false;
 let paused = false;
@@ -174,6 +175,7 @@ function startConfiguredMatch(playerCount, targetRounds) {
     matchScores = Object.fromEntries(playerIds.map(id => [id, 0]));
     instantScoreHistory = [];
     currentDealSettlementApplied = false;
+    aiSkartCountsRevealed = false;
     currentDealDeltas = Object.fromEntries(playerIds.map(id => [id, 0]));
     startNextDeal();
 }
@@ -189,6 +191,7 @@ function startNextDeal() {
     selectedSkart.clear();
     calledTarokk = undefined;
     currentDealSettlementApplied = false;
+    aiSkartCountsRevealed = false;
     currentDealDeltas = Object.fromEntries(playerIds.map(id => [id, 0]));
     message = '';
     seed = createRandomSeed();
@@ -209,11 +212,20 @@ function startNextDeal() {
 }
 function applyCurrentDealSettlement() {
     if (currentDealSettlementApplied || !game?.finalPoints || !game?.takerId || !game?.partnerId) return;
-    const net = Number(game.settlement?.netForTakerPair ?? 0);
-    for (const id of playerIds) {
-        const delta = id === game.takerId || id === game.partnerId ? net : -net;
-        matchScores[id] = (matchScores[id] ?? 0) + delta;
-        currentDealDeltas[id] = (currentDealDeltas[id] ?? 0) + delta;
+    const byPlayer = game.settlement?.byPlayer;
+    if (byPlayer && typeof byPlayer === 'object') {
+        for (const id of playerIds) {
+            const delta = Number(byPlayer[id] ?? 0);
+            matchScores[id] = (matchScores[id] ?? 0) + delta;
+            currentDealDeltas[id] = (currentDealDeltas[id] ?? 0) + delta;
+        }
+    } else {
+        const net = Number(game.settlement?.netForTakerPair ?? 0);
+        for (const id of playerIds) {
+            const delta = id === game.takerId || id === game.partnerId ? net : -net;
+            matchScores[id] = (matchScores[id] ?? 0) + delta;
+            currentDealDeltas[id] = (currentDealDeltas[id] ?? 0) + delta;
+        }
     }
     currentDealSettlementApplied = true;
 }
@@ -337,6 +349,20 @@ function finishAuctionFlow() {
         render();
     }
 }
+function neutraliseAiSkartCountLogs(playerId) {
+    if (!round || aiSkartCountsRevealed) return;
+    const prefix = `${playerName(playerId)} fektetett `;
+    round = { ...round, eventLog: round.eventLog.map(entry => entry.startsWith(prefix) ? `${playerName(playerId)} befejezte a fektetést.` : entry) };
+}
+function revealAiSkartCountsAfterHumanSkart() {
+    if (!round || aiSkartCountsRevealed) return;
+    const human = round.players.find(p => p.playerId === HUMAN);
+    if (!human || human.skart.length < human.receivedTalon.length) return;
+    const ai = round.players.filter(p => p.playerId !== HUMAN);
+    const details = ai.map(p => `${playerName(p.playerId)} ${p.skart.filter(isTarokk).length} tarokkot fektetett`).join(' · ');
+    if (details) round = { ...round, eventLog: [...round.eventLog, `Fektetés közzétéve: ${details}.`] };
+    aiSkartCountsRevealed = true;
+}
 function runAiSkart() {
     clearAiTimer();
     if (!round || !['skart', 'skart-announcement'].includes(round.phase)) {
@@ -380,6 +406,7 @@ function runAiSkart() {
             try {
                 round = skartRoundPlayer(round, pendingAI.playerId, decision.cards);
                 setAiReason(pendingAI.playerId, decision.reasons);
+                if (round.players.find(p => p.playerId === HUMAN)?.skart.length < round.players.find(p => p.playerId === HUMAN)?.receivedTalon.length) neutraliseAiSkartCountLogs(pendingAI.playerId);
                 round = { ...round, eventLog: [...round.eventLog, `${playerName(pendingAI.playerId)} fektetett ${decision.cards.filter(isTarokk).length} tarokkot.`] };
                 message = `${playerName(pendingAI.playerId)} befejezte a fektetést.`;
             }
@@ -447,6 +474,7 @@ function humanSkart() {
     try {
         round = skartRoundPlayer(round, HUMAN, cards);
         selectedSkart.clear();
+        revealAiSkartCountsAfterHumanSkart();
         message = 'Fektetés megtörtént.';
         render();
         runAiSkart();
@@ -713,7 +741,10 @@ function runAiDeclarations() {
         }
         const beforeDeclarationWindow = declarationWindow;
         declarationWindow = applyDeclarationAction(declarationWindow, action, gp.hand);
-        if (action.type === 'tarokkCount') recordInstantTarokkScore(id, action.count);
+        if (action.type === 'tarokkCount') {
+            recordInstantTarokkScore(id, action.count);
+            game = { ...game, announcedTarokkCounts: { ...(game.announcedTarokkCounts ?? {}), [id]: action.count } };
+        }
         logDeclarationRoundTransition(beforeDeclarationWindow, declarationWindow);
         const actionText = action.type === 'pass' ? 'Passz' : action.type === 'tarokkCount' ? `${action.count} tarokk` : declarationLabel(action.declaration);
         round = { ...round, eventLog: [...round.eventLog, `${playerName(id)}: ${actionText}`] };
@@ -764,7 +795,7 @@ function startGame(partnerId) {
     const g0 = createInitialState(round.players.map(p => p.playerId), 0);
     const players = g0.players.map(p => { const rp = round.players.find(x => x.playerId === p.id); return { ...p, hand: [...rp.hand], active: true }; });
     const startingPlayerId = round.startingPlayerId;
-    let g = setPartnership({ ...g0, players, talon: [], startingPlayerId, skartsByPlayer: Object.fromEntries(round.players.map(p => [p.playerId, [...p.skart]])), publicAuctionRecords: [...(round.auction?.records ?? [])], singlePlayerPolicy: true, ...(round.auctionOutcome?.calledTarokk !== undefined ? { publicPartnerId: partnerId } : {}) }, round.takerId, partnerId);
+    let g = setPartnership({ ...g0, players, talon: [], startingPlayerId, skartsByPlayer: Object.fromEntries(round.players.map(p => [p.playerId, [...p.skart]])), publicAuctionRecords: [...(round.auction?.records ?? [])], contract: round.contract, singlePlayerPolicy: true, ...(round.auctionOutcome?.calledTarokk !== undefined ? { publicPartnerId: partnerId } : {}) }, round.takerId, partnerId);
     if (calledTarokk === undefined)
         throw new Error('A partnerhívás nincs rögzítve.');
     g = recordPartnerCall(g, calledTarokk, partnerId);
@@ -1069,7 +1100,7 @@ function render() {
         : '<span class="muted">Még nincs lezárt ütés.</span>';
     const declarationHistory = game?.declarations.declarations.slice(-8) ?? [];
     const declarationHtml = declarationHistory.length ? declarationHistory.map(d => `<li>${playerName(d.ownerId)}: ${declarationLabel(d.type)}${d.status === 'fulfilled' ? ' ✓' : d.status === 'failed' ? ' ✗' : ''}</li>`).join('') : '<li class="muted">Még nincs bemondás.</li>';
-    const auctionLog = round.eventLog.slice(-30).map((x, i) => `<li><span class="event-index">${i + 1}.</span> ${x}</li>`).join('');
+    const auctionLog = round.eventLog.slice(-30).reverse().map((x, i) => `<li><span class="event-index">${i + 1}.</span> ${x}</li>`).join('');
     const settlementLines = game?.settlement?.lines?.length ? game.settlement.lines.map(line => `${declarationLabel(line.type ?? 'game')}${line.silent ? ' (csendes)' : ''}: ${line.positiveForTakerPair ? '+' : '-'}${line.points}`).join(' · ') : '';
     const silentFigureLines = game?.declarations?.silentFigures?.length ? game.declarations.silentFigures.map(f => `${declarationLabel(f.type)}${f.status === 'fulfilled' ? ' ✓' : ' ✗'}`).join(' · ') : '';
     const skartBreakdown = game?.finalPoints ? ` · skart: felvevőpár +${game.finalPoints.takerSkartPoints ?? 0}, ellenpár +${game.finalPoints.defenceSkartPoints ?? 0}` : '';
@@ -1134,7 +1165,10 @@ function render() {
             }
             const beforeDeclarationWindow = declarationWindow;
             declarationWindow = applyDeclarationAction(declarationWindow, a, hp.hand);
-            if (a.type === 'tarokkCount') recordInstantTarokkScore(HUMAN, a.count);
+            if (a.type === 'tarokkCount') {
+                recordInstantTarokkScore(HUMAN, a.count);
+                game = { ...game, announcedTarokkCounts: { ...(game.announcedTarokkCounts ?? {}), [HUMAN]: a.count } };
+            }
             logDeclarationRoundTransition(beforeDeclarationWindow, declarationWindow);
             const humanActionText = a.type === 'pass' ? 'Passz' : a.type === 'tarokkCount' ? `${a.count} tarokk` : declarationLabel(a.declaration);
             round = { ...round, eventLog: [...round.eventLog, `Te: ${humanActionText}`] };
