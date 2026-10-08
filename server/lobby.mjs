@@ -52,20 +52,11 @@ export class LobbyService {
         const playerIds = Array.isArray(record.roomState?.playerIds) && (record.roomState.playerIds.length === 4 || record.roomState.playerIds.length === 5)
           ? [...record.roomState.playerIds]
           : (Array.isArray(record.seats) && record.seats.length === 5 ? FIVE_SEAT_IDS : FOUR_SEAT_IDS);
-        const existingSeats = record.seats && typeof record.seats === 'object' ? record.seats : {};
-        const seats = Object.fromEntries(playerIds.map((id, index) => {
-          const previous = existingSeats[id] ?? {};
-          return [id, {
-            playerId: id,
-            displayName: cleanName(previous.displayName, `Játékos ${index + 1}`),
-            joined: Boolean(previous.joined),
-          }];
-        }));
         const meta = {
           room: createAuthoritativeRoom({ roomId: record.roomId, playerIds, dealerIndex: record.dealerIndex ?? 0, matchRounds: record.roomState?.matchRounds ?? 4, persisted: record.roomState, onCommit: state => this.persistMeta(meta, state) }),
-          tokens: Object.fromEntries(playerIds.map(id => [id, rawTokens[id] ?? null])),
+          tokens: rawTokens,
           tokenHashes: { ...record.tokenHashes },
-          seats,
+          seats: record.seats,
           createdAt: record.createdAt ?? this.clock(),
           updatedAt: record.updatedAt ?? record.createdAt ?? this.clock(),
         };
@@ -128,12 +119,10 @@ export class LobbyService {
       if (token) throw new Error('A hely még nincs lefoglalva; token nélkül csatlakozz.');
       seat = playerId;
     } else {
-      seat = meta.room.playerIds.find(id => meta.seats[id] && !meta.seats[id].joined);
-      if (!seat) seat = meta.room.playerIds.find(id => !meta.seats[id]);
+      seat = meta.room.playerIds.find(id => !meta.seats[id]?.joined);
     }
     if (!seat) throw new Error('A szoba megtelt.');
     let presentedToken = token;
-    if (!meta.seats[seat]) meta.seats[seat] = { playerId: seat, displayName: `Játékos ${meta.room.playerIds.indexOf(seat) + 1}`, joined: false };
     if (!meta.seats[seat].joined) {
       meta.seats[seat].joined = true;
       meta.seats[seat].displayName = cleanName(displayName, meta.seats[seat].displayName);
@@ -178,7 +167,7 @@ export class LobbyService {
 
   persistMeta(meta, roomState) {
     if (!meta) return;
-    const record = { schemaVersion: 1, roomId: meta.room.roomId, playerCount: meta.room.playerIds.length, dealerIndex: meta.room.dealerIndex, createdAt: meta.createdAt, updatedAt: this.clock(), seats: meta.seats, tokenHashes: meta.tokenHashes, roomState: roomState ?? meta.room.exportPersistedState() };
+    const record = { schemaVersion: 1, roomId: meta.room.roomId, dealerIndex: meta.room.dealerIndex, createdAt: meta.createdAt, updatedAt: this.clock(), seats: meta.seats, tokenHashes: meta.tokenHashes, roomState: roomState ?? meta.room.exportPersistedState() };
     meta.updatedAt = record.updatedAt;
     return this.store.save(record);
   }
