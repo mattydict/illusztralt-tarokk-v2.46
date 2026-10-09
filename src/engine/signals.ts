@@ -640,9 +640,9 @@ export function inferPartnerInformation(context: CommunicationContext): PartnerI
   }
 
   // Published rule/convention: a first-round invite/allowed taker signals a
-  // big honour with tulétroá; the official material also recommends tulétroá
+  // big honour with Trull; the official material also recommends Trull
   // for a taker with at least five tarokks.  If a taker says XIX + Centrum
-  // without tulétroá, the combination carries stronger positional information
+  // without Trull, the combination carries stronger positional information
   // than a bare "centrum" token.  We model the deduction, not card ownership.
   if (
     context.isTaker &&
@@ -656,7 +656,7 @@ export function inferPartnerInformation(context: CommunicationContext): PartnerI
       evidence: [
         'XIX-es felvétel után Centrumot mondott a felvevő.',
         'A Centrumhoz a gyakorlatban legalább öt tarokkos erősen ajánlott.',
-        'A tulétroá elmaradása ebben a kombinációban információt hordoz.',
+        'A Trull elmaradása ebben a kombinációban információt hordoz.',
       ],
       confidence: 'inference',
     });
@@ -671,9 +671,9 @@ export function inferPartnerInformation(context: CommunicationContext): PartnerI
     });
     out.push({
       kind: 'negativeInformation',
-      value: 'A tulétroá elmaradása ebben a konkrét kombinációban önálló információs jelzésként kezelendő.',
+      value: 'A Trull elmaradása ebben a konkrét kombinációban önálló információs jelzésként kezelendő.',
       evidence: [
-        'Az ITVB első körös tulétroá-szabályai a nagyhonőr-jelzést kontextushoz kötik.',
+        'Az ITVB első körös Trull-szabályai a nagyhonőr-jelzést kontextushoz kötik.',
         'Tanulságos partik szerint a bemondások sorrendje és elmaradása is partneri információt hordozhat.',
       ],
       confidence: 'inference',

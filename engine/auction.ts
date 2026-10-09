@@ -4,9 +4,9 @@ import { PlayerId } from './game.js';
 export type Contract = 'three' | 'two' | 'one' | 'solo';
 export type AuctionAction =
   | { type: 'pass'; inviteTarget?: 18 | 19 | 20 }
-  | { type: 'bid'; contract: Contract; honourless?: boolean }
-  | { type: 'hold'; contract: Contract }
-  | { type: 'hold-invite'; contract: 'one' | 'solo'; target: 19 | 18 }
+  | { type: 'bid'; contract: Contract; honourless?: boolean; invitationSignalTarget?: 18 | 19 | 20; acceptsInviteTarget?: 18 | 19 | 20 }
+  | { type: 'hold'; contract: Contract; invitationSignalTarget?: 18 | 19 | 20; acceptsInviteTarget?: 18 | 19 | 20 }
+  | { type: 'hold-invite'; contract: Contract; target: 20 | 19 | 18 }
   | { type: 'invite'; target: 20 | 19 | 18; contract?: Contract };
 
 export interface AuctionSeat { playerId: PlayerId; seat: number; }
@@ -406,6 +406,7 @@ export function legalAuctionActions(state: AuctionState, playerId: PlayerId, han
     && history[2]?.action.contract === 'one'
     && history[0]?.playerId === history[2]?.playerId
     && history[1]?.playerId === playerId
+    && highest !== undefined
     && highest.contract === 'one'
     && highest.playerId === history[2]?.playerId;
   if (lateInviteResponder) {

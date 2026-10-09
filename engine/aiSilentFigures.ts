@@ -73,7 +73,7 @@ const DEADLINES: Partial<Record<SilentFigureType, number>> = {
 };
 
 const LABELS: Record<SilentFigureType, string> = {
-  tuletroa: 'csendes Tulétroá',
+  tuletroa: 'csendes Trull',
   fourKings: 'csendes Négykirály',
   doubleGame: 'csendes Duplajáték',
   volat: 'csendes Volát',

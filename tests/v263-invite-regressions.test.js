@@ -88,21 +88,29 @@ test('A1 BSolo is XVIII invite when A passes', () => {
   assert.ok(legalAuctionActions(s, 'A', hands).some((a) => a.type === 'pass' && a.inviteTarget === 18));
 });
 
-test('A3 B2 C solo is the documented XVIII special case', () => {
-  const hands = { A: hand(), B: hand(), C: hand({ honour: 22, include: [18] }), D: hand() };
+test('A3 B2 C:Solo* A:Tartom B:Pass is an XIX signal from the third bidder', () => {
+  const hands = { A: hand(), B: hand(), C: hand({ honour: 22, include: [19] }), D: hand() };
   let s = createAuction(['A', 'B', 'C', 'D']);
   s = run(s, hands, [
     { type: 'bid', contract: 'three' },
     { type: 'bid', contract: 'two' },
-    { type: 'hold', contract: 'two' },
-    { type: 'pass' },
   ]);
-  const cActs = legalAuctionActions(s, 'C', hands);
-  assert.ok(cActs.some((a) => a.type === 'invite' && a.target === 18 && a.contract === 'solo'));
-  assert.equal(cActs.some((a) => a.type === 'invite' && a.target === 19), false);
+  assert.equal(s.seats[s.currentSeat].playerId, 'C');
+  const cSolo = legalAuctionActions(s, 'C', hands).find(a => a.type === 'bid' && a.contract === 'solo' && a.invitationSignalTarget === 19);
+  assert.ok(cSolo, 'C sees Solo labelled as an XIX-invit signal');
+  s = applyAuctionAction(s, cSolo, hands);
+  assert.equal(s.seats[s.currentSeat].playerId, 'D');
+  s = applyAuctionAction(s, { type: 'pass' }, hands);
+  assert.equal(s.seats[s.currentSeat].playerId, 'A');
+  const accept = legalAuctionActions(s, 'A', hands).find(a => a.type === 'hold' && a.contract === 'solo' && a.acceptsInviteTarget === 19);
+  assert.ok(accept, 'A is offered Tartom as the XIX-invit acceptance');
+  s = applyAuctionAction(s, accept, hands);
+  assert.equal(s.seats[s.currentSeat].playerId, 'B');
+  s = applyAuctionAction(s, { type: 'pass' }, hands);
+  assert.equal(s.finished, true);
 });
 
-test('A3 B2 A1 BHold APass establishes the later XIX invite', () => {
+test('A3 B2 A1* B:Tartom A:Pass establishes the later XIX invite', () => {
   const hands = {
     A: hand({ honour: 22, include: [19, 18] }),
     B: hand({ honour: 21, include: [19] }),
@@ -112,18 +120,22 @@ test('A3 B2 A1 BHold APass establishes the later XIX invite', () => {
   s = run(s, hands, [
     { type: 'bid', contract: 'three' },
     { type: 'bid', contract: 'two' },
+    { type: 'pass' },
+    { type: 'pass' },
     { type: 'bid', contract: 'one' },
-    { type: 'hold', contract: 'one' },
-    { type: 'pass' },
-    { type: 'pass' },
   ]);
+  assert.equal(s.seats[s.currentSeat].playerId, 'B');
+  const acceptance = legalAuctionActions(s, 'B', hands).find(a => a.type === 'hold' && a.contract === 'one' && a.acceptsInviteTarget === 19);
+  assert.ok(acceptance, 'Tartom-One is labelled as acceptance of the XIX-invit');
+  s = applyAuctionAction(s, acceptance, hands);
   assert.equal(s.seats[s.currentSeat].playerId, 'A');
-  assert.deepEqual(legalAuctionActions(s, 'A', hands).filter((a) => a.type === 'pass'), [{ type: 'pass', inviteTarget: 19 }]);
+  assert.deepEqual(legalAuctionActions(s, 'A', hands).filter(a => a.type === 'pass'), [{ type: 'pass', inviteTarget: 19 }]);
   s = applyAuctionAction(s, { type: 'pass', inviteTarget: 19 }, hands);
   assert.deepEqual(s.outstandingInvite, { inviterId: 'A', target: 19 });
+  assert.equal(s.inviteAcceptedBy, 'B');
 });
 
-test('A3 B2 A1 BSolo APass establishes the later XVIII invite', () => {
+test('A3 B2 A1* B:Solo is an XIX acceptance, not a false XVIII-invit', () => {
   const hands = {
     A: hand({ honour: 22, include: [18, 19] }),
     B: hand({ honour: 21, include: [18] }),
@@ -133,40 +145,58 @@ test('A3 B2 A1 BSolo APass establishes the later XVIII invite', () => {
   s = run(s, hands, [
     { type: 'bid', contract: 'three' },
     { type: 'bid', contract: 'two' },
+    { type: 'pass' },
+    { type: 'pass' },
     { type: 'bid', contract: 'one' },
-    { type: 'bid', contract: 'solo' },
-    { type: 'pass' },
-    { type: 'pass' },
   ]);
+  const acceptSolo = legalAuctionActions(s, 'B', hands).find(a => a.type === 'bid' && a.contract === 'solo' && a.acceptsInviteTarget === 19);
+  assert.ok(acceptSolo, 'B can accept the XIX-invit by raising to Solo without holding XIX');
+  s = applyAuctionAction(s, acceptSolo, hands);
   assert.equal(s.seats[s.currentSeat].playerId, 'A');
-  assert.ok(legalAuctionActions(s, 'A', hands).some((a) => a.type === 'pass' && a.inviteTarget === 18));
+  assert.ok(legalAuctionActions(s, 'A', hands).some(a => a.type === 'pass' && a.inviteTarget === 19));
+  s = applyAuctionAction(s, { type: 'pass', inviteTarget: 19 }, hands);
+  assert.equal(s.finished, true);
 });
 
-test('A2 B1 Csolo Dpass APass keeps the XIX invite addressed to B', () => {
+test('A2 B1 C:Solo* A:Pass B:Tartom resolves to B taking and C as partner', () => {
   const hands = {
     A: hand({ honour: 22, include: [19] }),
     B: hand({ honour: 21, include: [19] }),
-    C: hand({ honour: 22 }),
+    C: hand({ honour: 22, include: [19] }),
     D: hand(),
   };
   let s = createAuction(['A', 'B', 'C', 'D']);
   s = run(s, hands, [
     { type: 'bid', contract: 'two' },
     { type: 'bid', contract: 'one' },
-    { type: 'bid', contract: 'solo' },
-    { type: 'pass' },
   ]);
+  const cSolo = legalAuctionActions(s, 'C', hands).find(a => a.type === 'bid' && a.contract === 'solo' && a.invitationSignalTarget === 19);
+  assert.ok(cSolo, 'C Solo is labelled as an XIX signal, not an XVIII jump');
+  s = applyAuctionAction(s, cSolo, hands);
+  s = applyAuctionAction(s, { type: 'pass' }, hands); // D has to respond first
   assert.equal(s.seats[s.currentSeat].playerId, 'A');
-  assert.ok(legalAuctionActions(s, 'A', hands).some((a) => a.type === 'pass' && a.inviteTarget === 19));
+  assert.ok(legalAuctionActions(s, 'A', hands).some(a => a.type === 'pass' && a.inviteTarget === undefined));
+  s = applyAuctionAction(s, { type: 'pass' }, hands);
+  assert.equal(s.seats[s.currentSeat].playerId, 'B');
+  const hold = legalAuctionActions(s, 'B', hands).find(a => a.type === 'hold' && a.contract === 'solo' && a.acceptsInviteTarget === 19);
+  assert.ok(hold);
+  s = applyAuctionAction(s, hold, hands);
+  assert.equal(s.finished, true, 'this marked three-bidder sequence closes on B hold');
+  // The hold establishes the intended partner; the engine stores it as invitation origin C.
+  assert.equal(s.outstandingInvite?.inviterId, 'C');
+  assert.equal(s.inviteAcceptedBy, 'B');
 });
 
 test('Engedés / XX-invit remains exclusive to the first speaker after 3-2', () => {
   const strongA = hand({ honour: 22, include: [20, 19, 18, 17] });
   const hands = { A: strongA, B: hand({ honour: 21 }), C: hand(), D: hand() };
   let s = createAuction(['A', 'B', 'C', 'D']);
-  s = run(s, hands, [{ type: 'bid', contract: 'three' }, { type: 'bid', contract: 'two' }]);
+  s = run(s, hands, [
+    { type: 'bid', contract: 'three' }, { type: 'bid', contract: 'two' },
+    { type: 'pass' }, { type: 'pass' },
+  ]);
   const aActs = legalAuctionActions(s, 'A', hands);
-  assert.ok(aActs.some((a) => a.type === 'invite' && a.target === 20));
-  s = applyAuctionAction(s, { type: 'invite', target: 20, contract: 'two' }, hands);
+  assert.ok(aActs.some((a) => a.type === 'pass' && a.inviteTarget === 20));
+  s = applyAuctionAction(s, { type: 'pass', inviteTarget: 20 }, hands);
   assert.equal(s.finished, true);
 });

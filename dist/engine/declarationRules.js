@@ -2,7 +2,7 @@
  * Competition-rule restrictions that can be decided from the declaration
  * history alone. Card/hand-dependent eligibility remains in declarations.ts.
  *
- * ITVB 7.2: after volát, tulétroá, four kings and double game may not be
+ * ITVB 7.2: after volát, Trull, four kings and double game may not be
  * declared. ITVB 7.3: an announced ultimo may not be raised to uhu.
  * ITVB 7.13: members of one pair may make only one figure declaration on the
  * same trick. ITVB 7.14: a pair may not repeat a figure already declared.

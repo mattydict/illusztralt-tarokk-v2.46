@@ -138,7 +138,7 @@ test('v2.07 partner silent Tuletroa and opponent XXI-fogas can coexist', () => {
   assert.ok(Number.isFinite(decision.score));
 });
 
-test('v2.07 silent Volat suppresses silent Tuletroa/FourKings/DoubleGame payout', () => {
+test('v2.94 silent Volát suppresses only silent Négykirály/Duplajáték; Trull remains payable', () => {
   const result = settlementLines({
     contract: 'one', takerPairWon: true, takerTrickPoints: 75, takerPairVolat: true, gameContra: 'none',
     figures: [
@@ -147,5 +147,8 @@ test('v2.07 silent Volat suppresses silent Tuletroa/FourKings/DoubleGame payout'
       { type: 'doubleGame', points: 4, ownerPairWon: true, silent: true },
     ],
   });
-  assert.deepEqual(result, [{ kind: 'figure', type: 'volat', points: 9, positiveForTakerPair: true }]);
+  assert.deepEqual(result, [
+    { kind: 'figure', type: 'volat', points: 9, positiveForTakerPair: true, silent: true },
+    { kind: 'figure', type: 'tuletroa', points: 1, positiveForTakerPair: true, silent: true },
+  ]);
 });

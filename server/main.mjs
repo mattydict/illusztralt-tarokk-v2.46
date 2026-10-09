@@ -120,7 +120,18 @@ export function createServer({ lobby = new LobbyService(), maxBodyBytes = 64 * 1
     if (session.peer?.helloTimer) clearTimeout(session.peer.helloTimer);
     sessions.delete(session.peer);
     if (session.roomId && session.playerId) {
-      try { lobby.room(session.roomId).disconnect(session.playerId); broadcastLobby(session.roomId); broadcastRoomResync(session.roomId); } catch { /* room already gone */ }
+      try {
+        // A stale socket may close after its replacement has already authenticated.
+        // Only mark a seat offline when no other live socket owns that same seat.
+        const replacementIsLive = [...sessions.values()].some(other =>
+          other !== session && !other.cleaned && !other.peer?.closed &&
+          other.roomId === session.roomId && other.playerId === session.playerId
+        );
+        const room = lobby.room(session.roomId);
+        if (!replacementIsLive) room.disconnect(session.playerId);
+        broadcastLobby(session.roomId);
+        broadcastRoomResync(session.roomId);
+      } catch { /* room already gone */ }
     }
   }
 
@@ -133,20 +144,22 @@ export function createServer({ lobby = new LobbyService(), maxBodyBytes = 64 * 1
       const playerId = String(message.playerId ?? '');
       const token = String(message.token ?? '');
       const meta = lobby.authenticate(roomId, playerId, token);
-      for (const existing of sessions.values()) {
+      // Register the new socket as the active owner BEFORE closing an older socket.
+      // Its close callback can then see that a replacement is live and must not set the seat offline.
+      peer.session.roomId = roomId;
+      peer.session.playerId = playerId;
+      meta.room.connect(playerId);
+      if (peer.helloTimer) { clearTimeout(peer.helloTimer); peer.helloTimer = null; }
+      for (const existing of [...sessions.values()]) {
         if (existing === peer.session) continue;
         if (existing.roomId === roomId && existing.playerId === playerId) {
           try { existing.peer.close(4001, 'A játékos új kapcsolatot nyitott.'); } catch {}
         }
       }
-      meta.room.connect(playerId);
       ensureRoomSubscription(roomId);
-      if (peer.helloTimer) { clearTimeout(peer.helloTimer); peer.helloTimer = null; }
       const since = Number.isFinite(Number(message.since)) ? Number(message.since) : 0;
       const missed = meta.room.eventsSince(since);
       const status = publicLobby(meta);
-      peer.session.roomId = roomId;
-      peer.session.playerId = playerId;
       peer.sendJson({ type: 'welcome', roomId, playerId, snapshot: meta.room.snapshotFor(playerId), events: missed, status, resyncRequired: missed.length === 0 && since > 0 && meta.room.snapshotFor(playerId).sequence > since });
       broadcastLobby(roomId);
       broadcastRoomResync(roomId);
@@ -158,7 +171,13 @@ export function createServer({ lobby = new LobbyService(), maxBodyBytes = 64 * 1
   }
 
   async function handleMessage(peer, raw) {
-    if (!peer.session.roomId) return handleHello(peer, raw);
+    if (!peer.session.roomId) {
+      const accepted = handleHello(peer, raw);
+      // A rejected hello must not leave an OPEN but unauthenticated socket that the browser
+      // mistakes for a connected player. The error frame is queued before the close frame.
+      if (!accepted && !peer.closed) peer.close(1008, 'A kapcsolat hitelesítése nem sikerült.');
+      return accepted;
+    }
     let message;
     try { message = JSON.parse(raw); } catch { peer.sendJson({ type: 'error', code: 'BAD_JSON', message: 'Érvénytelen JSON.' }); return; }
     if (message?.type === 'action') {

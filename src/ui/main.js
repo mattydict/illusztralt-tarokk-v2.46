@@ -4,7 +4,7 @@ import { resolveAuctionOutcome } from '../engine/auctionOutcome.js';
 import { createRound, dealRound, distributeRoundTalon, skartRoundPlayer, announceSkartCount } from '../engine/round.js';
 import { activePlayerIds, completeDeal, createMatch, isMatchComplete } from '../engine/match.js';
 import { resolveCalledPartner } from '../engine/partnership.js';
-import { publicPartnerId, privateSideForPlayer, publicRoleForPlayer, isRolePublicForPlayer, defenceIsPublic, observerStateView } from '../engine/partnershipVisibility.js';
+import { publicPartnerId, publicDefenderIds, privateSideForPlayer, publicRoleForPlayer, isRolePublicForPlayer, defenceIsPublic, observerStateView, deriveDeclarationFlowView } from '../engine/partnershipVisibility.js';
 import { chooseAIDeclaration, communicationBeliefs } from '../engine/aiDeclarations.js';
 import { buildAIBeliefSnapshot, partnerBeliefsFromAIBeliefSnapshot } from '../engine/aiBeliefEngine.js';
 import { buildHandHypotheses } from '../engine/aiHandHypotheses.js';
@@ -125,7 +125,7 @@ function phaseLabel(phase) {
 }
 function declarationLabel(type) {
     return {
-        tarokk8: '8 tarokk', tarokk9: '9 tarokk', tuletroa: 'Tulétroá', fourKings: 'Négykirály',
+        tarokk8: '8 tarokk', tarokk9: '9 tarokk', tuletroa: 'Trull', fourKings: 'Négykirály',
         doubleGame: 'Duplajáték', volat: 'Volát', xxiFogas: 'XXI-fogás', centrum: 'Centrum',
         kismadar: 'Kismadár', nagymadar: 'Nagymadár', pagatUltimo: 'Pagát ultimó', pagatUhu: 'Pagát uhu',
         sasUltimo: 'Sas ultimó', sasUhu: 'Sas uhu', kingUltimo: 'Király ultimó', kingUhu: 'Király uhu',
@@ -140,11 +140,19 @@ function partnerPubliclyKnown(g) {
 function visiblePartnerId(g) {
     return publicPartnerId(g, round, declarationWindow);
 }
+function refreshPublicPartnershipSignal() {
+    if (!game || game.publicPartnerId) return;
+    const partner = visiblePartnerId(game);
+    if (partner) game = { ...game, publicPartnerId: partner };
+}
 function speakerVisibilityContext(g, id) {
     const privateSide = privateSideForPlayer(g, id);
     const publicRole = publicRoleForPlayer(g, round, declarationWindow, id);
     return {
         speakerIsDefence: privateSide === 'defence',
+        speakerIsPartner: privateSide === 'partner',
+        hasPublicDefenceSignal: publicDefenderIds(g).size > 0,
+        turnHadContra: declarationWindow?.turnHadContra === true,
         speakerRolePubliclyKnown: publicRole !== 'unknown',
         speakerSide: privateSide,
     };
@@ -570,7 +578,8 @@ function runAiContraResponses() {
             else
                 game = raiseDeclarationContraInGame(currentGame, decision.target, best.player.id);
             if (declarationWindow && currentDeclarer(declarationWindow) === best.player.id)
-                declarationWindow = markDeclarationTurnAction(declarationWindow, best.player.id);
+                declarationWindow = markDeclarationTurnAction(declarationWindow, best.player.id, true, decision.target === 'game' ? { target: 'game' } : { target: 'declaration', declarationId: decision.target });
+            refreshPublicPartnershipSignal();
             round = { ...round, eventLog: [...round.eventLog, `${playerName(best.player.id)}: ${decision.target === 'game' ? 'Kontra a játékra' : `Kontra a ${game.declarations.declarations.find(d => d.id === decision.target)?.type ?? 'bemondás'}-ra`} (${decision.reason})`] };
         }
         catch {
@@ -611,7 +620,8 @@ function forceSinglePlayerDefenceIdentification(id) {
     try {
         game = raiseGameContraInGame(game, id);
         if (declarationWindow && currentDeclarer(declarationWindow) === id)
-            declarationWindow = markDeclarationTurnAction(declarationWindow, id);
+            declarationWindow = markDeclarationTurnAction(declarationWindow, id, true, { target: 'game' });
+        refreshPublicPartnershipSignal();
         round = { ...round, eventLog: [...round.eventLog, `${playerName(id)}: Kontra a játékra — az ellenpár azonosította magát.`] };
         message = `${playerName(id)} kontrával azonosította az ellenpárt.`;
         return true;
@@ -659,6 +669,7 @@ function runAiDeclarations() {
     const publicPartner = visiblePartnerId(game);
     const partnerIsKnownToSpeaker = Boolean(publicPartner) || id === game.partnerId;
     const ctx = {
+        ...vis,
         isTaker: id === game.takerId,
         invited: round.auctionOutcome?.calledTarokk !== undefined,
         ...(round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk } : {}),
@@ -669,7 +680,6 @@ function runAiDeclarations() {
         ...(id === game.partnerId ? { isPartner: true } : {}),
         ...(partnerIsKnownToSpeaker && id !== game.partnerId && publicPartner ? { partnerSeat: game.players.findIndex(p => p.id === publicPartner) } : {}),
         ...(id === game.partnerId ? { partnerSeat: game.players.findIndex(p => p.id === game.takerId) } : {}),
-        ...vis,
         allowHiddenDefenceFourKings: true,
         ...(round.calledTarokk !== undefined ? { calledTarokk: round.calledTarokk } : {}),
         ...(game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}),
@@ -712,25 +722,45 @@ function runAiDeclarations() {
     else
         action = actions.find(a => a.type === 'declare' && a.declaration === decision.action.type) ?? actions.find(a => a.type === 'pass') ?? actions[0];
     try {
-        const hiddenDefenceFourKings = action.type === 'declare' && action.declaration === 'fourKings' && ctx.speakerIsDefence === true && ctx.speakerRolePubliclyKnown !== true;
+        const hiddenDefenceFourKings = decision.action.type === 'fourKings' && ctx.speakerIsDefence === true && ctx.speakerRolePubliclyKnown !== true;
         const defenceNeedsIdentification = ctx.speakerIsDefence === true && ctx.speakerRolePubliclyKnown !== true;
-        if (hiddenDefenceFourKings) {
+        if (!forcedCount && !pairAlreadyDeclaredThisTrick && (hiddenDefenceFourKings || (defenceNeedsIdentification && decision.action.type !== 'pass'))) {
             const contraDecision = chooseAIContra(game, id);
             const target = contraDecision?.target ?? 'game';
             game = target === 'game' ? raiseGameContraInGame(game, id) : raiseDeclarationContraInGame(game, target, id);
-                round = { ...round, eventLog: [...round.eventLog, `${playerName(id)}: ${target === 'game' ? 'Kontra a játékra' : 'Kontra a bemondásra'} — az ellenpár azonosította magát.`] };
-            const refreshedCtx = { ...ctx, speakerRolePubliclyKnown: true, partnersKnown: true, allowHiddenDefenceFourKings: false };
+            if (declarationWindow && currentDeclarer(declarationWindow) === id)
+                declarationWindow = markDeclarationTurnAction(declarationWindow, id, true, target === 'game' ? { target: 'game' } : { target: 'declaration', declarationId: target });
+            refreshPublicPartnershipSignal();
+            round = { ...round, eventLog: [...round.eventLog, `${playerName(id)}: ${target === 'game' ? 'Kontra a játékra' : 'Kontra a bemondásra'} — az ellenpár azonosította magát.`] };
+            const refreshedCtx = { ...ctx, speakerRolePubliclyKnown: true, partnersKnown: true, hasPublicDefenceSignal: true, turnHadContra: true, allowHiddenDefenceFourKings: false };
             actions = legalDeclarationActions(declarationWindow, id, gp.hand, refreshedCtx);
-            action = actions.find(a => a.type === 'declare' && a.declaration === 'fourKings') ?? actions.find(a => a.type === 'pass') ?? actions[0];
+            action = hiddenDefenceFourKings
+                ? (actions.find(a => a.type === 'declare' && a.declaration === 'fourKings') ?? actions.find(a => a.type === 'pass') ?? actions[0])
+                : (decision.action.type === 'tarokk8' || decision.action.type === 'tarokk9'
+                    ? actions.find(a => a.type === 'tarokkCount' && a.count === (decision.action.type === 'tarokk8' ? 8 : 9))
+                    : actions.find(a => a.type === 'declare' && a.declaration === decision.action.type))
+                    ?? actions.find(a => a.type === 'pass')
+                    ?? actions[0];
         }
-        else if (defenceNeedsIdentification && action.type !== 'pass') {
-            const contraDecision = chooseAIContra(game, id);
-            const target = contraDecision?.target ?? 'game';
-            game = target === 'game' ? raiseGameContraInGame(game, id) : raiseDeclarationContraInGame(game, target, id);
-                round = { ...round, eventLog: [...round.eventLog, `${playerName(id)}: ${target === 'game' ? 'Kontra a játékra' : 'Kontra a bemondásra'} — az ellenpár azonosította magát.`] };
-        }
+        let forcedRekontraApplied = false;
         const forcedRekontraTarget = singlePlayerTakerRekontraTarget(game, id);
-        if (forcedRekontraTarget && action.type !== 'pass') {
+        if (!forcedCount && !pairAlreadyDeclaredThisTrick && ctx.speakerIsPartner === true && ctx.speakerRolePubliclyKnown !== true && ctx.hasPublicDefenceSignal === true && declarationWindow.turnHadContra !== true && forcedRekontraTarget && decision.action.type !== 'pass') {
+            game = forcedRekontraTarget === 'game' ? raiseGameContraInGame(game, id) : raiseDeclarationContraInGame(game, forcedRekontraTarget, id);
+            forcedRekontraApplied = true;
+            if (currentDeclarer(declarationWindow) === id)
+                declarationWindow = markDeclarationTurnAction(declarationWindow, id, true, forcedRekontraTarget === 'game' ? { target: 'game' } : { target: 'declaration', declarationId: forcedRekontraTarget });
+            refreshPublicPartnershipSignal();
+            round = { ...round, eventLog: [...round.eventLog, `${playerName(id)}: Rekontra — a felvevőpár azonosította magát.`] };
+            const refreshedCtx = { ...ctx, speakerRolePubliclyKnown: true, partnersKnown: true, hasPublicDefenceSignal: true, turnHadContra: true };
+            actions = legalDeclarationActions(declarationWindow, id, gp.hand, refreshedCtx);
+            action = forcedCount
+                ?? (decision.action.type === 'tarokk8' || decision.action.type === 'tarokk9'
+                    ? actions.find(a => a.type === 'tarokkCount' && a.count === (decision.action.type === 'tarokk8' ? 8 : 9))
+                    : actions.find(a => a.type === 'declare' && a.declaration === decision.action.type))
+                ?? actions.find(a => a.type === 'pass')
+                ?? actions[0];
+        }
+        if (!forcedRekontraApplied && forcedRekontraTarget && action.type !== 'pass') {
             game = forcedRekontraTarget === 'game'
                 ? raiseGameContraInGame(game, id)
                 : raiseDeclarationContraInGame(game, forcedRekontraTarget, id);
@@ -745,6 +775,7 @@ function runAiDeclarations() {
         }
         const beforeDeclarationWindow = declarationWindow;
         declarationWindow = applyDeclarationAction(declarationWindow, action, gp.hand);
+        refreshPublicPartnershipSignal();
         if (action.type === 'tarokkCount') {
             recordInstantTarokkScore(id, action.count);
             game = { ...game, announcedTarokkCounts: { ...(game.announcedTarokkCounts ?? {}), [id]: action.count } };
@@ -837,7 +868,8 @@ function humanContra(target) {
                 throw new Error('Most nem mondhatsz kontrát a játékra.');
             game = raiseGameContraInGame(game, HUMAN);
             if (declarationWindow && currentDeclarer(declarationWindow) === HUMAN)
-                declarationWindow = markDeclarationTurnAction(declarationWindow, HUMAN);
+                declarationWindow = markDeclarationTurnAction(declarationWindow, HUMAN, true, { target: 'game' });
+            refreshPublicPartnershipSignal();
             round = round ? { ...round, eventLog: [...round.eventLog, `Te: ${contraLabel(game.gameContraState?.level ?? 'kontra')} a játékra.`] } : round;
         }
         else {
@@ -846,7 +878,8 @@ function humanContra(target) {
             const d = game.declarations.declarations.find(x => x.id === target);
             game = raiseDeclarationContraInGame(game, target, HUMAN);
             if (declarationWindow && currentDeclarer(declarationWindow) === HUMAN)
-                declarationWindow = markDeclarationTurnAction(declarationWindow, HUMAN);
+                declarationWindow = markDeclarationTurnAction(declarationWindow, HUMAN, true, { target: 'declaration', declarationId: target });
+            refreshPublicPartnershipSignal();
             const level = game.declarations.declarations.find(x => x.id === target)?.contra.level ?? 'kontra';
             round = round ? { ...round, eventLog: [...round.eventLog, `Te: ${contraLabel(level)} a ${d?.type ?? 'bemondás'}-ra.`] } : round;
         }
@@ -881,6 +914,7 @@ function playHuman(cardId) {
     }
     try {
         game = playCard(game, HUMAN, cardId);
+        refreshPublicPartnershipSignal();
         syncRoundPhaseFromGame();
         render();
         runAiPlay();
@@ -920,6 +954,7 @@ function runAiPlay() {
         const gameState = game;
         const chosen = chooseAICardAtDifficulty(observerStateView(gameState, id), id, partnerBeliefs, aiDifficulty, { singlePlayer: true, observerRelative: true });
         game = playCard(gameState, id, chosen.card.id);
+        refreshPublicPartnershipSignal();
         setAiReason(id, chosen.reasons);
         if (round) {
             const reasonText = chosen.reasons.length ? ` — ${chosen.reasons.slice(0, 2).join(' | ')}` : '';
@@ -965,7 +1000,7 @@ function actionButtons() {
         if (hp) {
             const vis = speakerVisibilityContext(game, HUMAN);
             const publicPartner = visiblePartnerId(game);
-            const ctx = { isTaker: HUMAN === game.takerId, invited: round.auctionOutcome?.calledTarokk !== undefined, ...(round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk } : {}), ...(round.contract ? { contract: round.contract } : {}), previousDeclarations: game.declarations.declarations.map(d => d.type), partnersKnown: Boolean(publicPartner), ...(HUMAN === game.partnerId ? { isPartner: true } : {}), ...(publicPartner ? { partnerSeat: game.players.findIndex(p => p.id === publicPartner) } : {}), ...vis, ...(round.calledTarokk !== undefined ? { calledTarokk: round.calledTarokk } : {}), ...(game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}), ...(HUMAN === game.takerId && round.calledTarokk === 19 && !game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}) };
+            const ctx = { ...speakerVisibilityContext(game, HUMAN), isTaker: HUMAN === game.takerId, invited: round.auctionOutcome?.calledTarokk !== undefined, ...(round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk } : {}), ...(round.contract ? { contract: round.contract } : {}), previousDeclarations: game.declarations.declarations.map(d => d.type), partnersKnown: Boolean(publicPartner), ...(HUMAN === game.partnerId ? { isPartner: true } : {}), ...(publicPartner ? { partnerSeat: game.players.findIndex(p => p.id === publicPartner) } : {}), ...vis, ...(round.calledTarokk !== undefined ? { calledTarokk: round.calledTarokk } : {}), ...(game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}), ...(HUMAN === game.takerId && round.calledTarokk === 19 && !game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}) };
             const acts = legalDeclarationActions(declarationWindow, HUMAN, hp.hand, ctx);
             const currentGame = game;
             const humanRole = privateSideForPlayer(currentGame, HUMAN);
@@ -1117,6 +1152,32 @@ function render() {
     const result = game?.finalPoints ? `<div class="result"><strong>${game.finalPoints.result === 'taker' ? 'A felvevő pár nyert.' : 'Az ellenpár nyert.'}</strong> · ütés ${game.finalPoints.takerPair}–${game.finalPoints.defencePair}${skartBreakdown}${game.settlement ? ` · nettó ${game.settlement.netForTakerPair > 0 ? '+' : ''}${game.settlement.netForTakerPair}` : ''}${dealScoreHtml}${settlementLines ? `<br><small>${settlementLines}</small>` : ''}${silentFigureLines ? `<br><small>Csendes figurák: ${silentFigureLines}</small>` : ''}</div>` : '';
     const matchInfo = match ? `<div class="match-info">Forduló ${match.roundNumber}/${match.targetRounds} · Leosztás ${Math.min(match.dealNumberInRound, match.playerCount)}/${match.playerCount} · Osztó: ${playerName(match.playerIds[match.dealerIndex])}</div>` : '';
     const dealSummary = game ? `<div class="deal-summary"><strong>${currentDealSummary()}</strong>${game.phase === 'play' ? ` · ${trickNo}. ütés, ${trick.length}/4 lap` : ''}</div>` : '';
+    const takerIdForDisplay = game?.takerId ?? (round?.phase !== 'auction' ? round?.takerId : undefined);
+    const publicPartnerForDisplay = game ? visiblePartnerId(game) : undefined;
+    const rolePanelHtml = takerIdForDisplay ? `<section class="panel role-visibility-panel"><h3>Nyilvános szerepek</h3><p><strong>Felvevő:</strong> ${playerName(takerIdForDisplay)}${round?.contract ? ` · ${contractLabel(round.contract)}` : ''}</p>${publicPartnerForDisplay && game ? `<p><strong>Felvevő partnere:</strong> ${playerName(publicPartnerForDisplay)}</p><p><strong>Ellenpár:</strong> ${game.players.filter(p => p.id !== takerIdForDisplay && p.id !== publicPartnerForDisplay).map(p => playerName(p.id)).join(' · ')}</p>` : `<p class="muted">A partner és az ellenpár még nem nyilvános. A rendszer csak a licit vagy a bemondási jelzések után jeleníti meg őket.</p>`}</section>` : '';
+    const declarationFlowView = game?.phase === 'declarations' && declarationWindow
+        ? deriveDeclarationFlowView(game, round, declarationWindow, currentDeclarer(declarationWindow) === HUMAN ? HUMAN : undefined)
+        : undefined;
+    const declarationRecordsForDisplay = declarationWindow?.records ?? [];
+    const lastPublicSignal = [...declarationRecordsForDisplay].reverse().find(r => r?.type === 'declare' || r?.type === 'tarokkCount' || r?.type === 'contraSignal');
+    const contraLevelLabel = { kontra: 'Kontra', rekontra: 'Rekontra', szubkontra: 'Szubkontra', mordkontra: 'Mordkontra' };
+    const lastPublicSignalText = lastPublicSignal?.type === 'tarokkCount'
+        ? `${lastPublicSignal.count} tarokk`
+        : lastPublicSignal?.type === 'contraSignal'
+            ? `${contraLevelLabel[declarationFlowView?.lastContraLevel] ?? 'Kontra'} ${lastPublicSignal.target === 'game' ? 'a játékra' : `a ${declarationLabel(game.declarations.declarations.find(d => d.id === lastPublicSignal.declarationId)?.type ?? 'bemondás')}-ra`}`
+            : declarationLabel(lastPublicSignal?.declaration);
+    const flowDirectionText = declarationFlowView?.currentSpeakerGuidance
+        ? `<p class="declaration-guidance"><strong>Teendő:</strong> ${declarationFlowView.currentSpeakerGuidance}</p>`
+        : declarationFlowView?.recipientId
+            ? `<p><strong>A következő bemondás címzettje:</strong> ${playerName(declarationFlowView.recipientId)}</p>`
+            : declarationFlowView?.recipientPlayerIds?.length
+                ? `<p><strong>A bemondás címzettje:</strong> az ellenpár (${declarationFlowView.recipientPlayerIds.map(playerName).join(' · ')})</p>`
+                : declarationFlowView?.directionStatus === 'speaker-continuing'
+                    ? `<p class="muted">Az utolsó megszólaló folytathatja a saját körét, vagy Passzt mondhat.</p>`
+                    : declarationFlowView?.directionStatus === 'awaiting-first-speaker'
+                        ? `<p class="muted">Az első nem-felvevő bemondás partnerjelzésnek számít; az ellenpárnak előbb kontrával kell jeleznie.</p>`
+                        : `<p class="muted">A bemondási címzettet a legutóbbi nyilvános jelzés és a párok nyilvános állapota határozza meg.</p>`;
+    const declarationFlowHtml = game?.phase === 'declarations' && declarationWindow ? `<section class="panel declaration-flow-panel"><h3>Bemondási irány</h3><p><strong>Felvevő:</strong> ${playerName(game.takerId)}</p>${lastPublicSignal ? `<p><strong>${lastPublicSignal.type === 'contraSignal' ? 'Utolsó jelzés' : 'Utolsó bemondó'}:</strong> ${playerName(lastPublicSignal.playerId)} (${lastPublicSignalText})</p>` : `<p class="muted">Még nem hangzott el bemondás; a felvevő kezd.</p>`}${flowDirectionText}${publicPartnerForDisplay ? `<p><strong>Felvevő partnere:</strong> ${playerName(publicPartnerForDisplay)}</p><p><strong>Ellenpár:</strong> ${game.players.filter(p => p.id !== game.takerId && p.id !== publicPartnerForDisplay).map(p => playerName(p.id)).join(' · ')}</p>` : `<p class="muted">A párok még nem nyilvánosak; csak nyilvános licit-, bemondás-, kontra- vagy rekontra-jelzés után jelennek meg.</p>`}</section>` : '';
     const scoreTable = match ? `<div class="match-score"><strong>Mérkőzés állása</strong> ${playerIds.map(id => `${playerName(id)}: ${matchScores[id] ?? 0} pont`).join(' · ')}${instantScoreHistory.length ? `<br><small>Azonnali tarokkszám-elszámolás: ${instantScoreHistory.slice(-3).map(x => `${playerName(x.playerId)} ${x.count} tarokk (${x.pointsEach}/játékos)`).join(' · ')}</small>` : ''}</div>` : '';
     // The taker's discarded tarokks are public from the completed skart stage
     // until the first trick is completed. Only tarokks are exposed, not the
@@ -1137,7 +1198,7 @@ function render() {
     const turnBadge = current ? `<span class="turn-badge">${current === HUMAN ? 'TE JÖSSZ' : playerName(current) + ' gondolkodik'}</span>` : '';
     const progressHtml = phase === 'play' ? `<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="9" aria-valuenow="${Math.min(9, trickNo - 1)}" aria-label="Lejátszás előrehaladása"><span style="width:${handProgress}%"></span></div><div class="compact muted">${Math.min(9, trickNo - 1)}/9 ütés lezárva · ${hand.length} lap nálad · ${legal.size} legális kijátszás</div>` : '';
     const focusNote = phase === 'play' && current === HUMAN ? `<div class="focus-note" role="status"><strong>Te jössz.</strong> A világos kártyák kijátszhatók. <span class="muted">${legal.size} legális lehetőség.</span></div>` : '';
-    app.innerHTML = `<div class="toolbar"><button id="new">Új mérkőzés</button><button id="newDeal" class="action">Új osztás</button>${aiControls}<span class="phase">${phaseLabel(phase)}</span>${result}</div>${errorHtml}${matchInfo}${dealSummary}${scoreTable}<div class="status"><strong>${current ? `${playerName(current)} jön` : 'Leosztás vége'}</strong>${turnBadge}<span>${message}</span></div>${progressHtml}<div class="compact muted" aria-live="polite">${lastUiAction}</div><section class="panel event-log-panel"><h2>Eseménynapló</h2><ol class="event-log">${auctionLog}</ol></section>${focusNote}<div class="opponents">${opponents}</div><section class="panel"><h3>Aktív szakasz</h3><div class="actions">${actionButtons()}</div>${skartInfo}</section>${aiReasonHtml}${takerSkartHtml}<section class="trick"><h3>Aktuális ütés${game && game.phase === 'play' ? ` · ${trickNo}.` : ''}</h3><div class="trick-grid">${trickHtml}</div></section><section class="hand"><h3>Az én lapjaim <small>(${humanIsDealer ? 'osztó / kimarad' : hand.length})</small></h3><div class="cards">${cards}</div></section><section class="history-grid"><details open><summary>Utolsó lezárt ütés</summary>${lastTrickHtml}</details><details><summary>Bemondások</summary><ul>${declarationHtml}</ul></details></section>`;
+    app.innerHTML = `<div class="toolbar"><button id="new">Új mérkőzés</button><button id="newDeal" class="action">Új osztás</button>${aiControls}<span class="phase">${phaseLabel(phase)}</span>${result}</div>${errorHtml}${matchInfo}${dealSummary}${rolePanelHtml}${declarationFlowHtml}${scoreTable}<div class="status"><strong>${current ? `${playerName(current)} jön` : 'Leosztás vége'}</strong>${turnBadge}<span>${message}</span></div>${progressHtml}<div class="compact muted" aria-live="polite">${lastUiAction}</div><section class="panel event-log-panel"><h2>Eseménynapló</h2><ol class="event-log">${auctionLog}</ol></section>${focusNote}<div class="opponents">${opponents}</div><section class="panel"><h3>Aktív szakasz</h3><div class="actions">${actionButtons()}</div>${skartInfo}</section>${aiReasonHtml}${takerSkartHtml}<section class="trick"><h3>Aktuális ütés${game && game.phase === 'play' ? ` · ${trickNo}.` : ''}</h3><div class="trick-grid">${trickHtml}</div></section><section class="hand"><h3>Az én lapjaim <small>(${humanIsDealer ? 'osztó / kimarad' : hand.length})</small></h3><div class="cards">${cards}</div></section><section class="history-grid"><details open><summary>Utolsó lezárt ütés</summary>${lastTrickHtml}</details><details><summary>Bemondások</summary><ul>${declarationHtml}</ul></details></section>`;
     document.querySelector('#new')?.addEventListener('click', () => { clearAiTimer(); round = null; game = null; match = null; paused = false; uiError = ''; lastAiReason = undefined; render(); });
     document.querySelector('#newDeal')?.addEventListener('click', restartCurrentDeal);
     document.querySelector('#pauseAi')?.addEventListener('click', () => paused ? resumeAI() : pauseAI());
@@ -1156,13 +1217,13 @@ function render() {
         const hp = game.players.find(p => p.id === HUMAN);
         if (!hp)
             return;
-        const ctx = { isTaker: HUMAN === game.takerId, invited: round.auctionOutcome?.calledTarokk !== undefined, ...(round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk } : {}), ...(round.contract ? { contract: round.contract } : {}), previousDeclarations: game.declarations.declarations.map(d => d.type), partnersKnown: partnerPubliclyKnown(game), ...(declarationWindow && declarationWindow.announcedTarokkCounts[HUMAN] !== undefined ? { announcedTarokkCount: declarationWindow.announcedTarokkCounts[HUMAN] } : {}), ...(HUMAN === game.partnerId ? { isPartner: true } : {}), ...(round.calledTarokk !== undefined ? { calledTarokk: round.calledTarokk } : {}), ...(game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}), ...(HUMAN === game.takerId && round.calledTarokk === 19 && !game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}) };
+        const ctx = { ...speakerVisibilityContext(game, HUMAN), isTaker: HUMAN === game.takerId, invited: round.auctionOutcome?.calledTarokk !== undefined, ...(round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk } : {}), ...(round.contract ? { contract: round.contract } : {}), previousDeclarations: game.declarations.declarations.map(d => d.type), partnersKnown: partnerPubliclyKnown(game), ...(declarationWindow && declarationWindow.announcedTarokkCounts[HUMAN] !== undefined ? { announcedTarokkCount: declarationWindow.announcedTarokkCounts[HUMAN] } : {}), ...(HUMAN === game.partnerId ? { isPartner: true } : {}), ...(round.calledTarokk !== undefined ? { calledTarokk: round.calledTarokk } : {}), ...(game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}), ...(HUMAN === game.takerId && round.calledTarokk === 19 && !game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}) };
         const acts = legalDeclarationActions(declarationWindow, HUMAN, hp.hand, ctx);
         const a = acts[Number(b.dataset.decl)];
         if (!a)
             return;
         try {
-            if (a.type !== 'pass' && privateSideForPlayer(game, HUMAN) === 'defence' && !isRolePublicForPlayer(game, round, declarationWindow, HUMAN))
+            if (a.type !== 'pass' && privateSideForPlayer(game, HUMAN) === 'defence' && !isRolePublicForPlayer(game, round, declarationWindow, HUMAN) && publicDefenderIds(game).size === 0)
                 throw new Error('Bemondás előtt az ellenpárnak kontrával kell azonosítania magát; Passzhoz ez nem szükséges.');
             if (singlePlayerTakerRekontraTarget(game, HUMAN) && a.type !== 'pass')
                 throw new Error('Az ellenpár kontrája után bemondás csak rekontrával tehető; Passzhoz nem kell rekontra.');
@@ -1174,6 +1235,7 @@ function render() {
             }
             const beforeDeclarationWindow = declarationWindow;
             declarationWindow = applyDeclarationAction(declarationWindow, a, hp.hand);
+            refreshPublicPartnershipSignal();
             if (a.type === 'tarokkCount') {
                 recordInstantTarokkScore(HUMAN, a.count);
                 game = { ...game, announcedTarokkCounts: { ...(game.announcedTarokkCounts ?? {}), [HUMAN]: a.count } };

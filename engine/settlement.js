@@ -28,7 +28,7 @@ export function silentFigureValue(type) {
     const value = declaredFigureValue(type);
     if (value === undefined)
         return undefined;
-    if (type === 'tarokk8' || type === 'tarokk9' || type === 'centrum' || type === 'kismadar' || type === 'nagymadar' || type === 'pagatUhu' || type === 'sasUhu' || type === 'kingUhu')
+    if (type === 'tarokk8' || type === 'tarokk9' || type === 'centrum' || type === 'kismadar' || type === 'nagymadar' || type === 'pagatUhu' || type === 'sasUhu' || type === 'kingUhu' || type === 'kingUltimo')
         return undefined;
     return Math.floor(value / 2);
 }
@@ -97,12 +97,9 @@ function gameLines(input) {
     const volat = input.figures.find(f => f.type === 'volat' && !f.silent);
     const multiplier = gameMultiplier(input.gameContra);
     const lines = [];
-    // A declared double and a declared volát are independent figures: if both
-    // were announced and fulfilled, both are paid. The published Illusztrált
-    // guidance explicitly permits saying both together.
+
+    // Announced figures retain their own settlement, independent of silent figures.
     if (double) {
-        // A declared figure has its own contra chain. The game-level contra is
-        // only the multiplier of the ordinary game stake.
         const doubleMultiplier = double.multiplier ?? 1;
         lines.push({
             kind: 'figure', type: 'doubleGame', points: base * 4 * doubleMultiplier,
@@ -112,10 +109,6 @@ function gameLines(input) {
         });
     }
     if (volat) {
-        // A declared Volát has a 6-point nominal figure value.  Without its own
-        // contra chain the losing declaration carries the traditional 3x figure
-        // settlement; once an explicit figure-contra is present, that chain is
-        // authoritative and its multiplier replaces the default settlement.
         const volatPoints = volat.multiplier !== undefined
             ? 6 * (base === 2 ? 2 : 1) * volat.multiplier
             : 6 * base;
@@ -126,53 +119,64 @@ function gameLines(input) {
                 : volat.ownerIsTakerPair === volat.ownerPairWon,
         });
     }
-    // A declared double / volát is itself the game stake for that declaration.
-    // It therefore replaces the ordinary game line; if it fails, the same
-    // declared value is paid to the opposing side rather than adding another
-    // ordinary-game charge.
-    if (double || volat)
+    // An announced Volat replaces the silent-volat outcome. If it is absent,
+    // winning every trick creates a silent Volat even when a Double was announced.
+    if (volat) return lines;
+
+    if (input.takerTrickPoints !== undefined && (takerWonAll || defenceWonAll)) {
+        // A game-level kontra is still scored alongside a silent Volat.
+        if (multiplier > 1) {
+            lines.push({ kind: 'game', points: base * multiplier, positiveForTakerPair: input.takerPairWon });
+        }
+        lines.push({
+            kind: 'figure', type: 'volat', points: base * 3,
+            positiveForTakerPair: takerWonAll, silent: true,
+        });
         return lines;
+    }
+
+    // If no silent Volat was completed, an announced Double replaces the ordinary
+    // game line; a silent Double is evaluated below from total trick+skart points.
+    if (double) return lines;
+
     if (input.takerTrickPoints === undefined) {
-        return [{
-                kind: 'game', points: base * multiplier,
-                positiveForTakerPair: input.takerPairWon,
-            }];
+        return [{ kind: 'game', points: base * multiplier, positiveForTakerPair: input.takerPairWon }];
     }
-    // Silent volát depends only on who took all tricks, NOT on point value.
-    // Skart composition is therefore irrelevant for volát.
-    if (takerWonAll) {
-        return [{ kind: 'figure', type: 'volat', points: base * 3 * multiplier, positiveForTakerPair: true }];
+
+    const silentDoubleForTaker = takerPairPoints >= 71;
+    const silentDoubleForDefence = defencePoints >= 71;
+    if (silentDoubleForTaker || silentDoubleForDefence) {
+        // Kontra a játékra and silent Double are parallel settlement rows.
+        if (multiplier > 1) {
+            lines.push({ kind: 'game', points: base * multiplier, positiveForTakerPair: input.takerPairWon });
+        }
+        lines.push({
+            kind: 'figure', type: 'doubleGame', points: base * 2,
+            positiveForTakerPair: silentDoubleForTaker, silent: true,
+        });
+        return lines;
     }
-    if (defenceWonAll) {
-        return [{ kind: 'figure', type: 'volat', points: base * 3 * multiplier, positiveForTakerPair: false }];
-    }
-    // Silent double uses the pair's total point value. All three non-taker
-    // skarts belong to the defence, including the taker partner's skart.
-    if (takerPairPoints >= 71) {
-        return [{ kind: 'figure', type: 'doubleGame', points: base * 2 * multiplier, positiveForTakerPair: true }];
-    }
-    if (defencePoints >= 71) {
-        return [{ kind: 'figure', type: 'doubleGame', points: base * 2 * multiplier, positiveForTakerPair: false }];
-    }
-    // Ordinary game: the taker pair wins at 48+, otherwise the defence wins.
-    return [{
-            kind: 'game', points: base * multiplier,
-            positiveForTakerPair: input.takerPairWon,
-        }];
+    return [{ kind: 'game', points: base * multiplier, positiveForTakerPair: input.takerPairWon }];
 }
+
 export function settlementLines(input) {
     const lines = gameLines(input);
-    const hasExplicitDouble = input.figures.some(f => f.type === 'doubleGame' && !f.silent);
     const hasExplicitVolat = input.figures.some(f => f.type === 'volat' && !f.silent);
+    const silentVolat = !hasExplicitVolat
+        && (input.takerPairVolat === true || input.defencePairVolat === true);
     for (const figure of input.figures) {
         if (figure.type === 'doubleGame' || figure.type === 'volat')
             continue;
-        // Silent Tulétroá and silent Négykirály are independent figures.
+        // A silent Volát replaces silent Duplajáték and silent Négykirály.
+        // Trull and the other silent figures remain independently payable.
+        if (silentVolat && figure.silent && figure.type === 'fourKings')
+            continue;
         const multiplier = figure.multiplier ?? 1;
         const silentBase = figure.silent ? silentFigureValue(figure.type) : undefined;
-    const effectivePoints = figure.silent
-      ? (silentBase !== undefined && figure.points <= silentBase ? figure.points : Math.floor(figure.points / 2))
-      : figure.points;
+        if (figure.silent && silentBase === undefined) continue;
+        const effectivePoints = figure.silent
+            ? (figure.points <= silentBase ? figure.points : Math.floor(figure.points / 2))
+            : figure.points;
         lines.push({
             kind: 'figure',
             type: figure.type,

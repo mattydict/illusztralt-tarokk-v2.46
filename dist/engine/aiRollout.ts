@@ -592,7 +592,7 @@ function simulateRemainingTricks(state: GameState, observerId: PlayerId, partner
   else if (['centrum','kismadar','nagymadar','pagatUltimo','pagatUhu','sasUltimo','sasUhu','kingUltimo','kingUhu'].includes(declaration)) { success=targetWon; failureMode=`A ${target ?? 'cél'} nem teljesült a határütésben.`; }
   else if (declaration==='tuletroa') {
     success = ['T20','T21','T22'].every(id => wonCardIds.has(id));
-    failureMode = 'A Tulétroához szükséges három nagy tarokkot nem vitte el a saját pár.';
+    failureMode = 'A Trullhoz szükséges három nagy tarokkot nem vitte el a saját pár.';
   }
   else if (declaration==='fourKings') {
     success = ['hearts-K','diamonds-K','spades-K','clubs-K'].every(id => wonCardIds.has(id));

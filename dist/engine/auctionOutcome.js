@@ -1,45 +1,38 @@
 import { isHonour } from './cards.js';
-import { hasInviteCard } from './bidding.js';
-const talonCountByContract = {
-    three: 3,
-    two: 2,
-    one: 1,
-    solo: 0,
-};
-export function contractTalonCount(contract) {
-    return talonCountByContract[contract];
+const talonCountByContract = { three: 3, two: 2, one: 1, solo: 0 };
+export function contractTalonCount(contract) { return talonCountByContract[contract]; }
+function isInvitationRecord(record) {
+  const action = record?.action;
+  return Boolean(action && (
+    action.type === 'invite' ||
+    (action.type === 'pass' && action.inviteTarget !== undefined) ||
+    action.inviteTarget !== undefined || action.target !== undefined && action.invitationSignal === true
+  ));
 }
 export function resolveAuctionOutcome(auction, hands, talon) {
-    if (!auction.finished || !auction.highest)
-        throw new Error('Az aukció még nem zárult le.');
-    const highest = auction.highest;
-    const inviter = [...auction.records].reverse().find(r => r.action.type === 'invite' || r.action.type === 'hold-invite' || (r.action.type === 'pass' && r.action.inviteTarget !== undefined));
-    let requiredPartnerCallId;
-    if (inviter && (inviter.action.type === 'invite' || inviter.action.type === 'hold-invite' || (inviter.action.type === 'pass' && inviter.action.inviteTarget !== undefined)) && inviter.playerId !== highest.playerId) {
-        const target = inviter.action.target ?? inviter.action.inviteTarget;
-        // Engedés / XX-invit is special: the inviter is the guaranteed partner
-        // of the Kettő bidder, so no further acceptance is needed.
-        if (target === 20 && highest.contract === 'two' && auction.engedes) {
-            requiredPartnerCallId = inviter.playerId;
-        } else {
-            const acceptedBy = auction.records
-                .filter(r => r.playerId !== inviter.playerId && r.action.type === 'bid')
-                .map(r => r.playerId)
-                .find(id => hasInviteCard(hands[id] ?? [], target));
-            if (acceptedBy !== undefined)
-                requiredPartnerCallId = inviter.playerId;
-        }
+  if (!auction.finished || !auction.highest) throw new Error('Az aukció még nem zárult le.');
+  const highest = auction.highest;
+  const inviter = [...auction.records].reverse().find(isInvitationRecord);
+  let requiredPartnerCallId;
+  if (inviter && inviter.playerId !== highest.playerId) {
+    const target = inviter.action.target ?? inviter.action.inviteTarget;
+    if (target === 20 && highest.contract === 'two' && auction.engedes) {
+      requiredPartnerCallId = inviter.playerId;
+    } else if (auction.inviteAcceptedBy === highest.playerId || (auction.inviteResponderId === undefined
+      && auction.records.some((r, i) => i > auction.records.indexOf(inviter) && r.playerId === highest.playerId))) {
+      // The invited tarokk is held by the inviter, not by the accepting winner.
+      // Acceptance is determined by the bidding/holding signal stored in auction state.
+      requiredPartnerCallId = inviter.playerId;
     }
-    const honourless = auction.records.some(r => r.playerId === highest.playerId && r.action.type === 'bid' && r.action.honourless === true);
-    if (honourless && !talon.some(isHonour)) {
-        throw new Error('Honőr nélküli hármasnál a talonban sincs honőr: a leosztás érvénytelen, újra kell osztani.');
-    }
-    return {
-        takerId: highest.playerId,
-        contract: highest.contract,
-        talonCount: talonCountByContract[highest.contract],
-        ...(requiredPartnerCallId ? { requiredPartnerCallId } : {}),
-        ...(inviter && (inviter.action.type === 'invite' || inviter.action.type === 'hold-invite' || (inviter.action.type === 'pass' && inviter.action.inviteTarget !== undefined)) && requiredPartnerCallId ? { calledTarokk: inviter.action.target ?? inviter.action.inviteTarget } : {}),
-        honourless,
-    };
+  }
+  const honourless = auction.records.some(r => r.playerId === highest.playerId && r.action.type === 'bid' && r.action.honourless === true);
+  if (honourless && !talon.some(isHonour)) throw new Error('Honőr nélküli hármasnál a talonban sincs honőr: a leosztás érvénytelen, újra kell osztani.');
+  return {
+    takerId: highest.playerId,
+    contract: highest.contract,
+    talonCount: talonCountByContract[highest.contract],
+    ...(requiredPartnerCallId ? { requiredPartnerCallId } : {}),
+    ...(requiredPartnerCallId && inviter ? { calledTarokk: inviter.action.target ?? inviter.action.inviteTarget } : {}),
+    honourless,
+  };
 }

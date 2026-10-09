@@ -1,7 +1,6 @@
 import { Card, isHonour } from './cards.js';
-import { AuctionState, Contract } from './auction.js';
+import { AuctionAction, AuctionState, Contract } from './auction.js';
 import { PlayerId } from './game.js';
-import { hasInviteCard } from './bidding.js';
 
 export interface AuctionOutcome {
   takerId: PlayerId;
@@ -34,21 +33,41 @@ export function resolveAuctionOutcome(
 ): AuctionOutcome {
   if (!auction.finished || !auction.highest) throw new Error('Az aukció még nem zárult le.');
   const highest = auction.highest;
-  const inviter = [...auction.records].reverse().find(r => r.action.type === 'invite' || r.action.type === 'hold-invite' || (r.action.type === 'pass' && r.action.inviteTarget !== undefined));
+  const invitationRecord = (action: AuctionAction): boolean => {
+    const legacy = action as AuctionAction & {
+      inviteTarget?: 18 | 19 | 20;
+      invitationSignal?: boolean;
+      target?: 18 | 19 | 20;
+    };
+    return action.type === 'invite'
+      || (action.type === 'pass' && legacy.inviteTarget !== undefined)
+      || legacy.inviteTarget !== undefined
+      || (legacy.target !== undefined && legacy.invitationSignal === true);
+  };
+  let inviterIndex = -1;
+  for (let i = auction.records.length - 1; i >= 0; i--) {
+    const record = auction.records[i];
+    if (record && invitationRecord(record.action)) {
+      inviterIndex = i;
+      break;
+    }
+  }
+  const inviter = inviterIndex >= 0 ? auction.records[inviterIndex] : undefined;
+  const inviterAction = inviter?.action as (AuctionAction & { inviteTarget?: 18 | 19 | 20; target?: 18 | 19 | 20 }) | undefined;
+  const inviterTarget = inviterAction?.target ?? inviterAction?.inviteTarget;
 
   let requiredPartnerCallId: PlayerId | undefined;
-  if (inviter && (inviter.action.type === 'invite' || inviter.action.type === 'hold-invite' || (inviter.action.type === 'pass' && inviter.action.inviteTarget !== undefined)) && inviter.playerId !== highest.playerId) {
-    const target = inviter.action.target ?? inviter.action.inviteTarget;
+  if (inviter && inviterTarget !== undefined && inviter.playerId !== highest.playerId) {
     // Engedés / XX-invit is special: the inviter is the guaranteed partner
     // of the Kettő bidder, so no further acceptance is needed.
-    if (target === 20 && highest.contract === 'two' && auction.engedes) {
+    if (inviterTarget === 20 && highest.contract === 'two' && auction.engedes) {
       requiredPartnerCallId = inviter.playerId;
-    } else {
-      const acceptedBy = auction.records
-        .filter(r => r.playerId !== inviter.playerId && r.action.type === 'bid')
-        .map(r => r.playerId)
-        .find(id => hasInviteCard(hands[id] ?? [], target));
-      if (acceptedBy !== undefined) requiredPartnerCallId = inviter.playerId;
+    } else if (auction.inviteAcceptedBy === highest.playerId
+      || (auction.inviteResponderId === undefined
+        && auction.records.some((r, i) => i > inviterIndex && r.playerId === highest.playerId))) {
+      // The called tarokk belongs to the inviter. Acceptance is inferred from
+      // the holding/bidding turn, never from the acceptor's private hand.
+      requiredPartnerCallId = inviter.playerId;
     }
   }
 
@@ -64,7 +83,7 @@ export function resolveAuctionOutcome(
     contract: highest.contract,
     talonCount: talonCountByContract[highest.contract],
     ...(requiredPartnerCallId ? { requiredPartnerCallId } : {}),
-    ...(inviter && (inviter.action.type === 'invite' || inviter.action.type === 'hold-invite' || (inviter.action.type === 'pass' && inviter.action.inviteTarget !== undefined)) && requiredPartnerCallId ? { calledTarokk: inviter.action.target ?? inviter.action.inviteTarget } : {}),
+    ...(inviterTarget !== undefined && requiredPartnerCallId ? { calledTarokk: inviterTarget } : {}),
     honourless,
   };
 }

@@ -214,7 +214,7 @@ function declarationPriority(d) {
 }
 function declarationLabel(d) {
     const labels = {
-        tuletroa: 'Tulétroá', fourKings: 'Négykirály', doubleGame: 'Duplajáték', volat: 'Volát',
+        tuletroa: 'Trull', fourKings: 'Négykirály', doubleGame: 'Duplajáték', volat: 'Volát',
         pagatUltimo: 'Pagátultimó', sasUltimo: 'Sasultimó', kingUltimo: 'Királyultimó',
         pagatUhu: 'Pagát Uhu', sasUhu: 'Sas Uhu', kingUhu: 'Király Uhu', xxiFogas: 'XXI-fogás',
         centrum: 'Centrum', kismadar: 'Kismadár', nagymadar: 'Nagymadár',

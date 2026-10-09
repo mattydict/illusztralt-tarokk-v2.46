@@ -38,39 +38,34 @@ function fullHand({honour=22, tarokks=[20,19,18,17,16]}={}) {
     ]);
 }
 {
-  // A=3, B=2, A holds 2, B=1, A holds 1; B passes, C=Solo; A passes => C wins.
+  // The third player must take their turn after 3-2. Once C has passed,
+  // C cannot re-enter later; the remaining A/B sequence finishes with A's held One.
   const hands={A:fullHand(),B:fullHand({honour:21}),C:fullHand(),D:fullHand()};
   let a=createAuction(['A','B','C'],0);
   a=applyAuctionAction(a,{type:'bid',contract:'three'},hands);
   a=applyAuctionAction(a,{type:'bid',contract:'two'},hands);
-  assert.equal(a.seats[a.currentSeat].playerId,'A');
-  assert.ok(legalAuctionActions(a,'A',hands).some(x=>x.type==='hold'&&x.contract==='two'));
-  a=applyAuctionAction(a,{type:'hold',contract:'two'},hands);
-  assert.equal(a.seats[a.currentSeat].playerId,'B');
-  assert.ok(legalAuctionActions(a,'B',hands).some(x=>x.type==='bid'&&x.contract==='one'));
-  a=applyAuctionAction(a,{type:'bid',contract:'one'},hands);
-  assert.equal(a.seats[a.currentSeat].playerId,'A');
-  a=applyAuctionAction(a,{type:'hold',contract:'one'},hands);
-  assert.equal(a.seats[a.currentSeat].playerId,'B');
+  assert.equal(a.seats[a.currentSeat].playerId,'C');
   a=applyAuctionAction(a,{type:'pass'},hands);
-  a=applyAuctionAction(a,{type:'bid',contract:'solo'},hands);
   assert.equal(a.seats[a.currentSeat].playerId,'A');
+  a=applyAuctionAction(a,{type:'hold',contract:'two'},hands);
+  a=applyAuctionAction(a,{type:'bid',contract:'one'},hands);
+  a=applyAuctionAction(a,{type:'hold',contract:'one'},hands);
   a=applyAuctionAction(a,{type:'pass'},hands);
   assert.equal(a.finished,true);
-  assert.equal(a.highest?.playerId,'C');
-  assert.equal(a.highest?.contract,'solo');
+  assert.equal(a.highest?.playerId,'A');
+  assert.equal(a.highest?.contract,'one');
 }
 {
   // After 3 -> 2 the first speaker cannot plain-pass. With XX+5 tarokks+big honour
   // the only way to yield is the explicit XX-invit (Engedés), which ends the auction.
   const hands={A:fullHand(),B:fullHand({honour:21}),C:fullHand(),D:fullHand()};
-  let a=createAuction(['A','B','C','D'],0);
+  let a=createAuction(['A','B'],0);
   a=applyAuctionAction(a,{type:'bid',contract:'three'},hands);
   a=applyAuctionAction(a,{type:'bid',contract:'two'},hands);
   const acts=legalAuctionActions(a,'A',hands);
-  assert.equal(acts.some(x=>x.type==='pass'),false);
-  assert.ok(acts.some(x=>x.type==='invite'&&x.target===20&&x.contract==='two'));
-  a=applyAuctionAction(a,{type:'invite',target:20,contract:'two'},hands);
+  assert.equal(acts.some(x=>x.type==='pass' && x.inviteTarget===undefined),false);
+  assert.ok(acts.some(x=>x.type==='pass' && x.inviteTarget===20));
+  a=applyAuctionAction(a,{type:'pass',inviteTarget:20},hands);
   assert.equal(a.finished,true);
   assert.equal(a.highest?.playerId,'B');
   assert.equal(a.highest?.contract,'two');
@@ -82,10 +77,10 @@ function fullHand({honour=22, tarokks=[20,19,18,17,16]}={}) {
   let a=createAuction(['A','B','C'],0);
   a=applyAuctionAction(a,{type:'bid',contract:'three'},hands);
   a=applyAuctionAction(a,{type:'bid',contract:'two'},hands);
+  a=applyAuctionAction(a,{type:'pass'},hands);
   a=applyAuctionAction(a,{type:'hold',contract:'two'},hands);
   a=applyAuctionAction(a,{type:'bid',contract:'one'},hands);
   a=applyAuctionAction(a,{type:'hold',contract:'one'},hands);
-  a=applyAuctionAction(a,{type:'pass'},hands);
   a=applyAuctionAction(a,{type:'bid',contract:'solo'},hands);
   assert.equal(a.seats[a.currentSeat].playerId,'A');
   assert.deepEqual(legalAuctionActions(a,'C',hands),[]);

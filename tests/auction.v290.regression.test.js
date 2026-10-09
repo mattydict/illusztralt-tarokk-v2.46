@@ -40,9 +40,9 @@ function hand({honour=22, tarokks=[20,19,18,17,16]}={}) {
   const hands={A:hand(),B:hand({honour:21}),C:hand(),D:hand()};
   let a=createAuction(['A','B','C'],0);
   for (const [pid, action] of [
-    ['A',{type:'bid',contract:'three'}],['B',{type:'bid',contract:'two'}],['A',{type:'hold',contract:'two'}],['B',{type:'bid',contract:'one'}],['A',{type:'hold',contract:'one'}],['B',{type:'pass'}],['C',{type:'bid',contract:'solo'}],['A',{type:'pass'}]
+    ['A',{type:'bid',contract:'three'}],['B',{type:'bid',contract:'two'}],['C',{type:'pass'}],['A',{type:'hold',contract:'two'}],['B',{type:'bid',contract:'one'}],['A',{type:'hold',contract:'one'}],['B',{type:'pass'}]
   ]) a=applyAuctionAction(a,action,hands);
   assert.equal(a.finished,true);
-  assert.equal(a.highest?.playerId,'C');
-  assert.equal(a.highest?.contract,'solo');
+  assert.equal(a.highest?.playerId,'A');
+  assert.equal(a.highest?.contract,'one');
 }

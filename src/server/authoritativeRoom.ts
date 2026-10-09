@@ -14,7 +14,7 @@ import { legalSkartCards } from '../engine/skart.js';
 import type { DeclarationContext } from '../engine/declarations.js';
 import type { RoundState } from '../engine/round.js';
 import type { PlayerAction, AuthoritativeView, PublicEvent, PublicPlayerView, PublicCard } from './protocol.js';
-import { publicPartnerId, privateSideForPlayer, publicRoleForPlayer } from '../engine/partnershipVisibility.js';
+import { publicPartnerId, privateSideForPlayer, publicRoleForPlayer, deriveDeclarationFlowView } from '../engine/partnershipVisibility.js';
 
 export interface RoomOptions {
   roomId: string;
@@ -66,7 +66,7 @@ function statePlayerIds(round: RoundState): string[] { return round.players.map(
 
 function actionSummary(action: PlayerAction, playerId: string, before: PersistedRoomState, after: PersistedRoomState): string {
   const contractLabels: Record<string, string> = { three: 'Hármas', two: 'Kettő', one: 'Egy', solo: 'Szóló' };
-  const figureLabels: Record<string, string> = { tarokk8: '8 tarokk', tarokk9: '9 tarokk', tuletroa: 'Tulétroá', fourKings: 'Négykirály', doubleGame: 'Duplajáték', volat: 'Volát', xxiFogas: 'XXI-fogás', centrum: 'Centrum', kismadar: 'Kismadár', nagymadar: 'Nagymadár', pagatUltimo: 'Pagát ultimó', pagatUhu: 'Pagát uhu', sasUltimo: 'Sas ultimó', sasUhu: 'Sas uhu', kingUltimo: 'Király ultimó', kingUhu: 'Király uhu' };
+  const figureLabels: Record<string, string> = { tarokk8: '8 tarokk', tarokk9: '9 tarokk', tuletroa: 'Trull', fourKings: 'Négykirály', doubleGame: 'Duplajáték', volat: 'Volát', xxiFogas: 'XXI-fogás', centrum: 'Centrum', kismadar: 'Kismadár', nagymadar: 'Nagymadár', pagatUltimo: 'Pagát ultimó', pagatUhu: 'Pagát uhu', sasUltimo: 'Sas ultimó', sasUhu: 'Sas uhu', kingUltimo: 'Király ultimó', kingUhu: 'Király uhu' };
   const actionLabel = action.type;
   if (actionLabel === 'auction') {
     const a = action.action;
@@ -74,7 +74,13 @@ function actionSummary(action: PlayerAction, playerId: string, before: Persisted
     const lateXixInvite = bidHistory.length === 2 && bidHistory[0]?.action?.contract === 'three' && bidHistory[1]?.action?.contract === 'two' && bidHistory[0]?.playerId !== bidHistory[1]?.playerId && before.round?.auction?.highest?.contract === 'two';
     const inviter = bidHistory[0]?.playerId;
     const responder = bidHistory[1]?.playerId;
-    if (a.type === 'pass') return a.inviteTarget !== undefined ? `Passz (${a.inviteTarget === 20 ? 'XX' : a.inviteTarget === 19 ? 'XIX' : a.inviteTarget === 18 ? 'XVIII' : a.inviteTarget} invit)` : 'Passz';
+    if (a.invitationSignalTarget !== undefined) return `Licit: ${contractLabels[a.contract] ?? a.contract} · ${a.invitationSignalTarget === 20 ? 'XX' : a.invitationSignalTarget === 19 ? 'XIX' : 'XVIII'}-invit jelzés`;
+    if (a.acceptsInviteTarget !== undefined) return `${a.type === 'bid' ? 'Licit' : 'Tartom'}: ${contractLabels[a.contract] ?? a.contract} · ${a.acceptsInviteTarget === 20 ? 'XX' : a.acceptsInviteTarget === 19 ? 'XIX' : 'XVIII'}-invit fogadása`;
+    if (a.type === 'pass') {
+      const pending = before.round?.auction?.outstandingInvite;
+      if (pending && before.round?.auction?.inviteAcceptedBy && pending.inviterId === playerId) return `Passz · ${pending.target === 20 ? 'XX' : pending.target === 19 ? 'XIX' : 'XVIII'}-invit lezárása`;
+      return a.inviteTarget !== undefined ? `Passz (${a.inviteTarget === 20 ? 'XX' : a.inviteTarget === 19 ? 'XIX' : a.inviteTarget === 18 ? 'XVIII' : a.inviteTarget} invit)` : 'Passz';
+    }
     if (a.type === 'bid') {
       if (a.honourless) return 'Honőr nélküli Licit: Hármas';
       if (lateXixInvite && a.contract === 'one' && playerId === inviter) return 'Licit: Egy · XIX-invit';
@@ -469,9 +475,17 @@ export class AuthoritativeRoom {
       records: [...this.round.auction.records],
       outstandingInvite: this.round.auction.outstandingInvite,
       inviteAcceptedBy: this.round.auction.inviteAcceptedBy,
+      inviteResponderId: this.round.auction.inviteResponderId,
+      inviterLockedOut: this.round.auction.inviterLockedOut,
       holdOwnerId: this.round.auction.holdOwnerId,
     } satisfies Partial<AuctionState>;
     const game = this.game ? this.publicGameView(this.game, playerId) : undefined;
+    const takerId = this.game?.takerId ?? this.round.takerId;
+    const publicPartner = this.game ? publicPartnerId(this.game, this.round, this.declarationWindow) : undefined;
+    const partnership = takerId ? { takerId, ...(publicPartner ? { partnerId: publicPartner } : {}) } : undefined;
+    const declarationFlow = this.game && phaseOf(this.round, this.game) === 'declarations' && this.declarationWindow
+      ? deriveDeclarationFlowView(this.game, this.round, this.declarationWindow, playerId)
+      : undefined;
     return {
       roomId: this.roomId,
       sequence: this.sequence,
@@ -480,6 +494,8 @@ export class AuthoritativeRoom {
       players: publicPlayers,
       ...(auction ? { auction } : {}),
       ...(game ? { game } : {}),
+      ...(partnership ? { partnership } : {}),
+      ...(declarationFlow ? { declarationFlow } : {}),
       scoreboard: { dealsPlayed: this.settlementHistory.length, scores: Object.fromEntries(this.playerIds.map(id => [id, Number(this.matchScores[id] ?? 0)])), history: this.settlementHistory.slice(-12), instantHistory: this.instantScoreHistory.slice(-12) },
       publicEvents: this.publicEvents.slice(-30),
       legalActionTypes: this.legalActionTypes(playerId),

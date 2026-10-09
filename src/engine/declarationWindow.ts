@@ -6,15 +6,18 @@ export type DeclarationAction =
   | { type: 'declare'; playerId: string; declaration: DeclarationType; targetCardId?: string }
   | { type: 'tarokkCount'; playerId: string; count: 8 | 9 };
 
+export type DeclarationRecord = DeclarationAction | { type: 'contraSignal'; playerId: string; target: 'game' | 'declaration'; declarationId?: string };
+
 export interface DeclarationWindowState {
   order: string[];
   currentIndex: number;
   consecutivePasses: number;
   turnHadAction?: boolean;
+  turnHadContra?: boolean;
   /** The taker's first actual declaration turn is excluded from the three-pass streak. */
   openingTakerTurnPending: boolean;
   finished: boolean;
-  records: DeclarationAction[];
+  records: DeclarationRecord[];
   firstRound: boolean;
   roundNumber: number;
   announcedTarokkCounts: Record<string, 8 | 9>;
@@ -30,7 +33,7 @@ export function declarationOrderFromTaker(playerIds: string[], takerId: string):
 
 export function createDeclarationWindow(order: string[], firstRound = true): DeclarationWindowState {
   if (order.length !== 4) throw new Error('A bemondási körhöz 4 játékos szükséges.');
-  return { order: [...order], currentIndex: 0, consecutivePasses: 0, turnHadAction: false, finished: false, records: [], roundNumber: 1, firstRound, announcedTarokkCounts: {}, openingTakerTurnPending: true };
+  return { order: [...order], currentIndex: 0, consecutivePasses: 0, turnHadAction: false, turnHadContra: false, finished: false, records: [], roundNumber: 1, firstRound, announcedTarokkCounts: {}, openingTakerTurnPending: true };
 }
 
 export function currentDeclarer(window: DeclarationWindowState): string | undefined {
@@ -41,10 +44,16 @@ export function legalDeclarationActions(
   window: DeclarationWindowState,
   playerId: string,
   hand: Card[],
-  context: Omit<Parameters<typeof availableDeclarations>[1], 'firstRound' | 'announcedTarokkCount'> & Partial<Pick<Parameters<typeof availableDeclarations>[1], 'firstRound' | 'announcedTarokkCount'>>
+  context: Omit<Parameters<typeof availableDeclarations>[1], 'firstRound' | 'announcedTarokkCount'> & Partial<Pick<Parameters<typeof availableDeclarations>[1], 'firstRound' | 'announcedTarokkCount'>> & {
+    speakerIsDefence?: boolean; speakerIsPartner?: boolean; speakerRolePubliclyKnown?: boolean;
+    hasPublicDefenceSignal?: boolean; turnHadContra?: boolean;
+  }
 ): DeclarationAction[] {
   if (window.finished || currentDeclarer(window) !== playerId) return [];
   if (window.pendingTarokkCountPlayerId && window.pendingTarokkCountPlayerId !== playerId) return [];
+  const roleKnown = context.speakerRolePubliclyKnown === true;
+  if (!roleKnown && context.speakerIsDefence === true && context.hasPublicDefenceSignal !== true) return [{ type: 'pass', playerId }];
+  if (!roleKnown && context.speakerIsPartner === true && context.hasPublicDefenceSignal === true && context.turnHadContra !== true) return [{ type: 'pass', playerId }];
   const announced = window.announcedTarokkCounts[playerId];
   const options = availableDeclarations(hand, { ...context, firstRound: window.roundNumber === 1, ...(announced !== undefined ? { announcedTarokkCount: announced } : {}) });
   const countActions: DeclarationAction[] = [];
@@ -71,7 +80,7 @@ export function legalDeclarationActions(
 export function applyDeclarationAction(window: DeclarationWindowState, action: DeclarationAction, hand?: Card[]): DeclarationWindowState {
   if (window.finished) throw new Error('A bemondási kör már lezárult.');
   if (currentDeclarer(window) !== action.playerId) throw new Error('Most nem ennek a játékosnak kell megszólalnia.');
-  const records = [...window.records, action];
+  const records: DeclarationRecord[] = [...window.records, action];
   if (action.type === 'tarokkCount') {
     if (hand) {
       const actualTarokks = hand.filter(c => c.kind === 'tarokk').length;
@@ -101,7 +110,7 @@ export function applyDeclarationAction(window: DeclarationWindowState, action: D
       && window.roundNumber === 1;
     const passes = openingTakerPass ? 0 : (purePass ? window.consecutivePasses + 1 : 0);
     const openingTakerTurnPending = openingTakerPass ? false : window.openingTakerTurnPending;
-    if (passes >= 3) return { ...window, records, consecutivePasses: passes, turnHadAction: false, openingTakerTurnPending, finished: true };
+    if (passes >= 3) return { ...window, records, consecutivePasses: passes, turnHadAction: false, turnHadContra: false, openingTakerTurnPending, finished: true };
     const nextIndex = (window.currentIndex + 1) % window.order.length;
     const wrapped = nextIndex === 0;
     return {
@@ -109,6 +118,7 @@ export function applyDeclarationAction(window: DeclarationWindowState, action: D
       records,
       consecutivePasses: passes,
       turnHadAction: false,
+      turnHadContra: false,
       openingTakerTurnPending,
       currentIndex: nextIndex,
       ...(wrapped ? {roundNumber: (window.roundNumber ?? 1) + 1, firstRound: false} : {}),
@@ -124,7 +134,8 @@ export function applyDeclarationAction(window: DeclarationWindowState, action: D
   return { ...window, records, consecutivePasses: 0, turnHadAction: true, currentIndex: window.currentIndex };
 }
 
-export function markDeclarationTurnAction(window: DeclarationWindowState, playerId: string): DeclarationWindowState {
+export function markDeclarationTurnAction(window: DeclarationWindowState, playerId: string, isContra = true, signal?: { target: 'game' | 'declaration'; declarationId?: string }): DeclarationWindowState {
   if (window.finished || currentDeclarer(window) !== playerId) throw new Error('Most nem ennek a játékosnak van bemondási joga.');
-  return { ...window, consecutivePasses: 0, turnHadAction: true };
+  const records = signal ? [...window.records, { type: 'contraSignal' as const, playerId, target: signal.target, ...(signal.declarationId ? { declarationId: signal.declarationId } : {}) }] : window.records;
+  return { ...window, records, consecutivePasses: 0, turnHadAction: true, ...(isContra ? { turnHadContra: true } : {}) };
 }

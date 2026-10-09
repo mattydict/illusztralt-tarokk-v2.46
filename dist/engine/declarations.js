@@ -49,7 +49,7 @@ export function availableDeclarations(hand, context) {
     if (hasTrullContext && !rareTakerCentrum && lyukasAllowed) {
         result.push({ type: 'kismadar', required: false }, { type: 'nagymadar', required: false });
     }
-    result.push({ type: 'xxiFogas', required: false });
+    // XXI-fogás is detected from play; it is not a separately declarable figure.
     // The declaration-history restrictions (e.g. Volát után tiltott emelések,
     // same-trick pair restrictions, Ultimo -> Uhu) remain in declarationRules.
     // They are genuine announcement-order rules, not tests of whether a figure
@@ -77,7 +77,7 @@ export function declarationRequiresTarokkCount(type) {
     return ['pagatUltimo', 'pagatUhu', 'sasUltimo', 'sasUhu'].includes(type);
 }
 /**
- * Illusztrált Tarokk communication convention: after tulétroá, a four-kings
+ * Illusztrált Tarokk communication convention: after Trull, a four-kings
  * declaration is commonly used to signal the highest still-unidentified
  * tarokk. After a trull, that signal is XIX.
  */

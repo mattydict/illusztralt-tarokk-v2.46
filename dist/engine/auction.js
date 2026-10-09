@@ -21,20 +21,27 @@ function inviteContractForTarget(state, target) {
         return highest;
     if (target === 19 && highest === 'three')
         return 'one';
-    if (target === 18 && highest === 'three')
+    if (target === 18 && (highest === 'three' || highest === 'two'))
         return 'solo';
-    if (target === 19 && highest === 'two')
+    if (target === 19 && (highest === 'two' || highest === 'one'))
         return 'solo';
     return undefined;
 }
 function sameAuctionAction(state, expected, actual) {
-    if (expected.type !== 'invite' || actual.type !== 'invite')
-        return JSON.stringify(expected) === JSON.stringify(actual);
-    if (expected.target !== actual.target)
-        return false;
-    const expectedContract = expected.contract ?? inviteContractForTarget(state, expected.target);
-    const actualContract = actual.contract ?? inviteContractForTarget(state, actual.target);
-    return expectedContract === actualContract;
+    if (!expected || !actual || expected.type !== actual.type) return false;
+    // These extra fields explain the rules to the UI; they are issued by the
+    // server and must not be required from (or trusted in) a client request.
+    if (expected.type === 'pass') return (expected.inviteTarget ?? undefined) === (actual.inviteTarget ?? undefined);
+    if (expected.type === 'bid') return expected.contract === actual.contract && Boolean(expected.honourless) === Boolean(actual.honourless);
+    if (expected.type === 'hold') return expected.contract === actual.contract;
+    if (expected.type === 'hold-invite') return expected.target === actual.target && expected.contract === actual.contract;
+    if (expected.type === 'invite') {
+      if (expected.target !== actual.target) return false;
+      const expectedContract = expected.contract ?? inviteContractForTarget(state, expected.target);
+      const actualContract = actual.contract ?? inviteContractForTarget(state, actual.target);
+      return expectedContract === actualContract;
+    }
+    return JSON.stringify(expected) === JSON.stringify(actual);
 }
 function canInviteWithHand(hand, target) {
     // Unit-level callers sometimes provide no/full-hand information. The live
@@ -155,74 +162,119 @@ function openingJumpResponse(state, playerId) {
 }
 function latePassInviteTarget(state, playerId, hands) {
     const bids = bidRecords(state);
-    if (bids.length < 2 || !hands)
-        return undefined;
+    if (bids.length < 2 || !hands) return undefined;
     const passEligible = (target) => canInviteWithHand(hands[playerId], target);
-    // Classic opening-invite families, including the cases where intervening
-    // players have already passed or a later player has raised again.
     const opening = state.openingBid;
+
+    // Opening XX/XIX/XVIII invitation patterns.
     if (opening?.playerId === playerId) {
         const candidate = openingJumpResponse(state, playerId);
-        if (candidate && passEligible(candidate.target))
-            return candidate.target;
+        if (candidate && passEligible(candidate.target)) return candidate.target;
     }
-    // Tarokk-őr's later XIX-invite: A:3 B:2 A:1 B:Tartom A:Passz.
-    // The Tartom is not a bid record, therefore the pattern is detected from the
-    // first three bids plus the actual subsequent hold action.
-    const hasThreeTwoOnePrefix = bids.length >= 3
+
+    const records = state.records ?? [];
+    const firstIndex = (id, contract) => records.findIndex(r => r.playerId === id && r.action?.type === 'bid' && r.action.contract === contract);
+    const hasAction = (id, type, contract, after = -1) => records.some((r, i) => i > after && r.playerId === id && r.action?.type === type && (contract === undefined || r.action.contract === contract));
+
+    // A:3 B:2 A:1 is an XIX-invit. B can accept with Tartom or Szóló;
+    // Szóló here does NOT turn it into an XVIII-invit.
+    const threeTwoOne = bids.length >= 3
         && bids[0]?.playerId === playerId && bids[0]?.action.contract === 'three'
         && bids[1]?.playerId !== playerId && bids[1]?.action.contract === 'two'
         && bids[2]?.playerId === playerId && bids[2]?.action.contract === 'one';
-    const firstAfterOne = hasThreeTwoOnePrefix
-        ? state.records.slice(Math.max(0, state.records.findIndex(r => r.playerId === playerId && r.action.type === 'bid' && r.action.contract === 'one')) + 1)
-            .find(r => r.playerId !== playerId)
-        : undefined;
-    const firstAfterOneIsHold = !!firstAfterOne
-        && firstAfterOne.action.type === 'hold'
-        && firstAfterOne.action.contract === 'one';
-    if (hasThreeTwoOnePrefix && firstAfterOneIsHold && passEligible(19))
-        return 19;
-    // Tarokk-őr's parallel later XVIII-invite: A:3 B:2 A:1 B:Szóló A:Passz.
-    const hasThreeTwoOneSolo = bids.length >= 4
-        && bids[0]?.playerId === playerId && bids[0]?.action.contract === 'three'
-        && bids[1]?.action.contract === 'two' && bids[1]?.playerId !== playerId
-        && bids[2]?.playerId === playerId && bids[2]?.action.contract === 'one'
-        && bids[3]?.playerId !== playerId && bids[3]?.action.contract === 'solo';
-    if (hasThreeTwoOneSolo && passEligible(18))
-        return 18;
-    // A:2 B:1 C:Szóló D:Passz A:Passz (the original A's XIX invite is still
-    // addressed to B, even though C subsequently raised to Szóló).
-    const hasTwoOneLate = opening?.playerId === playerId
-        && opening.contract === 'two'
-        && bids.some((r, i) => i > 0 && r.playerId !== playerId && r.action.contract === 'one')
+    if (threeTwoOne) {
+        const oneIndex = firstIndex(playerId, 'one');
+        const subsequent = records.slice(oneIndex + 1).find(r => r.playerId !== playerId);
+        if (subsequent && ((subsequent.action?.type === 'hold' && subsequent.action.contract === 'one')
+            || (subsequent.action?.type === 'bid' && subsequent.action.contract === 'solo')) && passEligible(19)) return 19;
+    }
+
+    // A:3 B:2 A:Hold, B:Szóló*, A:Hold, B:Pass -> B's XIX-invit.
+    if (bids[0]?.action.contract === 'three' && bids[1]?.action.contract === 'two'
+        && bids[0]?.playerId !== playerId && bids[1]?.playerId === playerId
+        && bids.at(-1)?.playerId === playerId && bids.at(-1)?.action.contract === 'solo'
+        && hasAction(bids[0].playerId, 'hold', 'two') && passEligible(19)) return 19;
+
+    // A:3 B:2 A:Hold, B:1, A:Szóló*, B:Hold, A:Pass -> A's XIX-invit.
+    if (bids.length >= 4 && bids[0]?.action.contract === 'three' && bids[1]?.action.contract === 'two'
+        && bids[0]?.playerId === playerId && bids[1]?.playerId !== playerId
+        && bids[2]?.action.contract === 'one' && bids[2]?.playerId !== playerId
+        && bids[3]?.playerId === playerId && bids[3]?.action.contract === 'solo'
+        && hasAction(playerId, 'hold', 'two') && passEligible(19)) {
+        const oneIndex = firstIndex(bids[2].playerId, 'one');
+        if (hasAction(bids[1].playerId, 'hold', 'solo', oneIndex)) return 19;
+    }
+
+    // XVIII-specific patterns from the user's table. These are distinct from
+    // the 3-2-1 family above, whose Solo response is still an XIX acceptance.
+    // A:3 B:Szóló*, A:Tartom, B:Passz.
+    if (bids.length >= 2 && bids[0]?.playerId !== playerId && bids[0]?.action.contract === 'three'
+        && bids[1]?.playerId === playerId && bids[1]?.action.contract === 'solo'
+        && hasAction(bids[0].playerId, 'hold', 'solo') && passEligible(18)) return 18;
+    // A:3 B:2 A:Szóló*, B:Tartom, A:Passz.
+    if (bids.length >= 3 && bids[0]?.playerId === playerId && bids[0]?.action.contract === 'three'
+        && bids[1]?.playerId !== playerId && bids[1]?.action.contract === 'two'
+        && bids[2]?.playerId === playerId && bids[2]?.action.contract === 'solo'
+        && hasAction(bids[1].playerId, 'hold', 'solo') && passEligible(18)) return 18;
+
+    // Three-bidder variants where the original two-bidder invitation survives
+    // a later raise to Solo (A:2, B:1, C:Solo, A:Pass, B:Hold).
+    const hasTwoOneLate = opening?.playerId === playerId && opening.contract === 'two'
+        && bids.length === 2
+        && bids[1]?.playerId !== playerId && bids[1]?.action.contract === 'one'
         && passEligible(19);
-    if (hasTwoOneLate)
-        return 19;
-    // Keep the helper conservative if the player has only made an unrelated
-    // rebid; an invite must be supported by a documented sequence.
+    if (hasTwoOneLate) return 19;
+
+    // A:3 B:1* C:Solo A:Hold B:Pass — the One bidder B owns XIX.
+    if (bids.length >= 3 && bids[0]?.action.contract === 'three'
+        && bids[1]?.playerId === playerId && bids[1]?.action.contract === 'one'
+        && bids[2]?.playerId !== playerId && bids[2]?.action.contract === 'solo'
+        && hasAction(bids[0].playerId, 'hold', 'solo') && passEligible(19)) return 19;
+
     return undefined;
 }
 function holdCreatesInviteTarget(state, holderId, heldContract, hands) {
-    if (!hands || heldContract !== 'solo')
-        return undefined;
+    if (!hands || heldContract !== 'solo') return undefined;
     const bids = bidRecords(state);
-    if (bids.length < 3)
-        return undefined;
-    const solo = bids[bids.length - 1];
-    const previous = bids[bids.length - 2];
+    if (bids.length < 3 || bids.at(-1)?.action.contract !== 'solo') return undefined;
     const opening = bids[0];
-    if (solo.action.contract !== 'solo' || previous.action.contract !== 'two')
-        return undefined;
-    // Canonical special case: A:3 B:2 C:Szóló D:Pass A:Tartom ... -> C's
-    // Szóló is the XVIII invite. This is the convention explicitly discussed in
-    // the literature; we prefer XVIII here over the mechanical one-jump reading.
-    if (opening.playerId !== holderId || opening.action.contract !== 'three')
-        return undefined;
-    if (solo.playerId === holderId || previous.playerId === holderId)
-        return undefined;
-    return canInviteWithHand(hands[solo.playerId], 18)
-        ? { inviterId: solo.playerId, target: 18 }
-        : undefined;
+    const second = bids[1];
+    const solo = bids.at(-1);
+    const owns = (id, target) => canInviteWithHand(hands[id], target);
+
+    // A:3 B:2 C:Szóló*, A:Tartom. The marked bidder's card decides whether
+    // this is an XIX or XVIII invite; do not infer it from the contract jump.
+    if (opening.action.contract === 'three' && second.action.contract === 'two'
+        && opening.playerId === holderId && solo.playerId !== holderId && second.playerId !== holderId) {
+        if (owns(solo.playerId, 19)) return { inviterId: solo.playerId, target: 19 };
+        if (owns(solo.playerId, 18)) return { inviterId: solo.playerId, target: 18 };
+    }
+
+    // A:3 B:2 A:Szóló*, B:Tartom, A:Pass — explicit XVIII family.
+    if (bids.length === 3 && opening.action.contract === 'three' && second.action.contract === 'two'
+        && solo.playerId === opening.playerId && holderId !== opening.playerId && owns(solo.playerId, 18)) {
+        return { inviterId: solo.playerId, target: 18 };
+    }
+
+    // A:3 B:2 A:Tartom B:Szóló*, A:Tartom — B's marked Solo invites XIX.
+    if (bids.length === 3 && opening.action.contract === 'three' && second.action.contract === 'two'
+        && solo.playerId === second.playerId && holderId === opening.playerId && owns(solo.playerId, 19)) {
+        return { inviterId: solo.playerId, target: 19 };
+    }
+
+    // A:3 B:2 C:1 A:Szóló*, B:Tartom — A's marked Solo invites XIX.
+    if (bids.length >= 4 && opening.action.contract === 'three' && second.action.contract === 'two'
+        && bids[2]?.action.contract === 'one' && bids[3]?.action.contract === 'solo'
+        && bids[3]?.playerId === opening.playerId && holderId !== opening.playerId
+        && owns(opening.playerId, 19)) return { inviterId: opening.playerId, target: 19 };
+
+    // A:2 B:1 C:Szóló*, A:Pass, B:Tartom — the later Solo bidder invites XIX.
+    if (bids.length === 3 && opening.action.contract === 'two' && second.action.contract === 'one'
+        && solo.playerId !== opening.playerId && solo.playerId !== second.playerId
+        && holderId === second.playerId && owns(solo.playerId, 19)) {
+        return { inviterId: solo.playerId, target: 19 };
+    }
+    return undefined;
 }
 function openingInviteForResponse(state, playerId, hands) {
     const response = openingJumpResponse(state, playerId);
@@ -341,6 +393,16 @@ export function legalAuctionActions(state, playerId, hands) {
     const currentHolder = holdOwner(state);
     if (state.inviterLockedOut && state.outstandingInvite?.inviterId === playerId)
         return result;
+    // Explicit invites are a two-step public signal: the inviter names the
+    // invited tarokk, the current/highest bidder accepts with Tartom, and the
+    // inviter closes with Passz. Never turn a lower signal bid (e.g. One-invit
+    // against Three) into the actual winning contract.
+    if (state.outstandingInvite && !state.inviteAcceptedBy && state.inviteResponderId === playerId) {
+        return [{ type: 'hold-invite', target: state.outstandingInvite.target, contract: state.highest?.contract ?? 'solo' }];
+    }
+    if (state.outstandingInvite && state.inviteAcceptedBy && state.outstandingInvite.inviterId === playerId) {
+        return [{ type: 'pass' }];
+    }
     if (!hasBidAuthority) {
         if (!state.highest && allOtherPlayersPassed(state, playerId))
             result.push({ type: 'bid', contract: 'three', honourless: true });
@@ -355,15 +417,16 @@ export function legalAuctionActions(state, playerId, hands) {
     }
     const lateInvite = latePassInviteTarget(state, playerId, hands);
     if (lateInvite !== undefined) {
-        const unique = [...result.filter(a => a.type !== 'pass'), { type: 'pass', inviteTarget: lateInvite }];
-        return unique.length ? unique : result;
+        const unique = [...result.filter(a => a.type !== 'pass')];
+        unique.push({ type: 'pass', inviteTarget: lateInvite });
+        return unique;
     }
     const highest = state.highest;
     const outstandingInvite = state.outstandingInvite;
     const history = bidRecords(state);
     const alreadyBid = hasBidOfPlayer(state, playerId);
-    // Later invite response case: A:3 B:2 A:1. The Kettő bidder B may either
-    // Tartom the One (XIX invite path) or continue to Szóló (XVIII invite path).
+    // A:3 B:2 A:1 is an XIX-invit. The Kettő bidder may accept with Tartom-One
+    // or by continuing to Szóló; the acceptance does not turn it into XVIII.
     // These are documented signalling moves, not ordinary lower-bids by B.
     const lateInviteResponder = history.length === 3
         && history[0]?.action.contract === 'three'
@@ -374,8 +437,8 @@ export function legalAuctionActions(state, playerId, hands) {
         && highest.contract === 'one'
         && highest.playerId === history[2]?.playerId;
     if (lateInviteResponder) {
-        result.push({ type: 'hold', contract: 'one' });
-        result.push({ type: 'bid', contract: 'solo' });
+        result.push({ type: 'hold', contract: 'one', acceptsInviteTarget: 19 });
+        result.push({ type: 'bid', contract: 'solo', acceptsInviteTarget: 19 });
         return result;
     }
     // The only player entitled to Tartom is the current hold-owner. It does not
@@ -395,7 +458,56 @@ export function legalAuctionActions(state, playerId, hands) {
         // Only the immediate 3-2 position has the mandatory-Tartom rule. Once the
         // auction has continued to One/Solo, the holder may of course pass normally.
         if (!engedesEligible) {
-            return [...result, { type: 'hold', contract: highest.contract }];
+            // A:Három, B:Kettő, A:Tartom, B:Egy, A:Szóló* is a special
+            // adjacent-step XIX-invit. It must be exposed as an invitation,
+            // not as an unlabelled ordinary Solo bid.
+            const openerInvitesXixAfterSecondBidsOne = history.length === 3
+                && history[0]?.action.contract === 'three'
+                && history[1]?.action.contract === 'two'
+                && history[2]?.action.contract === 'one'
+                && history[0]?.playerId === playerId
+                && history[1]?.playerId !== playerId
+                && history[2]?.playerId === history[1]?.playerId
+                && state.records.some(r => r.playerId === playerId && r.action?.type === 'hold' && r.action.contract === 'two')
+                && highest.contract === 'one'
+                && highest.playerId === history[1]?.playerId
+                && !outstandingInvite
+                && canInviteWithHand(hand, 19);
+            if (openerInvitesXixAfterSecondBidsOne) {
+                return [...result, { type: 'hold', contract: 'one' }, { type: 'invite', target: 19, contract: 'solo' }];
+            }
+            // Three-bidder XIX-invit from the first bidder's Solo:
+            // A:Három, B:Kettő, C:Egy, A:Szóló*, B:Tartom, A:Passz.
+            // This Solo is an invitation to XIX, not an ordinary XVIII jump.
+            const threeTwoOneThirdBidder = history.length >= 3
+                && history[0]?.action.contract === 'three'
+                && history[1]?.action.contract === 'two'
+                && history[2]?.action.contract === 'one'
+                && history[0]?.playerId === playerId
+                && history[1]?.playerId !== playerId
+                && history[2]?.playerId !== playerId
+                && history[2]?.playerId !== history[1]?.playerId
+                && highest.contract === 'one'
+                && !outstandingInvite
+                && canInviteWithHand(hand, 19);
+            if (threeTwoOneThirdBidder) {
+                return [...result, { type: 'hold', contract: 'one' }, { type: 'invite', target: 19, contract: 'solo' }];
+            }
+            const heldThreeTwoThenOne = history.length >= 3
+                && history[0]?.action.contract === 'three'
+                && history[1]?.action.contract === 'two'
+                && history[0]?.playerId === playerId
+                && history[1]?.playerId !== playerId
+                && history[2]?.action.contract === 'one'
+                && history[2]?.playerId === history[1]?.playerId
+                && highest.contract === 'one'
+                && canInviteWithHand(hand, 19)
+                && !outstandingInvite;
+            if (heldThreeTwoThenOne) {
+                return [...result, { type: 'hold', contract: 'one' }, { type: 'invite', target: 19, contract: 'solo' }];
+            }
+            const inferredInvite = holdCreatesInviteTarget(state, playerId, highest.contract, hands);
+            return [...result, { type: 'hold', contract: highest.contract, ...(inferredInvite ? { acceptsInviteTarget: inferredInvite.target } : {}) }];
         }
         // After 3-2 the first speaker must hold the Kettő by default. The one
         // documented exception is a later XIX/XVIII invite sequence: A:3 B:2
@@ -404,91 +516,168 @@ export function legalAuctionActions(state, playerId, hands) {
         const resultWithHold = [
             { type: 'hold', contract: highest.contract },
         ];
-        if (canInviteWithHand(hand, 19) || canInviteWithHand(hand, 18)) {
-            resultWithHold.push({ type: 'bid', contract: 'one' });
+        if (canInviteWithHand(hand, 19)) {
+            resultWithHold.push({ type: 'bid', contract: 'one', invitationSignalTarget: 19 });
         }
-        if (!outstandingInvite && canInviteWithHand(hand, 20)) {
-            resultWithHold.push({ type: 'invite', target: 20, contract: highest.contract });
+        // In the exact 3-2 position the opener can choose Solo as an XVIII-invit.
+        if (!outstandingInvite && canInviteWithHand(hand, 18)) {
+            resultWithHold.push({ type: 'invite', target: 18, contract: 'solo' });
+        }
+        // In the exact 3-2 position, XX is an Engedés/pass signal, not a
+        // separate higher bid. It is available only to the original Three
+        // bidder who actually holds XX and satisfies the strong-hand rules.
+        if (canInviteWithHand(hand, 20)) {
+            resultWithHold.push({ type: 'pass', inviteTarget: 20 });
         }
         return resultWithHold;
     }
     if (!highest) {
-        if (outstandingInvite && hands && !hasInviteCard(hand, outstandingInvite.target))
-            return result;
-        for (const contract of order)
-            result.push({ type: 'bid', contract });
+        for (const contract of order) {
+            const openingInviteTarget = contract === 'two' && canInviteWithHand(hand, 19)
+                ? 19
+                : contract === 'one' && canInviteWithHand(hand, 18) ? 18 : undefined;
+            result.push({ type: 'bid', contract, ...(openingInviteTarget !== undefined ? { invitationSignalTarget: openingInviteTarget } : {}) });
+        }
         // A first-spoken Solo is never itself an invite: it cannot yet be accepted.
         // Opening 2/1 invitations are recognized later when the opener steps aside.
         return result;
     }
-    // An outstanding invite can only be accepted by the player who actually owns
-    // the invited tarokk. Acceptance itself does NOT require that player to have
-    // the inviter's full 5-tarokk + big-honour structure.
-    const inviteRestriction = outstandingInvite && playerId !== outstandingInvite.inviterId && hands
-        ? !hasInviteCard(hands[playerId], outstandingInvite.target) : false;
+    // In the A:3, B:1*-invit, C:Solo line, an unspoken player between the
+    // explicit XIX signal and its responder may still raise to Solo. This is a
+    // normal auction bid in the pending invite context, not an XVIII signal.
+    const pendingThreeOneXix = outstandingInvite?.target === 19
+        && !state.inviteAcceptedBy
+        && state.inviteResponderId !== playerId
+        && outstandingInvite.inviterId !== playerId
+        && highest.contract === 'three'
+        && state.records.some(r => r.action?.type === 'invite'
+            && r.action.target === 19 && r.action.contract === 'one');
+    if (pendingThreeOneXix && !result.some(a => a.type === 'bid' && a.contract === 'solo')) {
+        result.push({ type: 'bid', contract: 'solo' });
+    }
+    // The invited tarokk belongs to the inviter. The accepting/winning player
+    // therefore must NOT be required to hold the same (unique) card.
     const next = order[idx(highest.contract) + 1];
     if (next)
         result.push({ type: 'bid', contract: next });
     if (!outstandingInvite) {
-        const isCanonicalThreeTwo = bidRecords(state).length >= 2
-            && bidRecords(state)[0]?.action.contract === 'three'
-            && bidRecords(state)[1]?.action.contract === 'two'
-            && bidRecords(state)[0]?.playerId !== playerId
-            && bidRecords(state)[1]?.playerId !== playerId
-            && highest.contract === 'two';
+        const bidsSoFar = bidRecords(state);
+        const threeTwoThirdSpeakerXix = highest.contract === 'two'
+            && bidsSoFar.length === 2
+            && bidsSoFar[0]?.action.contract === 'three'
+            && bidsSoFar[1]?.action.contract === 'two'
+            && bidsSoFar[0]?.playerId !== playerId
+            && bidsSoFar[1]?.playerId !== playerId
+            && currentHolder === bidsSoFar[0]?.playerId
+            && canInviteWithHand(hand, 19);
+        if (threeTwoThirdSpeakerXix) {
+            const soloBidIndex = result.findIndex(a => a.type === 'bid' && a.contract === 'solo');
+            if (soloBidIndex >= 0) result[soloBidIndex] = { ...result[soloBidIndex], invitationSignalTarget: 19 };
+            else result.push({ type: 'bid', contract: 'solo', invitationSignalTarget: 19 });
+        }
+        const twoOneThirdSpeaker = highest.contract === 'one'
+            && bidsSoFar.length === 2
+            && bidsSoFar[0]?.action.contract === 'two'
+            && bidsSoFar[1]?.action.contract === 'one'
+            && bidsSoFar[0]?.playerId !== playerId
+            && bidsSoFar[1]?.playerId !== playerId
+            && canInviteWithHand(hand, 19);
+        if (twoOneThirdSpeaker) {
+            // A:Kettő, B:Egy, C:Szóló* is an XIX signal to the holder who
+            // accepts it with Tartom. Record it as a marked bid so the final
+            // Pass/Tartom sequence is resolved by that table pattern.
+            const soloBidIndex = result.findIndex(a => a.type === 'bid' && a.contract === 'solo');
+            if (soloBidIndex >= 0) result[soloBidIndex] = { ...result[soloBidIndex], invitationSignalTarget: 19 };
+            else result.push({ type: 'bid', contract: 'solo', invitationSignalTarget: 19 });
+        }
         // Jump over exactly one/two contracts = XIX/XVIII invite respectively.
         for (const announced of order.slice(idx(highest.contract) + 2)) {
             const target = inviteTargetForJump(highest.contract, announced);
-            if (target !== undefined && !(isCanonicalThreeTwo && announced === 'solo') && canInviteWithHand(hand, target)) {
+            if (target !== undefined && canInviteWithHand(hand, target)) {
+                if (threeTwoThirdSpeakerXix && announced === 'solo' && target === 19) continue;
                 result.push({ type: 'invite', target, contract: announced });
             }
         }
-        // Canonical special case from the specialist literature: after 3-2, a
-        // third player's Szóló can be offered explicitly as an XVIII-invit. Some
-        // tables mechanically call it a XIX-invit because it skips only One; the
-        // Tarokk-őr convention treats this accepted Szóló as an XVIII-invit, which
-        // we use for this exact 3-2 context.
-        const canonicalThreeTwo = isCanonicalThreeTwo && canInviteWithHand(hand, 18);
-        if (canonicalThreeTwo && !result.some(a => a.type === 'invite' && a.target === 18 && a.contract === 'solo')) {
-            result.push({ type: 'invite', target: 18, contract: 'solo' });
-        }
+        // The documented three-bidder 3-2-Solo pattern is XIX-invit. XVIII-invit
+        // belongs to the original 3-2 bidder's own Solo signal, exposed below.
         // XX-invit / Engedés is handled only in the dedicated first-speaker
         // Három -> Kettő branch above. Do not offer it here: doing so would make
         // later speakers eligible after Tartom.
     }
-    return inviteRestriction ? result.filter(a => a.type !== 'bid') : result;
+    return result;
 }
 export function applyAuctionAction(state, action, hands) {
     if (state.finished)
         throw new Error('Az aukció már lezárult.');
     const playerId = state.seats[state.currentSeat].playerId;
-    const legal = legalAuctionActions(state, playerId, hands).some(a => sameAuctionAction(state, a, action));
-    if (!legal)
+    const legalAction = legalAuctionActions(state, playerId, hands).find(a => sameAuctionAction(state, a, action));
+    if (!legalAction)
         throw new Error('Ez az akció ebben a licithelyzetben nem szabályos.');
+    action = legalAction;
     let next = { ...state, records: [...state.records, { playerId, action }] };
     if (action.type === 'pass') {
+        // The inviter's closing Pass completes an explicit invitation accepted
+        // by the nominated responder. The responder remains the auction winner.
+        if (state.outstandingInvite && state.inviteAcceptedBy && state.outstandingInvite.inviterId === playerId) {
+            return finish({ ...next, inviterPassConfirmed: true });
+        }
+        // For A:3, B:2, C:1, A:Solo*, B:Tartom, the invit is already complete
+        // when all non-inviter seats between the acceptor and inviter have passed.
+        // The inviter does not have to take an extra turn after the marked Solo.
+        if (state.inviterPassConfirmed && state.outstandingInvite && state.inviteAcceptedBy
+            && state.outstandingInvite.inviterId !== playerId
+            && state.inviteAcceptedBy !== playerId
+            && state.responseQueue?.length === 0) {
+            return finish(next);
+        }
+        // Table-form invitations signalled by a marked ordinary bid (e.g.
+        // A:3, B:2, C:Solo*, A:Tartom, B:Pass) close on the final other
+        // player's Pass; the marked bidder is not asked for a second Pass.
+        const markedBidInviteAccepted = state.outstandingInvite && state.inviteAcceptedBy
+            && state.inviteAcceptedBy !== playerId
+            && state.outstandingInvite.inviterId !== playerId
+            && state.responseQueue?.length === 0
+            && state.records.some(r => r.playerId === state.outstandingInvite.inviterId
+                && r.action?.type === 'bid' && r.action?.invitationSignalTarget === state.outstandingInvite.target);
+        if (markedBidInviteAccepted) return finish({ ...next, inviterPassConfirmed: true });
+        // XX-invit / Engedés: in the documented A:3, B:2, A:Pass line,
+        // the opening Three bidder yields the contract to the Kettő bidder.
+        // The pass itself is the public invitation marker and closes the auction.
+        if (action.inviteTarget === 20) {
+            const bids = bidRecords(state);
+            const validEngedes = bids.length === 2
+                && bids[0]?.playerId === playerId && bids[0]?.action.contract === 'three'
+                && bids[1]?.playerId !== playerId && bids[1]?.action.contract === 'two'
+                && state.highest?.playerId === bids[1]?.playerId && state.highest?.contract === 'two'
+                && canInviteWithHand(hands?.[playerId], 20);
+            if (!validEngedes) throw new Error('XX-invit csak a szabályos Három–Kettő–Engedés helyzetben mondható.');
+            next.outstandingInvite = { inviterId: playerId, target: 20 };
+            next.inviteResponderId = state.highest.playerId;
+            next.inviteAcceptedBy = state.highest.playerId;
+            next.inviterPassConfirmed = true;
+            next.engedes = true;
+            return finish(next);
+        }
         const openingInvite = action.inviteTarget !== undefined ? openingInviteForResponse(state, playerId, hands) : undefined;
         const lateInvite = action.inviteTarget !== undefined && !openingInvite ? latePassInviteTarget(state, playerId, hands) : undefined;
         const resolvedTarget = openingInvite?.target ?? lateInvite;
         if (action.inviteTarget !== undefined) {
             if (resolvedTarget !== action.inviteTarget)
                 throw new Error('Ez a Passz nem hozhat létre szabályos invitet.');
-            const inviteAcceptor = openingInvite?.acceptedBy ?? (() => {
-                const bids = bidRecords(state);
-                // Later 3-2-1 invitation families: the Kettő bidder is the responder.
-                if (bids.length >= 3 && bids[0]?.playerId === playerId && bids[0]?.action.contract === 'three'
-                    && bids[1]?.action.contract === 'two' && bids[1]?.playerId !== playerId
-                    && bids[2]?.playerId === playerId && bids[2]?.action.contract === 'one')
-                    return bids[1]?.playerId;
-                if (state.openingBid?.playerId === playerId) {
-                    return bids.find(r => r.playerId !== playerId)?.playerId;
-                }
-                return undefined;
-            })();
+            const inviteAcceptor = openingInvite?.acceptedBy
+                ?? (state.highest?.playerId && state.highest.playerId !== playerId ? state.highest.playerId : undefined)
+                ?? (() => {
+                    const bids = bidRecords(state);
+                    if (bids.length >= 3 && bids[0]?.playerId === playerId && bids[0]?.action.contract === 'three'
+                        && bids[1]?.action.contract === 'two' && bids[1]?.playerId !== playerId
+                        && bids[2]?.playerId === playerId && bids[2]?.action.contract === 'one') return bids[1]?.playerId;
+                    if (state.openingBid?.playerId === playerId) return bids.find(r => r.playerId !== playerId)?.playerId;
+                    return undefined;
+                })();
             next.outstandingInvite = { inviterId: playerId, target: action.inviteTarget };
-            if (inviteAcceptor)
-                next.inviteAcceptedBy = inviteAcceptor;
+            if (inviteAcceptor) next.inviteAcceptedBy = inviteAcceptor;
             next.inviterLockedOut = false;
+            if (action.inviteTarget === 20 && state.highest?.contract === 'two' && inviteAcceptor === state.highest.playerId) next.engedes = true;
             // If the invited player has not yet become the winning holder, give them
             // the auction now; otherwise the pass completes the invitation.
             if (inviteAcceptor && !next.out.includes(inviteAcceptor)) {
@@ -548,11 +737,11 @@ export function applyAuctionAction(state, action, hands) {
             if (action.contract !== 'three')
                 next.openingBid = { playerId, contract: action.contract };
         }
-        if (next.outstandingInvite && playerId !== next.outstandingInvite.inviterId && hands) {
-            if (hasInviteCard(hands[playerId], next.outstandingInvite.target)) {
-                next.inviteAcceptedBy = playerId;
-                next.inviterLockedOut = true;
-            }
+        // An outstanding invit is accepted only by its designated responder.
+        // Other players who speak before that responder are merely exercising
+        // their normal response turn and must not replace the invite's identity.
+        if (next.outstandingInvite && state.inviteResponderId === playerId && !state.inviteAcceptedBy) {
+            next.inviteAcceptedBy = playerId;
         }
         // Late XIX-invite acceptance: A:3, C:2, A:1. The Kettő bidder C is the
         // intended responder; do not send the auction onward to D as a fresh bid.
@@ -568,65 +757,22 @@ export function applyAuctionAction(state, action, hands) {
             if (owner && owner !== playerId && !next.out.includes(owner)
                 && !(next.inviterLockedOut && next.outstandingInvite?.inviterId === owner)) {
                 const queue = responseQueueUntilHolder(next, playerId, owner);
-                if (queue.length)
+                if (queue.length > 1 && queue[0] !== owner) {
                     return { ...next, currentSeat: seatOf(next, queue[0]), responseQueue: queue.slice(1) };
+                }
                 return { ...next, currentSeat: seatOf(next, owner) };
             }
             return finish(next);
         }
         if (owner && owner !== playerId && !next.out.includes(owner)
             && !(next.inviterLockedOut && next.outstandingInvite?.inviterId === owner)) {
-            // Normally the current holder responds directly after the new bid.
-            // Exception: if a player who is sitting between the holder and the
-            // new bidder has already passed, the still-unspoken seats between
-            // the new bidder and the holder must get their own explicit turn.
-            // Example: A:3, B:Pass, C:2 => D must press Passz before A can
-            // respond. We never skip D merely because D has no honour.
-            const openingInvite = openingInviteForResponse(next, owner, hands);
-            if (openingInvite && openingInvite.acceptedBy === playerId) {
-                const queue = responseQueueUntilHolder(next, playerId, owner);
-                if (queue.length)
-                    return { ...next, currentSeat: seatOf(next, queue[0]), responseQueue: queue.slice(1) };
-            }
-            const ownerSeat = seatOf(next, owner);
-            const bidderSeat = seatOf(next, playerId);
-            // If anyone between the new bidder and the hold-owner has already
-            // passed earlier in this auction, we are completing a speaking
-            // cycle after a gap. The seats after the new bid and before the
-            // holder must receive their own explicit turns; never infer a
-            // pass from the contents of their hand.
-            const hasPassedGap = (() => {
-                // In a 4-player auction, a previously passed opener changes the
-                // return path. Example: A:Pass, B:3, C:2. D has not spoken yet
-                // and must press Passz before B can receive the holding right.
-                // Never infer D's pass from the hand.
-                const openerPassed = next.seats.length === 4 && state.records[0]?.action?.type === 'pass';
-                if (openerPassed) return true;
-                for (let step = 1; step < next.seats.length; step++) {
-                    const s = (bidderSeat + step) % next.seats.length;
-                    if (s === ownerSeat) break;
-                    const id = next.seats[s].playerId;
-                    if (next.out.includes(id)) return true;
-                }
-                for (let step = 1; step < next.seats.length; step++) {
-                    const s = (ownerSeat + step) % next.seats.length;
-                    if (s === bidderSeat) break;
-                    const id = next.seats[s].playerId;
-                    if (next.out.includes(id)) return true;
-                }
-                return false;
-            })();
-            if (hasPassedGap) {
-                const queue = responseQueueUntilHolder(next, playerId, owner);
-                if (queue.length && queue[0] !== owner)
-                    return { ...next, currentSeat: seatOf(next, queue[0]), responseQueue: queue.slice(1) };
-            }
-            // A player without a honőr cannot raise, but that does NOT mean
-            // the engine may silently skip that player. Surface an explicit
-            // Passz turn before the current holder responds.
-            const honourlessQueue = honourlessResponseQueueUntilHolder(next, playerId, owner, hands);
-            if (honourlessQueue.length) {
-                return { ...next, currentSeat: seatOf(next, honourlessQueue[0]), responseQueue: [...honourlessQueue.slice(1), owner] };
+            // A new bid gets a full clockwise response before the current hold-owner:
+            // players who have not spoken must explicitly bid/pass; those already
+            // out after Passz are skipped. This supports the documented 3-2-C:Solo
+            // and 3-2-C:1-A:Solo invitation sequences without silently skipping C/D.
+            const queue = responseQueueUntilHolder(next, playerId, owner);
+            if (queue.length > 1 && queue[0] !== owner) {
+                return { ...next, currentSeat: seatOf(next, queue[0]), responseQueue: queue.slice(1) };
             }
             return { ...next, currentSeat: seatOf(next, owner) };
         }
@@ -634,22 +780,37 @@ export function applyAuctionAction(state, action, hands) {
         return ns === undefined ? finish(next) : { ...next, currentSeat: ns };
     }
     if (action.type === 'hold-invite') {
-        const openingInvite = openingInviteForResponse(next, playerId, hands);
-        if (!openingInvite || openingInvite.target !== action.target || openingInvite.contract !== action.contract)
-            throw new Error('Az erős indulásból értelmezett invit nem igazolható a játékos lapjaival.');
+        const invite = state.outstandingInvite;
+        if (!invite || state.inviteResponderId !== playerId || state.inviteAcceptedBy
+            || invite.target !== action.target || action.contract !== state.highest?.contract) {
+            throw new Error('Ez az invit ebben a licithelyzetben nem fogadható el.');
+        }
+        const inviter = invite.inviterId;
         next.highest = { playerId, contract: action.contract, seat: state.currentSeat };
-        next.outstandingInvite = { inviterId: playerId, target: action.target };
-        next.inviteAcceptedBy = openingInvite.acceptedBy;
+        next.inviteAcceptedBy = playerId;
         next.inviterLockedOut = false;
         delete next.responseQueue;
-        if (action.contract === 'solo') {
-            const queue = allActiveExcept(next, playerId);
-            if (queue.length)
-                return { ...next, currentSeat: seatOf(next, queue[0]), responseQueue: queue.slice(1) };
-            return finish(next);
+        // In the listed 3-2-1- Solo* invitation, the inviter's action is the
+        // closing signal already. Give all other seats between the acceptor and
+        // inviter their response, but do not ask the inviter for another pass.
+        const bidsAtAccept = bidRecords(state);
+        const openerThreeTwoOneXix = invite.target === 19
+            && bidsAtAccept.length >= 3
+            && bidsAtAccept[0]?.action.contract === 'three'
+            && bidsAtAccept[1]?.action.contract === 'two'
+            && bidsAtAccept[2]?.action.contract === 'one'
+            && bidsAtAccept[0]?.playerId === inviter
+            && bidsAtAccept[2]?.playerId !== inviter
+            && bidsAtAccept[2]?.playerId !== bidsAtAccept[1]?.playerId
+            && state.records.some(r => r.playerId === inviter && r.action?.type === 'invite'
+                && r.action.target === 19 && r.action.contract === 'solo');
+        const rawQueue = responseQueueUntilHolder(next, playerId, inviter);
+        const queue = openerThreeTwoOneXix ? rawQueue.filter(id => id !== inviter) : rawQueue;
+        if (openerThreeTwoOneXix) next.inviterPassConfirmed = true;
+        if (queue.length) {
+            return { ...next, currentSeat: seatOf(next, queue[0]), responseQueue: queue.slice(1) };
         }
-        const continuation = continuationAfterHold(next, playerId);
-        return continuation === undefined ? finish(next) : { ...next, currentSeat: continuation };
+        return finish(next);
     }
     if (action.type === 'hold') {
         const owner = holdOwner(state);
@@ -671,6 +832,18 @@ export function applyAuctionAction(state, action, hands) {
         if (holdInvite) {
             next.outstandingInvite = holdInvite;
             next.inviteAcceptedBy = playerId;
+            next.inviteResponderId = playerId;
+            // The table pattern tells us which earlier Solo/bid was the actual
+            // invitation signal. Annotate that original record so outcome
+            // resolution and the public event history agree about who invited.
+            const originIndex = next.records.findLastIndex(r => r.playerId === holdInvite.inviterId
+              && (r.action?.type === 'bid' || r.action?.type === 'invite'));
+            if (originIndex >= 0) {
+              const origin = next.records[originIndex];
+              next.records[originIndex] = { ...origin, action: { ...origin.action, inviteTarget: holdInvite.target, invitationSignalTarget: holdInvite.target } };
+            }
+        } else if (next.outstandingInvite && state.inviteResponderId === playerId && !state.inviteAcceptedBy) {
+            next.inviteAcceptedBy = playerId;
         }
         // In the later A:3 B:2 A:1 B:Tartom line, C/D may still be unspoken.
         // They get their response before the original inviter A can close the
@@ -685,7 +858,9 @@ export function applyAuctionAction(state, action, hands) {
             }
         }
         if (action.contract === 'solo') {
-            const queue = allActiveExcept(next, playerId);
+            const markedBidInvite = holdInvite && next.records.some(r => r.playerId === holdInvite.inviterId
+                && r.action?.type === 'bid' && r.action?.invitationSignalTarget === holdInvite.target);
+            const queue = allActiveExcept(next, playerId).filter(id => !(markedBidInvite && id === holdInvite.inviterId));
             if (queue.length)
                 return { ...next, currentSeat: seatOf(next, queue[0]), responseQueue: queue.slice(1) };
             return finish(next);
@@ -716,19 +891,48 @@ export function applyAuctionAction(state, action, hands) {
         if (state.highest && action.target !== 20 && contract !== inviteContractForTarget(state, action.target))
             throw new Error('Az ugró-invit szerződésértéke nem egyezik a licitlépcsővel.');
         next.outstandingInvite = { inviterId: playerId, target: action.target };
-        // A XIX/XVIII jump invite is the announced higher contract itself.
-        // XX-invit is Engedés: the existing highest (the Kettő) remains the
-        // contract, the first speaker becomes the mandatory XX partner, and
-        // the auction ends immediately. There is no acceptance turn.
-        if (state.highest && action.target !== 20 && contract) {
-            next.highest = { playerId, contract, seat: state.currentSeat };
-        }
-        const recordedAction = contract ? { ...action, contract } : action;
-        next.records[next.records.length - 1] = { playerId, action: recordedAction };
+        // XX-invit / Engedés is immediate and preserves the Kettes winner.
         if (action.target === 20 && state.highest?.contract === 'two' && state.highest.playerId !== playerId) {
+            next.inviteResponderId = state.highest.playerId;
             next.inviteAcceptedBy = state.highest.playerId;
             next.engedes = true;
             return finish(next);
+        }
+        // In the Three -> One XIX pattern, One is a lower invitation signal;
+        // the original Three stays the actual contract and accepts with Tartom.
+        const lowerXixSignal = action.target === 19 && state.highest?.contract === 'three' && contract === 'one';
+        if (state.highest && action.target !== 20 && contract && !lowerXixSignal) {
+            next.highest = { playerId, contract, seat: state.currentSeat };
+        }
+        const invitationBids = bidRecords(state);
+        const openerInvitesXixFromThreeTwoOne = action.target === 19 && contract === 'solo'
+            && invitationBids.length >= 3
+            && invitationBids[0]?.action.contract === 'three'
+            && invitationBids[1]?.action.contract === 'two'
+            && invitationBids[2]?.action.contract === 'one'
+            && invitationBids[0]?.playerId === playerId
+            // Three-bidder form only: A:3, B:2, C:1, A:Solo*.
+            // If B itself said One after holding, this is the two-bidder
+            // continuation A:3, B:2, A:Tartom, B:1, A:Solo* instead.
+            && invitationBids[2]?.playerId !== invitationBids[1]?.playerId;
+        const responder = openerInvitesXixFromThreeTwoOne
+            ? invitationBids[1]?.playerId
+            : state.highest?.playerId && state.highest.playerId !== playerId
+                ? state.highest.playerId
+                : holdOwner(state);
+        next.inviteResponderId = responder;
+        const recordedAction = contract ? { ...action, contract } : action;
+        next.records[next.records.length - 1] = { playerId, action: recordedAction };
+        if (responder && !next.out.includes(responder)) {
+            // Preserve clockwise response order: players between the inviter and
+            // the intended responder still get to speak before the invitation is
+            // accepted. The responder is reached only after those seats reply.
+            const queue = responseQueueUntilHolder(next, playerId, responder);
+            if (queue.length > 1 && queue[0] !== responder) {
+                return { ...next, currentSeat: seatOf(next, queue[0]), responseQueue: queue.slice(1) };
+            }
+            delete next.responseQueue;
+            return { ...next, currentSeat: seatOf(next, responder) };
         }
         const ns = nextActive(next, state.currentSeat);
         return ns === undefined ? finish(next) : { ...next, currentSeat: ns };

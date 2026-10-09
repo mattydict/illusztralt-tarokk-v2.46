@@ -11,7 +11,7 @@ export function declarationOrderFromTaker(playerIds, takerId) {
 export function createDeclarationWindow(order, firstRound = true) {
     if (order.length !== 4)
         throw new Error('A bemondási körhöz 4 játékos szükséges.');
-    return { order: [...order], currentIndex: 0, consecutivePasses: 0, turnHadAction: false, finished: false, records: [], roundNumber: 1, firstRound, announcedTarokkCounts: {}, openingTakerTurnPending: true };
+    return { order: [...order], currentIndex: 0, consecutivePasses: 0, turnHadAction: false, turnHadContra: false, finished: false, records: [], roundNumber: 1, firstRound, announcedTarokkCounts: {}, openingTakerTurnPending: true };
 }
 export function currentDeclarer(window) {
     return window.finished ? undefined : window.order[window.currentIndex];
@@ -21,6 +21,16 @@ export function legalDeclarationActions(window, playerId, hand, context) {
         return [];
     if (window.pendingTarokkCountPlayerId && window.pendingTarokkCountPlayerId !== playerId)
         return [];
+    const roleKnown = context?.speakerRolePubliclyKnown === true;
+    // Before either pair is identified, a defender must first signal defence
+    // with a contra. After one defender has spoken, the other defenders may
+    // declare to that player; the taker's partner must recontra before declaring.
+    if (!roleKnown && context?.speakerIsDefence === true && context?.hasPublicDefenceSignal !== true)
+        return [{ type: 'pass', playerId }];
+    if (!roleKnown && context?.speakerIsPartner === true
+        && context?.hasPublicDefenceSignal === true && window.turnHadContra !== true) {
+        return [{ type: 'pass', playerId }];
+    }
     const announced = window.announcedTarokkCounts[playerId];
     const options = availableDeclarations(hand, { ...context, firstRound: window.roundNumber === 1, ...(announced !== undefined ? { announcedTarokkCount: announced } : {}) });
     const countActions = [];
@@ -36,6 +46,7 @@ export function legalDeclarationActions(window, playerId, hand, context) {
         countActions.push({ type: 'tarokkCount', playerId, count: 9 });
     else if (tarokks === 8 && announced === undefined)
         countActions.push({ type: 'tarokkCount', playerId, count: 8 });
+
     return [
         { type: 'pass', playerId },
         ...countActions,
@@ -90,7 +101,7 @@ export function applyDeclarationAction(window, action, hand) {
         const passes = openingTakerPass ? 0 : (purePass ? window.consecutivePasses + 1 : 0);
         const openingTakerTurnPending = openingTakerPass ? false : window.openingTakerTurnPending;
         if (passes >= 3)
-            return { ...window, records, consecutivePasses: passes, turnHadAction: false, openingTakerTurnPending, finished: true };
+            return { ...window, records, consecutivePasses: passes, turnHadAction: false, turnHadContra: false, openingTakerTurnPending, finished: true };
         const nextIndex = (window.currentIndex + 1) % window.order.length;
         const wrapped = nextIndex === 0;
         return {
@@ -98,6 +109,7 @@ export function applyDeclarationAction(window, action, hand) {
             records,
             consecutivePasses: passes,
             turnHadAction: false,
+            turnHadContra: false,
             openingTakerTurnPending,
             currentIndex: nextIndex,
             ...(wrapped ? { roundNumber: (window.roundNumber ?? 1) + 1, firstRound: false } : {}),
@@ -115,7 +127,8 @@ export function applyDeclarationAction(window, action, hand) {
     return { ...window, records, consecutivePasses: 0, turnHadAction: true, currentIndex: window.currentIndex };
 }
 
-export function markDeclarationTurnAction(window, playerId) {
+export function markDeclarationTurnAction(window, playerId, isContra = true, signal) {
     if (window.finished || currentDeclarer(window) !== playerId) throw new Error('Most nem ennek a játékosnak van bemondási joga.');
-    return { ...window, consecutivePasses: 0, turnHadAction: true };
+    const records = signal ? [...window.records, { type: 'contraSignal', playerId, target: signal.target, ...(signal.declarationId ? { declarationId: signal.declarationId } : {}) }] : window.records;
+    return { ...window, records, consecutivePasses: 0, turnHadAction: true, ...(isContra ? { turnHadContra: true } : {}) };
 }

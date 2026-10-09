@@ -1,6 +1,7 @@
 import type { AuctionAction } from '../engine/auction.js';
 import type { DeclarationAction } from '../engine/declarationWindow.js';
 import type { DeclarationType } from '../engine/declarations.js';
+import type { DeclarationFlowView } from '../engine/partnershipVisibility.js';
 
 export type PlayerAction =
   | { type: 'auction'; action: AuctionAction }
@@ -48,6 +49,10 @@ export interface AuthoritativeView {
   phase: string;
   currentPlayerId?: string;
   players: PublicPlayerView[];
+  /** Public partnership information only; partnerId is omitted until publicly inferable. */
+  partnership?: { takerId: string; partnerId?: string };
+  /** Public declaration direction plus current speaker's private guidance only. */
+  declarationFlow?: DeclarationFlowView;
   auction?: unknown;
   game?: unknown;
   scoreboard?: { dealsPlayed: number; scores: Record<string, number>; history: unknown[]; instantHistory?: unknown[] };

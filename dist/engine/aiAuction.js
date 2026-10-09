@@ -4,6 +4,24 @@ import { evaluateAuctionPath } from './aiDealPortfolio.js';
 import { evaluateAuctionDealLine } from './aiDealLineSearch.js';
 import { legalAuctionActions } from './auction.js';
 const contractWeight = { three: 3, two: 4, one: 5, solo: 7 };
+
+function inviteTargetOf(action) {
+    return action?.invitationSignalTarget ?? action?.target ?? action?.inviteTarget;
+}
+function isInviteSignalRecord(record) {
+    const action = record?.action;
+    return action?.type === 'invite'
+        || action?.invitationSignalTarget !== undefined
+        || (action?.type === 'pass' && action?.inviteTarget !== undefined);
+}
+function inviteSignalRecords(auction) {
+    const latestByInviterAndTarget = new Map();
+    for (const record of auction.records.filter(isInviteSignalRecord)) {
+        const target = inviteTargetOf(record.action);
+        latestByInviterAndTarget.set(`${record.playerId}:${target}`, record);
+    }
+    return [...latestByInviterAndTarget.values()];
+}
 /**
  * Pairwise hidden-honour hypotheses from the public auction.
  *
@@ -66,9 +84,10 @@ export function inferCaptureConfigurations(auction) {
                 // least five tarokks. Therefore an invite target of XIX rules out Pagat for
                 // the inviter, but does NOT tell us whether the big honour is XXI or Skiz.
                 // The eventual partner is also not known until the invite is accepted.
-                const explicitInvites = auction.records.filter(r => r.action.type === 'invite');
+                const explicitInvites = inviteSignalRecords(auction);
                 for (const inv of explicitInvites) {
-                    if (inv.action.target === 19) {
+                    const target = inviteTargetOf(inv.action);
+                    if (target === 19) {
                         if (pagat === inv.playerId) {
                             score *= 0.05;
                             reasons.push('XIX-invit: az invitáló nem lehet Pagát, mert az invit nagyhonőrt feltételez.');
@@ -76,6 +95,16 @@ export function inferCaptureConfigurations(auction) {
                         if (xxi === inv.playerId || skiz === inv.playerId) {
                             score *= 1.55;
                             reasons.push('XIX-invit: az invitálónál biztosan XIX van és nagyhonőr is kell, de XXI és Skíz között nem dönt.');
+                        }
+                    }
+                    else if (target === 20) {
+                        if (pagat === inv.playerId) {
+                            score *= 0.05;
+                            reasons.push('XX-engedés: az invitáló kezében XX és nagyhonőr kell legyen; Pagátos kézzel ez a jelzés nem szabályos.');
+                        }
+                        if (xxi === inv.playerId || skiz === inv.playerId) {
+                            score *= 1.25;
+                            reasons.push('XX-engedés: az invitáló nagyhonőrös; az Engedés partnerhívó jelzésként átengedi a Kettes játékot.');
                         }
                     }
                 }
@@ -101,7 +130,7 @@ export function inferCaptureConfigurations(auction) {
  * treated as the mandatory/very-strong acceptance path rather than a vague hint.
  */
 export function inferInvitePartnerCandidates(auction) {
-    const invites = auction.records.filter(r => r.action.type === 'invite');
+    const invites = inviteSignalRecords(auction);
     const invite = invites.at(-1);
     if (!invite)
         return [];
@@ -121,7 +150,7 @@ export function inferInvitePartnerCandidates(auction) {
         }
         return {
             inviterId: invite.playerId,
-            target: invite.action.target,
+            target: inviteTargetOf(invite.action),
             playerId: s.playerId,
             probability,
             canAcceptFromPublicAuction: !passed,
@@ -1133,6 +1162,18 @@ function scoreAuctionAction(action, auction, h, pos, hand = []) {
             score -= 12;
         if (h.bigHonours === 2 && h.tarokks >= 6)
             score -= 5;
+        // A pass carrying inviteTarget is a meaningful public invitation/acceptance
+        // signal, not generic silence. XX is specifically the Három–Kettő–Engedés line.
+        if (action.inviteTarget !== undefined) {
+            score += action.inviteTarget === 20 ? 15 : 9;
+            reasons.push(action.inviteTarget === 20
+                ? 'XX-invit / Engedés: szabályos partnerhívó jelzés XX-szel, nagyhonőrrel és legalább öt tarokkal; nem egyszerű passz.'
+                : `Passz · ${rankName(action.inviteTarget)}-invit: a lépés a partneri felállást jelzi, nem közönséges passz.`);
+            if (action.inviteTarget === 20 && (!h.xx || h.pagat || h.bigHonours < 1 || h.tarokks < 5)) {
+                score -= 100;
+                reasons.push('XX-engedés feltétele nem teljesül: XX, nagyhonőr, legalább öt tarokk és Pagát nélküli kéz szükséges.');
+            }
+        }
     }
     if (action.type === 'bid') {
         score = contractWeight[action.contract];
@@ -1375,6 +1416,10 @@ function scoreAuctionAction(action, auction, h, pos, hand = []) {
     if (exposureRisk > 0 && weakPagat && action.type === 'bid' && action.contract !== 'solo') {
         score -= exposureRisk * 0.8;
         reasons.push(`A nyilvános licit alapján a Pagát ellenoldali kitettsége nő (${exposureRisk.toFixed(0)} kockázati egység); ezért a drágább, de felvevői oldalt biztosító játék előnyt kap.`);
+    }
+    if (action.invitationSignalTarget !== undefined) {
+        score += 7;
+        reasons.push(`A ${rankName(action.invitationSignalTarget)}-invit jelzés tudatos partnerkereső licit; a UI ezt külön invitként jelöli.`);
     }
     return { action, score, reasons };
 }

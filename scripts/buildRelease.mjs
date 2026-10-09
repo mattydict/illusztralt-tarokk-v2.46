@@ -31,7 +31,7 @@ for (const name of ['partnershipVisibility.js', 'partnershipVisibility.ts']) {
 }
 for (const name of ['main.js', 'multiplayer.js', 'multiplayer.html', 'cardAssets.js']) {
   const source = fs.readFileSync(path.join(ui, name), 'utf8');
-  const release = name === 'main.js' ? source.replaceAll("from '../engine/", "from './engine/") : source;
+  const release = ['main.js', 'multiplayer.js'].includes(name) ? source.replaceAll("from '../engine/", "from './engine/") : source;
   fs.writeFileSync(path.join(out, name), release);
 }
 let index = fs.readFileSync(path.join(ui, 'index.html'), 'utf8');

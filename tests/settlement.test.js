@@ -151,13 +151,13 @@ test('csendes Volát csak az összes ütés elvitelétől függ, nem az ütésé
         contract: 'one', takerPairWon: true, takerTrickPoints: 90, takerPairVolat: true, gameContra: 'none', figures: [],
     });
     assert.deepEqual(takerVolat.lines, [
-        { kind: 'figure', type: 'volat', points: 9, positiveForTakerPair: true },
+        { kind: 'figure', type: 'volat', points: 9, positiveForTakerPair: true, silent: true },
     ]);
     const defenceVolat = calculateSettlement({
         contract: 'one', takerPairWon: false, takerTrickPoints: 4, defencePairVolat: true, gameContra: 'none', figures: [],
     });
     assert.deepEqual(defenceVolat.lines, [
-        { kind: 'figure', type: 'volat', points: 9, positiveForTakerPair: false },
+        { kind: 'figure', type: 'volat', points: 9, positiveForTakerPair: false, silent: true },
     ]);
 });
 test('csendes Dupla a védőpár skarttal együtt számított 71 pontjánál teljesül', () => {
@@ -165,7 +165,7 @@ test('csendes Dupla a védőpár skarttal együtt számított 71 pontjánál tel
         contract: 'one', takerPairWon: false, takerTrickPoints: 23, defenceSkartPoints: 48, gameContra: 'none', figures: [],
     });
     assert.deepEqual(result.lines, [
-        { kind: 'figure', type: 'doubleGame', points: 6, positiveForTakerPair: false },
+        { kind: 'figure', type: 'doubleGame', points: 6, positiveForTakerPair: false, silent: true },
     ]);
 });
 test('csendes Dupla nem a skart mező külön értékét adja hozzá kétszer', () => {
@@ -242,7 +242,7 @@ test('a Volát 90 ponttal is Volát: nincs 94 pontos küszöb', () => {
         takerPairVolat: true, gameContra: 'none', figures: [],
     });
     assert.deepEqual(result.lines, [
-        { kind: 'figure', type: 'volat', points: 9, positiveForTakerPair: true },
+        { kind: 'figure', type: 'volat', points: 9, positiveForTakerPair: true, silent: true },
     ]);
 });
 test('a bemondott Dupla saját kontrája szorozza a Duplát, nem a parti kontrája', () => {

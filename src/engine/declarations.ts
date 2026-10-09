@@ -149,7 +149,7 @@ export function declarationRequiresTarokkCount(type: DeclarationType): boolean {
 }
 
 /**
- * Illusztrált Tarokk communication convention: after tulétroá, a four-kings
+ * Illusztrált Tarokk communication convention: after Trull, a four-kings
  * declaration is commonly used to signal the highest still-unidentified
  * tarokk. After a trull, that signal is XIX.
  */

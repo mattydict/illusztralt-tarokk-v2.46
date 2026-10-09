@@ -142,7 +142,7 @@ function declarationFeasibilityGate(type: DeclarationType, hand: Card[], context
     const kings = kingCount(hand);
     if (!kings) return { allowed: false, reason: `${type}: nincs saját király-célkártya; az AI passzol.` };
   }
-  if (type === 'tuletroa' && (!big || t < 3) && !chain) return { allowed: false, reason: 'Tulétroá: nincs nagyhonőr- vagy kommunikációs alap; az AI passzol.' };
+  if (type === 'tuletroa' && (!big || t < 3) && !chain) return { allowed: false, reason: 'Trull: nincs nagyhonőr- vagy kommunikációs alap; az AI passzol.' };
   return { allowed: true, reason: 'A kéz szerkezete legalább minimális alapot ad a bemondáshoz.' };
 }
 

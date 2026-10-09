@@ -126,21 +126,25 @@ test('3→2 nem azonosítja automatikusan a Kettesest Skízként', async () => {
     // C remains a live later-seat candidate for the Skíz/fogás role.
     assert.ok(c.likelySkiz > 0.10);
 });
-test('3→2→1 után az eredeti Hármasosnál nincs hamis XIX-invit: az Egyesről a Szóló a következő rendes licit', async () => {
+test('3→2 tartás → Egyes után az eredeti Hármasos Szólója XIX-invit, nem XVIII', async () => {
     const { legalAuctionActions, applyAuctionAction } = await import('../src/engine/auction.js');
     const auction = createAuction(['A', 'B', 'C', 'D'], 0);
     let state = auction;
     const hands = { A: [c(19), c(21), c(20), c(18), c(17), c(16), c(15), c(14)], B: [c(21), c(20), c(18), c(17), c(16), c(15), c(14), c(13)], C: [c(22), c(20), c(18), c(17), c(16), c(15), c(14), c(13)], D: [] };
     state = applyAuctionAction(state, { type: 'bid', contract: 'three' }, hands);
     state = applyAuctionAction(state, { type: 'bid', contract: 'two' }, hands);
-    state = applyAuctionAction(state, { type: 'hold', contract: 'two' }, hands);
+    // In a four-seat table, players between the Two bidder and the original
+    // holder must respond before the hold-owner receives Tartom.
+    state = applyAuctionAction(state, { type: 'pass' }, hands); // C
+    state = applyAuctionAction(state, { type: 'pass' }, hands); // D
+    state = applyAuctionAction(state, { type: 'hold', contract: 'two' }, hands); // A
     assert.ok(state.seats[state.currentSeat]?.playerId === 'B');
     assert.ok(legalAuctionActions(state, 'B', hands).some(a => a.type === 'bid' && a.contract === 'one'));
     state = applyAuctionAction(state, { type: 'bid', contract: 'one' }, hands);
-    // At current Egyes the next ordinary bid is Szóló, so no invite can be attached
-    // merely to that next step. A genuine XIX-invit requires one skipped contract.
+    // In this exact 3–2–Tartom–1 sequence, A's Solo is the specified XIX invite.
     const actions = legalAuctionActions(state, 'A', hands);
-    assert.equal(actions.some(a => a.type === 'invite' && a.target === 19), false);
+    assert.ok(actions.some(a => a.type === 'invite' && a.target === 19 && a.contract === 'solo'));
+    assert.equal(actions.some(a => a.type === 'invite' && a.target === 18), false);
     assert.equal(actions.some(a => a.type === 'pass' && a.inviteTarget !== undefined), false);
 });
 test('3→2→1→2 szabálytalan: Kettesre nincs visszalépési lehetőség', async () => {
@@ -190,16 +194,18 @@ test('explicit XIX-invit után csak XIX-et tartó fogadó emelhet, ha a kezek is
         records: [
             { playerId: 'A', action: { type: 'invite', target: 19 } },
         ],
-        highest: undefined,
+        highest: { playerId: 'B', contract: 'three', seat: 1 },
         currentSeat: 1,
         outstandingInvite: { inviterId: 'A', target: 19 },
+        inviteResponderId: 'B',
     };
     const noXix = [c(21), c(8), c(9), c(10), c(11)];
     const actionsNoXix = legalAuctionActions(state, 'B', { A: [c(19)], B: noXix, C: [], D: [] });
-    assert.ok(!actionsNoXix.some(a => a.type === 'bid'));
+    // The invited tarokk is held by inviter A. B can accept without having XIX.
+    assert.ok(actionsNoXix.some(a => a.type === 'hold-invite' && a.target === 19));
     const withXix = [c(19), c(21), c(8), c(9), c(10), c(11)];
     const actionsWithXix = legalAuctionActions(state, 'B', { A: [c(19)], B: withXix, C: [], D: [] });
-    assert.ok(actionsWithXix.some(a => a.type === 'bid'));
+    assert.ok(actionsWithXix.some(a => a.type === 'hold-invite' && a.target === 19));
 });
 test('XIX-invit után a XIX-et tartó következő játékos nem passzol automatikusan', async () => {
     const { chooseAIAuctionAction } = await import('../src/engine/aiAuction.js');

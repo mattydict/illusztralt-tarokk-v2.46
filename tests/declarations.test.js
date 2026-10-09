@@ -179,7 +179,7 @@ test('figure declarations remain available even when the hand cannot make them',
     assert.ok(types.has('centrum'));
     assert.ok(types.has('kismadar'));
     assert.ok(types.has('nagymadar'));
-    assert.ok(types.has('xxiFogas'));
+    assert.ok(!types.has('xxiFogas')); // XXI-fogás is detected from play, not manually declared.
 });
 test('pair figure assessment keeps holey Kismadar structurally possible', () => {
     const pair = [

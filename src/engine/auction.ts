@@ -4,9 +4,9 @@ import { PlayerId } from './game.js';
 export type Contract = 'three' | 'two' | 'one' | 'solo';
 export type AuctionAction =
   | { type: 'pass'; inviteTarget?: 18 | 19 | 20 }
-  | { type: 'bid'; contract: Contract; honourless?: boolean }
-  | { type: 'hold'; contract: Contract }
-  | { type: 'hold-invite'; contract: 'one' | 'solo'; target: 19 | 18 }
+  | { type: 'bid'; contract: Contract; honourless?: boolean; invitationSignalTarget?: 18 | 19 | 20; acceptsInviteTarget?: 18 | 19 | 20 }
+  | { type: 'hold'; contract: Contract; invitationSignalTarget?: 18 | 19 | 20; acceptsInviteTarget?: 18 | 19 | 20 }
+  | { type: 'hold-invite'; contract: Contract; target: 20 | 19 | 18 }
   | { type: 'invite'; target: 20 | 19 | 18; contract?: Contract };
 
 export interface AuctionSeat { playerId: PlayerId; seat: number; }
@@ -22,7 +22,10 @@ export interface AuctionState {
   /** Outstanding invite and its acceptance, when known from player hands. */
   outstandingInvite?: { inviterId: PlayerId; target: 20 | 19 | 18 };
   inviteAcceptedBy?: PlayerId;
+  inviteResponderId?: PlayerId;
   inviterLockedOut?: boolean;
+  inviterPassConfirmed?: boolean;
+  engedes?: boolean;
   /** Opening bid made below three; may become an invite if the later jump is accepted and the inviter actually holds the target. */
   openingBid?: { playerId: PlayerId; contract: 'two' | 'one' | 'solo' };
   /** The player currently entitled to use Tartom. Initially this is the first bidder; after that player's pass it moves to the next bidder. */
@@ -406,6 +409,7 @@ export function legalAuctionActions(state: AuctionState, playerId: PlayerId, han
     && history[2]?.action.contract === 'one'
     && history[0]?.playerId === history[2]?.playerId
     && history[1]?.playerId === playerId
+    && highest !== undefined
     && highest.contract === 'one'
     && highest.playerId === history[2]?.playerId;
   if (lateInviteResponder) {
@@ -453,7 +457,12 @@ export function legalAuctionActions(state: AuctionState, playerId: PlayerId, han
 
   if (!highest) {
     if (outstandingInvite && hands && !hasInviteCard(hand, outstandingInvite.target)) return result;
-    for (const contract of order) result.push({ type: 'bid', contract });
+    for (const contract of order) {
+      const openingInviteTarget = contract === 'two' && canInviteWithHand(hand, 19)
+        ? 19
+        : contract === 'one' && canInviteWithHand(hand, 18) ? 18 : undefined;
+      result.push({ type: 'bid', contract, ...(openingInviteTarget !== undefined ? { invitationSignalTarget: openingInviteTarget } : {}) });
+    }
     // A first-spoken Solo is never itself an invite: it cannot yet be accepted.
     // Opening 2/1 invitations are recognized later when the opener steps aside.
     return result;

@@ -217,7 +217,7 @@ export function evaluateDeclarations(progress, tricks, sideOf, currentTrickNumbe
         }
     }
     const silentFigures = [...progress.silentFigures];
-    // ITVB 6.12: Tulétroá and Négykirály are csendes figures as well.
+    // ITVB 6.12: Trull and Négykirály are csendes figures as well.
     // They may be completed by either side, even without an explicit declaration.
     // Do not create a silent duplicate when the figure was explicitly declared.
     // The figure becomes objectively known only once the relevant cards have all

@@ -19,7 +19,7 @@ const DEADLINES = {
     sasUltimo: 9,
 };
 const LABELS = {
-    tuletroa: 'csendes Tulétroá',
+    tuletroa: 'csendes Trull',
     fourKings: 'csendes Négykirály',
     doubleGame: 'csendes Duplajáték',
     volat: 'csendes Volát',
