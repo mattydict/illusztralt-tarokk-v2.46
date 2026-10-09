@@ -165,7 +165,8 @@ export function createServer({ lobby = new LobbyService(), maxBodyBytes = 64 * 1
       try {
         const room = lobby.room(peer.session.roomId);
         const view = await room.dispatchAsync(peer.session.playerId, Number(message.expectedSequence), message.action);
-        peer.sendJson({ type: 'action-accepted', actionType: message.action?.type, snapshot: view });
+        const acceptedEvent = room.eventsSince(Math.max(0, view.sequence - 1)).find(e => e.type === 'action-accepted' && e.playerId === peer.session.playerId);
+        peer.sendJson({ type: 'action-accepted', actionType: message.action?.type, snapshot: view, ...(acceptedEvent ? { message: acceptedEvent.message, trickCompleted: acceptedEvent.trickCompleted, completedTrick: acceptedEvent.completedTrick } : {}) });
       } catch (error) {
         const room = lobby.room(peer.session.roomId);
         peer.sendJson({ type: 'action-rejected', message: error instanceof Error ? error.message : 'Az akció elutasítva.', snapshot: room.snapshotFor(peer.session.playerId) });

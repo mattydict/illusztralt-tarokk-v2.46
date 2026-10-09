@@ -14,6 +14,71 @@ function pairOfId(playerId, takerId, partnerId) { return pairOfEngine(playerId, 
 function contraLabel(level) {
   return { kontra: 'Kontra', rekontra: 'Rekontra', szubkontra: 'Szubkontra', mordkontra: 'Mordkontra' }[level] ?? level;
 }
+
+function actionSummary(action, playerId, before, after) {
+  const contractLabels = { three: 'Hármas', two: 'Kettő', one: 'Egy', solo: 'Szóló' };
+  const figureLabels = { tarokk8: '8 tarokk', tarokk9: '9 tarokk', tuletroa: 'Tulétroá', fourKings: 'Négykirály', doubleGame: 'Duplajáték', volat: 'Volát', xxiFogas: 'XXI-fogás', centrum: 'Centrum', kismadar: 'Kismadár', nagymadar: 'Nagymadár', pagatUltimo: 'Pagát ultimó', pagatUhu: 'Pagát uhu', sasUltimo: 'Sas ultimó', sasUhu: 'Sas uhu', kingUltimo: 'Király ultimó', kingUhu: 'Király uhu' };
+  const actionLabel = action?.type;
+  if (actionLabel === 'auction') {
+    const a = action.action || {};
+    const bidHistory = (before.round?.auction?.records || []).filter(r => r.action?.type === 'bid');
+    const lateXixInvite = bidHistory.length === 2 && bidHistory[0]?.action?.contract === 'three' && bidHistory[1]?.action?.contract === 'two' && bidHistory[0]?.playerId !== bidHistory[1]?.playerId && before.round?.auction?.highest?.contract === 'two';
+    const inviter = bidHistory[0]?.playerId;
+    const responder = bidHistory[1]?.playerId;
+    if (a.type === 'pass') return a.inviteTarget !== undefined ? `Passz (${a.inviteTarget === 20 ? 'XX' : a.inviteTarget === 19 ? 'XIX' : a.inviteTarget === 18 ? 'XVIII' : a.inviteTarget} invit)` : 'Passz';
+    if (a.type === 'bid') {
+      if (a.honourless) return 'Honőr nélküli Licit: Hármas';
+      if (lateXixInvite && a.contract === 'one' && playerId === inviter) return 'Licit: Egy · XIX-invit';
+      if (lateXixInvite && a.contract === 'solo' && playerId === responder) return 'Licit: Szóló · XIX-invit elfogadása';
+      return `Licit: ${contractLabels[a.contract] || a.contract}`;
+    }
+    if (a.type === 'hold') return lateXixInvite && playerId === responder ? 'Tartom: Egy · XIX-invit elfogadása' : `Tartom: ${contractLabels[a.contract] || a.contract}`;
+    if (a.type === 'hold-invite') return `Tartom: ${contractLabels[a.contract] || a.contract} (${a.target === 20 ? 'XX' : a.target === 19 ? 'XIX' : a.target === 18 ? 'XVIII' : a.target} invit)`;
+    if (a.type === 'invite') return a.target === 20 ? 'Engedés (XX invit)' : `${contractLabels[a.contract] || a.contract || 'Licit'} (${a.target === 19 ? 'XIX' : a.target === 18 ? 'XVIII' : a.target} invit)`;
+  }
+  if (actionLabel === 'partner-call') return `Partnerhívás: ${action.rank}. tarokk`;
+  if (actionLabel === 'skart') return `Fektetés: ${Array.isArray(action.cardIds) ? action.cardIds.length : 0} lap`;
+  if (actionLabel === 'skart-announce') {
+    const p = after.round?.players?.find(x => x.playerId === playerId);
+    const n = Number(p?.skartTarokkCount ?? 0);
+    return n > 0 ? `Fektetésközlés: ${n} tarokk` : 'Fektetésközlés: nincs tarokk a fektetett lapok között';
+  }
+  if (actionLabel === 'declaration') {
+    const a = action.action || {};
+    if (a.type === 'pass') return 'Bemondás: Passz';
+    if (a.type === 'tarokkCount') return `Bemondás: ${a.count} tarokk`;
+    if (a.type === 'declare') return `Bemondás: ${figureLabels[a.declaration] || a.declaration}${a.targetCardId ? ` · cél: ${a.targetCardId}` : ''}`;
+  }
+  if (actionLabel === 'game-contra') {
+    return `Kontra a játékra: ${contraLabel(after.game?.gameContraState?.level ?? after.game?.gameContra ?? 'kontra')}`;
+  }
+  if (actionLabel === 'declaration-contra') {
+    const declaration = after.game?.declarations?.declarations?.find(d => d.id === action.declarationId);
+    const level = declaration?.contra?.level ?? 'kontra';
+    return `Kontra a ${figureLabels[declaration?.type] || declaration?.type || 'bemondás'}-ra: ${contraLabel(level)}`;
+  }
+  if (actionLabel === 'play-card') {
+    const candidates = [after.game, before.game].filter(Boolean);
+    let card;
+    for (const g of candidates) {
+      card = g.players?.find(p => p.id === playerId)?.hand?.find(c => c.id === action.cardId);
+      if (card) break;
+    }
+    const cardLabel = card ? (card.kind === 'tarokk' ? `${card.rank}. tarokk` : `${({hearts:'♥', diamonds:'♦', spades:'♠', clubs:'♣'})[card.suit] ?? card.suit}${card.rank}`) : action.cardId;
+    const trickNo = Number(after.game?.completedTricks?.length ?? before.game?.completedTricks?.length ?? 0) + 1;
+    return `Kijátszotta: ${cardLabel} · ${trickNo}. ütés`;
+  }
+  return actionLabel ? `Akció: ${actionLabel}` : 'Akció';
+}
+function publicCompletedTrick(trick) {
+  if (!trick) return undefined;
+  return {
+    number: Number(trick.number ?? 0),
+    winner: trick.winner,
+    cards: (trick.cards || []).map(x => ({ player: x.player, card: cloneCard(x.card) })),
+  };
+}
+
 function sameDeclarationAction(expected, actual) {
   if (!expected || !actual || expected.type !== actual.type || expected.playerId !== actual.playerId) return false;
   if (expected.type === 'pass') return true;
@@ -131,13 +196,16 @@ export class AuthoritativeRoom {
     if (expectedSequence !== this.sequence && !parallelSkartStale) throw new Error(`Elavult játékállapot: várt szekvencia ${this.sequence}.`);
     const before = this.exportPersistedState();
     try {
+      this.lastCompletedTrick = undefined;
       const beforePhase = phaseOf(this.round, this.game);
       this.applyAction(playerId, action);
       this.sequence += 1;
       this.lastActionAt = Date.now();
       if (this.onCommit) this.onCommit(this.exportPersistedState());
       const afterPhase = phaseOf(this.round, this.game);
-      this.emit({ type: 'action-accepted', playerId, actionType: action.type, phase: afterPhase, message: 'Akció elfogadva.' });
+      const trickEvent = action.type === 'play-card' && this.lastCompletedTrick ? { trickCompleted: true, completedTrick: this.lastCompletedTrick } : {};
+      this.emit({ type: 'action-accepted', playerId, actionType: action.type, phase: afterPhase, message: actionSummary(action, playerId, before, this.exportPersistedState()), ...trickEvent });
+      this.lastCompletedTrick = undefined;
       if (beforePhase !== afterPhase) this.emit({ type: 'phase-changed', phase: afterPhase, message: `Fázisváltás: ${afterPhase}.` });
       return this.snapshotFor(playerId);
     } catch (error) {
@@ -160,7 +228,7 @@ export class AuthoritativeRoom {
       this.lastActionAt = Date.now();
       if (this.onCommit) await this.onCommit(this.exportPersistedState());
       const afterPhase = phaseOf(this.round, this.game);
-      this.emit({ type: 'action-accepted', playerId, actionType: action.type, phase: afterPhase, message: 'Akció elfogadva.' });
+      this.emit({ type: 'action-accepted', playerId, actionType: action.type, phase: afterPhase, message: actionSummary(action, playerId, before, this.exportPersistedState()), ...(this.lastCompletedTrick ? { trickCompleted: true, completedTrick: this.lastCompletedTrick } : {}) });
       if (beforePhase !== afterPhase) this.emit({ type: 'phase-changed', phase: afterPhase, message: `Fázisváltás: ${afterPhase}.` });
       return this.snapshotFor(playerId);
     } catch (error) { this.restorePersistedState(before); throw error; }
@@ -420,12 +488,31 @@ export class AuthoritativeRoom {
     this.game = startPlay({ ...this.game, startingPlayerId: this.round.startingPlayerId }, leaderIndex);
     this.round = { ...this.round, phase: 'play', currentPlayerId: this.game.players[leaderIndex]?.id };
   }
-  applyGameContra(playerId) { if (!this.game || !canRaiseGameContraInGame(this.game, playerId)) throw new Error('Most nem mondhatsz kontrát a játékra.'); this.game = raiseGameContraInGame(this.game, playerId); }
-  applyDeclarationContra(playerId, declarationId) { if (!this.game || !canRaiseDeclarationContraInGame(this.game, declarationId, playerId)) throw new Error('Most nem mondhatsz kontrát erre a bemondásra.'); this.game = raiseDeclarationContraInGame(this.game, declarationId, playerId); }
+  applyGameContra(playerId) {
+    if (!this.game || !canRaiseGameContraInGame(this.game, playerId)) throw new Error('Most nem mondhatsz kontrát a játékra.');
+    this.game = raiseGameContraInGame(this.game, playerId);
+    // A kontra önálló cselekvés a bemondási körben. Ha a játékos ezután
+    // Passzt mond, az nem számíthat üres passznak a hárompasszos lezárásban.
+    if (this.declarationWindow && currentDeclarer(this.declarationWindow) === playerId) {
+      this.declarationWindow = markDeclarationTurnAction(this.declarationWindow, playerId);
+    }
+  }
+  applyDeclarationContra(playerId, declarationId) {
+    if (!this.game || !canRaiseDeclarationContraInGame(this.game, declarationId, playerId)) throw new Error('Most nem mondhatsz kontrát erre a bemondásra.');
+    this.game = raiseDeclarationContraInGame(this.game, declarationId, playerId);
+    // A bemondásra tett kontra ugyanígy valódi akció az aktuális turnusban.
+    if (this.declarationWindow && currentDeclarer(this.declarationWindow) === playerId) {
+      this.declarationWindow = markDeclarationTurnAction(this.declarationWindow, playerId);
+    }
+  }
   applyPlayCard(playerId, cardId) {
     if (!this.game || this.game.phase !== 'play') throw new Error('Most nincs lejátszási fázis.');
     const completedBefore = this.game.completedTricks.length;
+    this.lastCompletedTrick = undefined;
     this.game = playCard(this.game, playerId, cardId);
+    if (this.game.completedTricks.length > completedBefore) {
+      this.lastCompletedTrick = { ...publicCompletedTrick(this.game.completedTricks.at(-1)), number: completedBefore + 1 };
+    }
     const firstTrickJustClosed = completedBefore === 0 && this.game.completedTricks.length === 1;
     if (this.game.phase !== 'scoring') {
       this.round = {
@@ -452,6 +539,7 @@ export class AuthoritativeRoom {
       result: final.result,
       takerPairPoints: final.takerPair,
       defencePairPoints: final.defencePair,
+      gameContra: this.game.gameContraState?.level ?? this.game.gameContra,
       netForTakerPair: net,
       byPlayer,
       declarations: this.game.declarations.declarations.map(d => ({ id: d.id, type: d.type, ownerId: d.ownerId, status: d.status, contra: d.contra?.level ?? 'none' })),

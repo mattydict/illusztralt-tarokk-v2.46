@@ -569,6 +569,8 @@ function runAiContraResponses() {
                 game = raiseGameContraInGame(currentGame, best.player.id);
             else
                 game = raiseDeclarationContraInGame(currentGame, decision.target, best.player.id);
+            if (declarationWindow && currentDeclarer(declarationWindow) === best.player.id)
+                declarationWindow = markDeclarationTurnAction(declarationWindow, best.player.id);
             round = { ...round, eventLog: [...round.eventLog, `${playerName(best.player.id)}: ${decision.target === 'game' ? 'Kontra a játékra' : `Kontra a ${game.declarations.declarations.find(d => d.id === decision.target)?.type ?? 'bemondás'}-ra`} (${decision.reason})`] };
         }
         catch {
@@ -608,6 +610,8 @@ function forceSinglePlayerDefenceIdentification(id) {
     if (defencePubliclyIdentified(game)) return false;
     try {
         game = raiseGameContraInGame(game, id);
+        if (declarationWindow && currentDeclarer(declarationWindow) === id)
+            declarationWindow = markDeclarationTurnAction(declarationWindow, id);
         round = { ...round, eventLog: [...round.eventLog, `${playerName(id)}: Kontra a játékra — az ellenpár azonosította magát.`] };
         message = `${playerName(id)} kontrával azonosította az ellenpárt.`;
         return true;
@@ -832,6 +836,8 @@ function humanContra(target) {
             if (!canRaiseGameContraInGame(game, HUMAN))
                 throw new Error('Most nem mondhatsz kontrát a játékra.');
             game = raiseGameContraInGame(game, HUMAN);
+            if (declarationWindow && currentDeclarer(declarationWindow) === HUMAN)
+                declarationWindow = markDeclarationTurnAction(declarationWindow, HUMAN);
             round = round ? { ...round, eventLog: [...round.eventLog, `Te: ${contraLabel(game.gameContraState?.level ?? 'kontra')} a játékra.`] } : round;
         }
         else {
@@ -839,6 +845,8 @@ function humanContra(target) {
                 throw new Error('Most nem mondhatsz kontrát erre a bemondásra.');
             const d = game.declarations.declarations.find(x => x.id === target);
             game = raiseDeclarationContraInGame(game, target, HUMAN);
+            if (declarationWindow && currentDeclarer(declarationWindow) === HUMAN)
+                declarationWindow = markDeclarationTurnAction(declarationWindow, HUMAN);
             const level = game.declarations.declarations.find(x => x.id === target)?.contra.level ?? 'kontra';
             round = round ? { ...round, eventLog: [...round.eventLog, `Te: ${contraLabel(level)} a ${d?.type ?? 'bemondás'}-ra.`] } : round;
         }

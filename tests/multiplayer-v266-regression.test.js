@@ -85,6 +85,51 @@ test('v2.66 declaration pure-pass streak ignores a declaration-closing Passz', (
   assert.equal(w.finished,true);
 });
 
+test('v2.89 a kontra a bemondó aktuális turnusának akciója, ezért az utána mondott Passz nem számít üres passznak', () => {
+  const deck = createDeck();
+  const card = (id) => deck.find(c => c.id === id);
+  const room = createAuthoritativeRoom({roomId:'v289-CONTRA-TURN', playerIds:['A','B','C','D'], dealerIndex:0});
+  const hands = {
+    A: [card('T18'), card('T17'), card('T16'), card('T15'), card('T14'), card('hearts-K')],
+    B: [card('T19'), card('T20'), card('T13'), card('T12'), card('T11'), card('diamonds-K')],
+    C: [card('T21'), card('T10'), card('T9'), card('T8'), card('T7'), card('spades-K')],
+    D: [card('T22'), card('T20'), card('T6'), card('T5'), card('T4'), card('T3'), card('clubs-K')],
+  };
+  room.round = {
+    ...room.round,
+    phase:'partner-call',
+    takerId:'D',
+    contract:'three',
+    startingPlayerId:'D',
+    currentPlayerId:'D',
+    players: room.round.players.map(p => ({...p, hand:hands[p.playerId], receivedTalon:[], skart:[], skartRevealed:false, skartAnnounced:true})),
+  };
+  room.applyPartnerCall('D',19);
+  assert.equal(room.currentPlayerId,'D');
+
+  // D closes the opening taker turn. Because that first turn is excluded from
+  // the three-pass streak, A starts with a zero streak.
+  room.applyDeclaration('D',{type:'pass'});
+  assert.equal(room.currentPlayerId,'A');
+  assert.equal(room.declarationWindow.consecutivePasses,0);
+
+  // A makes a game kontra, then Passz. The kontra is a real action and must
+  // prevent the following Passz from counting as an empty pass.
+  room.applyGameContra('A');
+  assert.equal(room.declarationWindow.turnHadAction,true);
+  room.applyDeclaration('A',{type:'pass'});
+  assert.equal(room.currentPlayerId,'B');
+  assert.equal(room.declarationWindow.consecutivePasses,0);
+
+  room.applyDeclaration('B',{type:'pass'});
+  assert.equal(room.currentPlayerId,'C');
+  assert.equal(room.declarationWindow.consecutivePasses,1);
+  room.applyDeclaration('C',{type:'pass'});
+  assert.equal(room.currentPlayerId,'D');
+  assert.equal(room.declarationWindow.consecutivePasses,2);
+  assert.equal(room.declarationWindow.finished,false);
+});
+
 test('v2.66 UI preserves the manual Passz and synced talon states', () => {
   const ui=fs.readFileSync(path.resolve('src/ui/multiplayer.js'),'utf8');
   assert.match(ui,/auctionActions/);

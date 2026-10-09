@@ -25,6 +25,8 @@ export interface PublicEvent {
   actionType?: PlayerAction['type'];
   phase?: string;
   message: string;
+  trickCompleted?: boolean;
+  completedTrick?: { number?: number; winner?: string; cards: Array<{ player: string; card: PublicCard }> };
 }
 
 export interface PublicCard { id: string; kind: 'tarokk' | 'suit'; rank: number | string; suit?: string; points: number; }

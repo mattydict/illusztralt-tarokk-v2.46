@@ -10,6 +10,32 @@ let selectedSkart = new Set();
 let notice = '';
 let lobbyRefreshTimer = null;
 let lobbyRefreshInFlight = false;
+let revealTrick = null;
+let revealUntil = 0;
+let revealTimer = null;
+
+function playerName(playerId) {
+  const seat = lobby?.seats?.find(s => s.playerId === playerId);
+  const p = state?.players?.find(x => x.id === playerId);
+  return seat?.displayName || p?.displayName || playerId || '—';
+}
+function startTrickReveal(snapshot, message, previousState = null) {
+  const completed = message?.completedTrick || (snapshot?.game?.completedTricks?.length > (previousState?.game?.completedTricks?.length ?? 0) ? snapshot.game.completedTricks.at(-1) : null);
+  if (!completed) return;
+  const number = Number(message?.completedTrick?.number || snapshot?.game?.completedTricks?.length || (previousState?.game?.completedTricks?.length ?? 0) + 1);
+  revealTrick = { ...completed, number };
+  revealUntil = Date.now() + 5000;
+  if (revealTimer) clearTimeout(revealTimer);
+  revealTimer = setTimeout(() => { revealTrick = null; revealUntil = 0; render(); }, 5000);
+}
+function displayedTrick() { return revealTrick && revealUntil > Date.now() ? revealTrick : state?.game?.trick; }
+function settlementLineLabel(line, declarations = []) {
+  const base = labels[line.type] || line.type || 'Játék';
+  const explicit = declarations.some(d => d.type === line.type && d.status !== 'failed');
+  const derivedSilent = (line.type === 'doubleGame' || line.type === 'volat') && !explicit;
+  return (line.silent || derivedSilent) ? `Csendes ${base}` : base;
+}
+function settlementSide(line) { return line.positiveForTakerPair ? 'felvevőpár' : 'ellenpár'; }
 
 const apiBase = new URLSearchParams(location.search).get('server') || `${location.protocol}//${location.host}`;
 const wsBase = apiBase.replace(/^http/, 'ws');
@@ -103,12 +129,18 @@ function scheduleReconnect() {
 function handleServerMessage(msg) {
   if(msg.type === 'welcome' || msg.type === 'resync') { state = msg.snapshot; lobby = msg.status || lobby; notice = msg.resyncRequired ? 'Teljes állapotfrissítés történt.' : 'Kapcsolat létrejött.'; selectedSkart.clear(); render(); return; }
   if(msg.type === 'event') {
+    const previous = state;
     if(msg.event?.actionType === 'skart' && msg.event?.playerId === session?.playerId) selectedSkart.clear();
-    state = msg.snapshot; lobby = msg.lobby || lobby; notice = msg.event?.message || ''; render(); return;
+    state = msg.snapshot; lobby = msg.lobby || lobby; notice = msg.event?.message || '';
+    startTrickReveal(state, msg.event, previous);
+    render(); return;
   }
   if(msg.type === 'action-accepted') {
+    const previous = state;
     if(msg.actionType === 'skart' && msg.playerId === session?.playerId) selectedSkart.clear();
-    state = msg.snapshot; notice = 'Akció elfogadva.'; render(); return;
+    state = msg.snapshot; notice = msg.message || 'Akció elfogadva.';
+    startTrickReveal(state, msg, previous);
+    render(); return;
   }
   if(msg.type === 'action-rejected') { state = msg.snapshot || state; notice = msg.message || 'Az akciót a szerver elutasította.'; render(); return; }
   if(msg.type === 'lobby') { lobby = msg.status; render(); return; }
@@ -155,6 +187,11 @@ function render() {
   const current = state.currentPlayerId;
   const hints = state.legalActionHints || {};
   const isMyTurn = current === session.playerId;
+  const activeIds = Array.isArray(state.match?.activePlayerIds) && state.match.activePlayerIds.length ? state.match.activePlayerIds : state.players.filter(p => p.active !== false).map(p => p.id);
+  const revealActive = Boolean(revealTrick && revealUntil > Date.now());
+  const displayed = displayedTrick();
+  const completedCount = Number(state.game?.completedTricks?.length ?? 0);
+  const trickNumber = state.phase === 'play' ? (revealActive ? Number(revealTrick.number || completedCount || 1) : completedCount + 1) : undefined;
   const trick = state.game?.trick;
   const skartPhase = state.phase === 'skart';
   const skartAnnouncementPhase = state.phase === 'skart-announcement';
@@ -220,32 +257,34 @@ function render() {
       ? 'Kötelező partnerhívás: válaszd ki a meghívandó tarokkot.'
       : state.phase === 'declarations' && isMyTurn
         ? 'Bemondás: a felvevő kötelező partnerhívása már megtörtént; most bemondhatsz vagy passzolhatsz.'
-        : isMyTurn ? 'Te jössz.' : `Most: ${esc(current || '—')}`;
+        : isMyTurn ? `Te jössz. · ${esc(playerName(current))}` : `Most: ${esc(playerName(current))}`;
   const scoreboard = state.scoreboard || { dealsPlayed: 0, scores: {}, history: [], instantHistory: [] };
   const match = state.match || { rounds: 4, playerCount: 4, dealsPerRound: 4, totalDeals: 16, completedDeals: 0, currentRound: 1, complete: false };
   const matchText = `Kör ${Math.min(match.currentRound, match.rounds)}/${match.rounds} · leosztás ${Math.min(match.completedDeals + (match.complete ? 0 : 1), match.totalDeals)}/${match.totalDeals}`;
-  const scores = state.players.map(p => `<span class="score">${esc(lobby?.seats?.find(s => s.playerId === p.id)?.displayName || p.id)}: ${Number(scoreboard.scores?.[p.id] ?? p.score ?? 0)}</span>`).join(' · ');
-  const instantScoreHtml = (scoreboard.instantHistory || []).slice(-6).map(x => `<div class="instant-score">${esc(x.playerId)} · ${esc(String(x.count))} tarokk · +${esc(String(x.totalWon))} pont összesen (${esc(String(x.pointsEach))}/játékos)</div>`).join('');
-  const declarations = state.game?.declarations?.map(d => `${esc(labels[d.type] || d.type)} — ${esc(d.ownerId)}${d.status ? ` · ${d.status === 'fulfilled' ? 'teljesült' : d.status === 'failed' ? 'bukott' : 'aktív'}` : ''}${d.contra && d.contra !== 'none' ? ` · ${esc(d.contra)}` : ''}`).join('<br>') || (state.lastSettlement?.declarations?.length ? state.lastSettlement.declarations.map(d => `${esc(labels[d.type] || d.type)} — ${esc(d.ownerId)} · ${d.status === 'fulfilled' ? 'teljesült' : d.status === 'failed' ? 'bukott' : d.status}${d.contra && d.contra !== 'none' ? ` · ${esc(d.contra)}` : ''}`).join('<br>') : 'Nincs');
+  const scores = state.players.map(p => `<span class="score">${esc(playerName(p.id))}: ${Number(scoreboard.scores?.[p.id] ?? p.score ?? 0)}</span>`).join(' · ');
+  const instantScoreHtml = (scoreboard.instantHistory || []).slice(-6).map(x => `<div class="instant-score">${esc(playerName(x.playerId))} · ${esc(String(x.count))} tarokk · +${esc(String(x.totalWon))} pont összesen (${esc(String(x.pointsEach))}/játékos)</div>`).join('');
+  const declarations = state.game?.declarations?.map(d => `${esc(labels[d.type] || d.type)} — ${esc(playerName(d.ownerId))}${d.status ? ` · ${d.status === 'fulfilled' ? 'teljesült' : d.status === 'failed' ? 'bukott' : 'aktív'}` : ''}${d.contra && d.contra !== 'none' ? ` · ${esc(d.contra)}` : ''}`).join('<br>') || (state.lastSettlement?.declarations?.length ? state.lastSettlement.declarations.map(d => `${esc(labels[d.type] || d.type)} — ${esc(playerName(d.ownerId))} · ${d.status === 'fulfilled' ? 'teljesült' : d.status === 'failed' ? 'bukott' : d.status}${d.contra && d.contra !== 'none' ? ` · ${esc(d.contra)}` : ''}`).join('<br>') : 'Nincs');
   const lastCompleted = state.game?.completedTricks?.at?.(-1);
-  const trickHtml = trick ? trick.cards.map(x => `<div class="played"><b>${esc(x.player)}</b><span>${esc(cardName(x.card))}</span></div>`).join('') : '<span class="muted">Nincs aktív ütés.</span>';
-  const lastTrickHtml = lastCompleted ? lastCompleted.cards.map(x => `<div class="played"><b>${esc(x.player)}</b><span>${esc(cardName(x.card))}</span></div>`).join('') : '<span class="muted">Még nincs lezárt ütés.</span>';
+  const trickCards = displayed?.cards || [];
+  const trickHtml = trickCards.length ? trickCards.map(x => `<div class="played"><b>${esc(playerName(x.player))}</b><span>${esc(cardName(x.card))}</span></div>`).join('') : '<span class="muted">Nincs aktív ütés.</span>';
+  const lastTrickHtml = lastCompleted ? lastCompleted.cards.map(x => `<div class="played"><b>${esc(playerName(x.player))}</b><span>${esc(cardName(x.card))}</span></div>`).join('') : '<span class="muted">Még nincs lezárt ütés.</span>';
   const settlement = state.game?.settlement;
-  const settlementLines = settlement?.lines?.length ? settlement.lines.map(line => `${esc(labels[line.type] || line.type)}: ${line.positiveForTakerPair ? '+' : '-'}${line.points}`).join(' · ') : '';
-  const resultBox = state.lastSettlement ? (() => { const r = state.lastSettlement; const lines = (r.lines || []).map(line => `${esc(labels[line.type] || line.type)}: ${line.positiveForTakerPair ? '+' : '-'}${line.points}`).join(' · '); const silent = (r.silentFigures || []).map(s => `${esc(labels[s.type] || s.type)} (csendes)`).join(' · '); return `<div class="result"><strong>Előző leosztás elszámolása</strong> · ${r.result === 'taker' ? 'A felvevő pár nyert.' : 'Az ellenpár nyert.'} · felvevőpár ${r.takerPairPoints} – ellenpár ${r.defencePairPoints} · nettó ${r.netForTakerPair > 0 ? '+' : ''}${r.netForTakerPair}${lines ? `<br><small>${lines}</small>` : ''}${silent ? `<br><small>Csendes figurák: ${silent}</small>` : ''}</div>`; })() : (state.phase === 'scoring' || state.phase === 'complete') ? '<div class="result">Az elszámolás elkészült.</div>' : '';
-  const publicSkartInfo = state.players.filter(p => p.revealedSkart?.length).map(p => `<span class="public-skart"><strong>${esc(p.id)} fektetett tarokkjai:</strong> ${p.revealedSkart.map(cardName).map(esc).join(', ')}</span>`).join('');
+  const settlementLines = settlement?.lines?.length ? settlement.lines.map(line => `${esc(settlementLineLabel(line, state.game?.declarations || []))}: ${line.positiveForTakerPair ? '+' : '-'}${line.points} · ${esc(settlementSide(line))}`).join(' · ') : '';
+  const resultBox = state.lastSettlement ? (() => { const r = state.lastSettlement; const lines = (r.lines || []).map(line => `${esc(settlementLineLabel(line, r.declarations || []))}: ${line.positiveForTakerPair ? '+' : '-'}${line.points} · ${esc(settlementSide(line))}`).join(' · '); const silent = (r.silentFigures || []).map(s => `${esc(labels[s.type] || s.type)} (${s.status === 'fulfilled' ? 'csendes · teljesült' : 'csendes'}) · ${esc(playerName(s.ownerId))}`).join(' · '); return `<div class="result"><strong>Előző leosztás elszámolása</strong> · ${r.result === 'taker' ? 'A felvevő pár nyert.' : 'Az ellenpár nyert.'} · felvevőpár ${r.takerPairPoints} – ellenpár ${r.defencePairPoints} · nettó ${r.netForTakerPair > 0 ? '+' : ''}${r.netForTakerPair}${r.gameContra && r.gameContra !== 'none' ? `<br><small>Parti-kontra: ${esc(r.gameContra)}</small>` : ''}${lines ? `<br><small>${lines}</small>` : ''}${silent ? `<br><small>Csendes figurák: ${silent}</small>` : ''}</div>`; })() : (state.phase === 'scoring' || state.phase === 'complete') ? '<div class="result">Az elszámolás elkészült.</div>' : '';
+  const publicSkartInfo = state.players.filter(p => p.revealedSkart?.length).map(p => `<span class="public-skart"><strong>${esc(playerName(p.id))} fektetett tarokkjai:</strong> ${p.revealedSkart.map(cardName).map(esc).join(', ')}</span>`).join('');
   const talonInfo = state.phase === 'skart' && talonCount > 0 ? `<div class="talon-info"><strong>Talont kaptál:</strong> ${receivedTalon.length ? `${receivedTalon.map(cardName).map(esc).join(', ')} · ` : ''}${talonCount} lap</div>` : '';
   app.innerHTML = `
     <div class="top"><div><strong>${esc(me?.displayName || session.playerId)}</strong> · szoba <span class="room-code">${esc(session.roomId)}</span></div><span class="connection ${connected?'good':''}">${status}</span><button id="resync">Szinkronizálás</button><button id="leave">Kilépés</button></div>
     <div class="matchbar"><strong>${esc(phaseLabel(state.phase))}</strong> · ${turnText}<span>${esc(matchText)}</span><span>${scores}</span></div>
     <div class="status">${esc(notice)}</div>${resultBox ? `<section class="panel">${resultBox}</section>` : ''}
-    <section class="panel"><h2>Játékosok</h2><div class="players">${state.players.map(p => { const seat = lobby?.seats?.find(x=>x.playerId===p.id); const online = seat ? seat.connected : p.connected; const dealer = p.dealer === true || p.id === state.match?.dealerPlayerId; return `<div class="player ${p.id===session.playerId?'me':''} ${dealer?'dealer':''}"><strong>${esc(seat?.displayName || p.id)}${dealer?' · OSZTÓ':''}</strong><span>${online ? '● online' : '○ offline'} · ${dealer ? 'kimarad' : `${p.cardCount} lap`}</span></div>`; }).join('')}</div></section>
+    <div class="game-columns"><main class="game-main">
+    <section class="panel table-panel"><div class="trick-heading"><strong>${esc(currentTrickLabel)}</strong><span>${isMyTurn ? 'Te vagy soron' : `Soron: ${esc(playerName(current))}`}</span></div><div class="table-layout"><div class="table-seat-layer">${seatHtml}</div><div class="table-center"><div class="turn-badge">${isMyTurn ? '▶ TE VAGY SORON' : `Soron: ${esc(playerName(current))}`}</div><div class="trick">${trickHtml}</div>${revealActive ? `<div class="trick-reveal">Az előző ütés lapjai még 5 másodpercig láthatók.</div>` : ''}</div></div>${dealerNote}</section>
     <section class="panel"><h2>Akciók</h2><div class="actions">${auctionButtons}${partnerButtons}${declButtons}${skartAnnouncementButton}${skartButton}${playButtons}${contra.join('') || (hints.types?.length ? '' : '<span class="muted">Most nem te cselekszel.</span>')}</div></section>
-    <section class="panel"><h2>Aktuális ütés</h2><div class="trick">${trickHtml}</div></section>
     <section class="panel hand-panel"><h2>Saját kéz (${playerCards.length})</h2>${talonInfo}${canSkart ? `<div class="skart-active"><strong>Fektetés aktív</strong> · ${hints.skartCount} lapot kell kijelölnöd. A lapok megmaradnak a képernyőn, amíg a Fektetés gombra nem kattintasz.</div>` : ''}<div class="hand">${hand}</div></section>
     <section class="panel last-trick-panel"><h2>Legutóbbi lezárt ütés</h2><div class="trick">${lastTrickHtml}</div>${lastCompleted?.winner ? `<p class="muted">Ütést vitte: ${esc(lastCompleted.winner)}</p>` : ''}${publicSkartInfo ? `<div class="public-skart-wrap">${publicSkartInfo}</div>` : ''}</section>
-    <section class="panel scoreboard-panel"><h2>Játék állása</h2><p class="muted">Lejátszott leosztások: ${Number(scoreboard.dealsPlayed || 0)}</p><div class="scoreboard-grid">${state.players.map((p, i) => `<div class="score-row"><strong>${esc(lobby?.seats?.find(s => s.playerId === p.id)?.displayName || p.id)}</strong><span>${Number(scoreboard.scores?.[p.id] ?? 0)} pont</span></div>`).join('')}</div>${instantScoreHtml ? `<div class="score-history"><h3>Azonnal elszámolt tarokkszámok</h3>${instantScoreHtml}</div>` : ''}${(scoreboard.history || []).length ? `<div class="score-history"><h3>Leosztások</h3>${[...(scoreboard.history || [])].reverse().map(r => { const contract = labels[r.contract] || r.contract || '—'; const taker = lobby?.seats?.find(s => s.playerId === r.takerId)?.displayName || r.takerId || '—'; const delta = Number(r.netForTakerPair ?? 0); const deltaText = state.players.map(p => { const name = lobby?.seats?.find(s => s.playerId === p.id)?.displayName || p.id; const d = Number(r.byPlayer?.[p.id] ?? 0); return `${esc(name)} ${d > 0 ? '+' : ''}${d}`; }).join(' · '); return `<div class="history-row"><span>#${Number(r.dealNumber || 0)} · ${esc(contract)} · felvevő: ${esc(taker)}<br><small>${deltaText}</small></span><strong>${delta > 0 ? '+' : ''}${delta}</strong></div>`; }).join('')}</div>` : '<p class="muted">Még nincs lezárt leosztás.</p>'}</section>
-    <section class="panel"><h2>Bemondások</h2><p>${declarations}</p></section>`;
+    <section class="panel scoreboard-panel"><h2>Játék állása</h2><p class="muted">Lejátszott leosztások: ${Number(scoreboard.dealsPlayed || 0)}</p><div class="scoreboard-grid">${state.players.map((p, i) => `<div class="score-row"><strong>${esc(playerName(p.id))}</strong><span>${Number(scoreboard.scores?.[p.id] ?? 0)} pont</span></div>`).join('')}</div>${instantScoreHtml ? `<div class="score-history"><h3>Azonnal elszámolt tarokkszámok</h3>${instantScoreHtml}</div>` : ''}${(scoreboard.history || []).length ? `<div class="score-history"><h3>Leosztások</h3>${[...(scoreboard.history || [])].reverse().map(r => { const contract = labels[r.contract] || r.contract || '—'; const taker = lobby?.seats?.find(s => s.playerId === r.takerId)?.displayName || r.takerId || '—'; const delta = Number(r.netForTakerPair ?? 0); const deltaText = state.players.map(p => { const name = lobby?.seats?.find(s => s.playerId === p.id)?.displayName || p.id; const d = Number(r.byPlayer?.[p.id] ?? 0); return `${esc(name)} ${d > 0 ? '+' : ''}${d}`; }).join(' · '); return `<div class="history-row"><span>#${Number(r.dealNumber || 0)} · ${esc(contract)} · felvevő: ${esc(taker)}<br><small>${deltaText}</small></span><strong>${delta > 0 ? '+' : ''}${delta}</strong></div>`; }).join('')}</div>` : '<p class="muted">Még nincs lezárt leosztás.</p>'}</section>
+    <section class="panel"><h2>Bemondások</h2><p>${declarations}</p>${settlementLines ? `<p class="settlement-summary"><strong>Elszámolási tételek:</strong> ${settlementLines}</p>` : ''}</section>
+    </main><aside class="panel event-log"><div class="event-log-head"><h2>Eseménynapló</h2><span>utolsó 40 esemény</span></div><div class="event-list">${eventHtml}</div></aside></div>`;
   document.querySelector('#leave')?.addEventListener('click', clearSession);
   document.querySelector('#resync')?.addEventListener('click', syncNow);
   document.querySelectorAll('[data-card]').forEach(btn => btn.addEventListener('click', () => {
@@ -272,9 +311,20 @@ function inviteTargetLabel(target) {
   return target === 20 ? 'XX' : target === 19 ? 'XIX' : target === 18 ? 'XVIII' : `${target}`;
 }
 function auctionLabel(a, auction) {
+  const records = auction?.records || [];
+  const recentBids = records.filter(r => r.action?.type === 'bid');
+  const lateXixInvite = recentBids.length === 2 && recentBids[0]?.action?.contract === 'three' && recentBids[1]?.action?.contract === 'two' && recentBids[0]?.playerId !== recentBids[1]?.playerId && auction?.highest?.contract === 'one';
+  const actor = auction?.seats?.[auction.currentSeat]?.playerId;
+  const inviter = recentBids[0]?.playerId;
+  const responder = recentBids[1]?.playerId;
   if(a.type === 'pass') return a.inviteTarget !== undefined ? `Passz (${inviteTargetLabel(a.inviteTarget)} invit)` : 'Passz';
-  if(a.type === 'bid') return a.honourless ? 'Honőr nélküli Hármas' : `Licit: ${labels[a.contract] || a.contract}`;
-  if(a.type === 'hold') return `Tartom: ${labels[a.contract] || a.contract}`;
+  if(a.type === 'bid') {
+    if(a.honourless) return 'Honőr nélküli Hármas';
+    if(lateXixInvite && a.contract === 'one' && actor === inviter) return 'Licit: Egy · XIX-invit';
+    if(lateXixInvite && a.contract === 'solo' && actor === responder) return 'Licit: Szóló · XIX-invit elfogadása';
+    return `Licit: ${labels[a.contract] || a.contract}`;
+  }
+  if(a.type === 'hold') return lateXixInvite && actor === responder ? 'Tartom: Egy · XIX-invit elfogadása' : `Tartom: ${labels[a.contract] || a.contract}`;
   if(a.type === 'hold-invite') return `Tartom: ${labels[a.contract] || a.contract} (${inviteTargetLabel(a.target)} invit)`;
   if(a.type === 'invite') {
     if(a.target === 20) return 'Engedés (XX invit)';
@@ -284,8 +334,24 @@ function auctionLabel(a, auction) {
   return a.type;
 }
 async function renderLanding() {
+  const rotatedSeats = (() => {
+    const meIndex = Math.max(0, activeIds.indexOf(session.playerId));
+    return activeIds.map((_, i) => activeIds[(meIndex + i) % activeIds.length]);
+  })();
+  const seatPositions = ['bottom','right','top','left'];
+  const seatHtml = rotatedSeats.slice(0,4).map((id,i) => {
+    const p = state.players.find(x => x.id === id);
+    const online = lobby?.seats?.find(x => x.playerId === id)?.connected ?? p?.connected;
+    const dealer = p?.dealer === true || id === state.match?.dealerPlayerId;
+    const currentSeat = id === current;
+    return `<div class="seat seat-${seatPositions[i]} ${id===session.playerId?'me':''} ${currentSeat?'current':''}"><strong>${esc(playerName(id))}${dealer ? ' · OSZTÓ' : ''}</strong><span>${online ? '● online' : '○ offline'} · ${dealer ? 'kimarad' : `${p?.cardCount ?? 0} lap`}</span>${currentSeat ? '<em>▶ SORON</em>' : ''}</div>`;
+  }).join('');
+  const dealerNote = state.match?.playerCount === 5 && state.match.dealerPlayerId ? `<div class="dealer-note muted">Osztó: ${esc(playerName(state.match.dealerPlayerId))} · ezen a leosztáson kimarad.</div>` : '';
+  const eventItems = (state.publicEvents || []).slice(-40).reverse();
+  const eventHtml = eventItems.length ? eventItems.map(e => { const who = e.playerId ? playerName(e.playerId) : ''; const label = e.type === 'action-accepted' ? (e.message || 'Akció') : (e.message || phaseLabel(e.phase || '')); return `<div class="event-item ${e.type === 'phase-changed' ? 'phase-event' : ''}"><small>#${Number(e.sequence ?? 0)}</small><div>${who ? `<strong>${esc(who)}</strong> · ` : ''}${esc(label)}</div></div>`; }).join('') : '<div class="muted">Még nincs esemény.</div>';
+  const currentTrickLabel = revealActive ? `${Number(revealTrick.number || completedCount || 1)}. ütés · lezárva` : trickNumber ? `${trickNumber}. ütés` : 'Nincs aktív ütés';
   app.innerHTML = `
-    <div class="hero"><span class="badge">v2.68 multiplayer</span><h2>Online Illusztrált Tarokk</h2><p class="muted">Szobaalapú lobby, szerveroldali szabályellenőrzés és valós idejű játék.</p></div>
+    <div class="hero"><span class="badge">v2.90 multiplayer</span><h2>Online Illusztrált Tarokk</h2><p class="muted">Szobaalapú lobby, szerveroldali szabályellenőrzés és valós idejű játék.</p></div>
     <section class="panel forms"><div><h3>Új szoba</h3><label>Név<input id="createName" maxlength="28" placeholder="Játékos neve"></label><label>Játékosok száma<select id="playerCount"><option value="4" selected>4 fő</option><option value="5">5 fő · az osztó leosztásonként kimarad</option></select></label><label>Játék hossza<select id="matchRounds"><option value="1">1 kör · 4/5 leosztás</option><option value="2">2 kör · 8/10 leosztás</option><option value="4" selected>4 kör · 16/20 leosztás</option></select></label><button id="create">Szoba létrehozása</button></div><div><h3>Csatlakozás</h3><label>Szobakód<input id="roomCode" maxlength="6" placeholder="ABC123"></label><label>Név<input id="joinName" maxlength="28" placeholder="Játékos neve"></label><button id="join">Csatlakozás</button></div></section><p class="server">Szerver: ${esc(apiBase)}</p>${notice ? `<div class="status">${esc(notice)}</div>`:''}`;
   document.querySelector('#create')?.addEventListener('click', async () => {
     const createButton = document.querySelector('#create');

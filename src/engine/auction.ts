@@ -546,9 +546,13 @@ export function applyAuctionAction(state: AuctionState, action: AuctionAction, h
       successor = nextHoldOwner(next, playerId);
       if (successor) next.holdOwnerId = successor; else delete next.holdOwnerId;
     }
-    if (state.responseQueue) {
+    if (Array.isArray(state.responseQueue) && state.responseQueue.length) {
       const q = state.responseQueue.filter(id => id !== playerId);
-      return q.length ? nextQueueSeat(next, q) : finish(next);
+      if (q.length) return nextQueueSeat(next, q);
+      // If the queued holder passes, their Tartom right has already moved to the
+      // next bidder. Keep the queue from closing the auction before that turn.
+      if (successor) return { ...next, currentSeat: seatOf(next, successor) };
+      return finish(next);
     }
     if (next.highest && next.out.includes(next.highest.playerId)) return finish(next);
     // A simple Hármas ends after the fourth player's pass. There is no
@@ -574,6 +578,7 @@ export function applyAuctionAction(state: AuctionState, action: AuctionAction, h
       && state.highest.contract === 'two';
 
     next.highest = { playerId, contract: action.contract, seat: state.currentSeat };
+
     if (state.records.length === 0) {
       next.holdOwnerId = playerId;
       if (action.contract !== 'three') next.openingBid = { playerId, contract: action.contract };
@@ -583,6 +588,17 @@ export function applyAuctionAction(state: AuctionState, action: AuctionAction, h
         next.inviteAcceptedBy = playerId; next.inviterLockedOut = true;
       }
     }
+
+    // Late XIX-invite acceptance: A:3, C:2, A:1. The Kettő bidder C is the
+    // intended responder; do not send the auction onward to D as a fresh bid.
+    if (isLateInviteOne) {
+      const responder = bidsBefore[1]?.playerId;
+      if (responder && !next.out.includes(responder)) {
+        delete next.responseQueue;
+        return { ...next, currentSeat: seatOf(next, responder) };
+      }
+    }
+
     const owner = holdOwner(next);
     if (action.contract === 'solo') {
       if (owner && owner !== playerId && !next.out.includes(owner)
@@ -607,14 +623,26 @@ export function applyAuctionAction(state: AuctionState, action: AuctionAction, h
       }
       const ownerSeat = seatOf(next, owner);
       const bidderSeat = seatOf(next, playerId);
-      let passedBetween = false;
-      for (let s = (ownerSeat + 1) % next.seats.length; s !== bidderSeat; s = (s + 1) % next.seats.length) {
-        const id = next.seats[s]!.playerId;
-        if (next.out.includes(id)) { passedBetween = true; break; }
-      }
-      if (passedBetween) {
+      const hasPassedGap = (() => {
+        const openerPassed = next.seats.length === 4 && state.records[0]?.action?.type === 'pass';
+        if (openerPassed) return true;
+        for (let step = 1; step < next.seats.length; step++) {
+          const seat = (bidderSeat + step) % next.seats.length;
+          if (seat === ownerSeat) break;
+          const id = next.seats[seat]!.playerId;
+          if (next.out.includes(id)) return true;
+        }
+        for (let step = 1; step < next.seats.length; step++) {
+          const seat = (ownerSeat + step) % next.seats.length;
+          if (seat === bidderSeat) break;
+          const id = next.seats[seat]!.playerId;
+          if (next.out.includes(id)) return true;
+        }
+        return false;
+      })();
+      if (hasPassedGap) {
         const queue = responseQueueUntilHolder(next, playerId, owner);
-        if (queue.length) return { ...next, currentSeat: seatOf(next, queue[0]!), responseQueue: queue.slice(1) };
+        if (queue.length && queue[0] !== owner) return { ...next, currentSeat: seatOf(next, queue[0]!), responseQueue: queue.slice(1) };
       }
       // A player without a honőr cannot raise, but that does NOT mean the
       // engine may silently skip that player. Surface an explicit Passz turn

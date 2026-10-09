@@ -63,6 +63,61 @@ function phaseOf(round: RoundState, game: GameState | null): string {
 }
 
 function statePlayerIds(round: RoundState): string[] { return round.players.map(p => p.playerId); }
+
+function actionSummary(action: PlayerAction, playerId: string, before: PersistedRoomState, after: PersistedRoomState): string {
+  const contractLabels: Record<string, string> = { three: 'Hármas', two: 'Kettő', one: 'Egy', solo: 'Szóló' };
+  const figureLabels: Record<string, string> = { tarokk8: '8 tarokk', tarokk9: '9 tarokk', tuletroa: 'Tulétroá', fourKings: 'Négykirály', doubleGame: 'Duplajáték', volat: 'Volát', xxiFogas: 'XXI-fogás', centrum: 'Centrum', kismadar: 'Kismadár', nagymadar: 'Nagymadár', pagatUltimo: 'Pagát ultimó', pagatUhu: 'Pagát uhu', sasUltimo: 'Sas ultimó', sasUhu: 'Sas uhu', kingUltimo: 'Király ultimó', kingUhu: 'Király uhu' };
+  const actionLabel = action.type;
+  if (actionLabel === 'auction') {
+    const a = action.action;
+    const bidHistory = (before.round?.auction?.records ?? []).filter(r => r.action?.type === 'bid');
+    const lateXixInvite = bidHistory.length === 2 && bidHistory[0]?.action?.contract === 'three' && bidHistory[1]?.action?.contract === 'two' && bidHistory[0]?.playerId !== bidHistory[1]?.playerId && before.round?.auction?.highest?.contract === 'two';
+    const inviter = bidHistory[0]?.playerId;
+    const responder = bidHistory[1]?.playerId;
+    if (a.type === 'pass') return a.inviteTarget !== undefined ? `Passz (${a.inviteTarget === 20 ? 'XX' : a.inviteTarget === 19 ? 'XIX' : a.inviteTarget === 18 ? 'XVIII' : a.inviteTarget} invit)` : 'Passz';
+    if (a.type === 'bid') {
+      if (a.honourless) return 'Honőr nélküli Licit: Hármas';
+      if (lateXixInvite && a.contract === 'one' && playerId === inviter) return 'Licit: Egy · XIX-invit';
+      if (lateXixInvite && a.contract === 'solo' && playerId === responder) return 'Licit: Szóló · XIX-invit elfogadása';
+      return `Licit: ${contractLabels[a.contract] ?? a.contract}`;
+    }
+    if (a.type === 'hold') return lateXixInvite && playerId === responder ? 'Tartom: Egy · XIX-invit elfogadása' : `Tartom: ${contractLabels[a.contract] ?? a.contract}`;
+    if (a.type === 'hold-invite') return `Tartom: ${contractLabels[a.contract] ?? a.contract} (${a.target === 20 ? 'XX' : a.target === 19 ? 'XIX' : a.target === 18 ? 'XVIII' : a.target} invit)`;
+    if (a.type === 'invite') return a.target === 20 ? 'Engedés (XX invit)' : `${contractLabels[a.contract ?? ''] ?? a.contract ?? 'Licit'} (${a.target === 19 ? 'XIX' : a.target === 18 ? 'XVIII' : a.target} invit)`;
+  }
+  if (actionLabel === 'partner-call') return `Partnerhívás: ${action.rank}. tarokk`;
+  if (actionLabel === 'skart') return `Fektetés: ${action.cardIds.length} lap`;
+  if (actionLabel === 'skart-announce') {
+    const p = after.round.players.find(x => x.playerId === playerId);
+    const n = Number(p?.skartTarokkCount ?? 0);
+    return n > 0 ? `Fektetésközlés: ${n} tarokk` : 'Fektetésközlés: nincs tarokk a fektetett lapok között';
+  }
+  if (actionLabel === 'declaration') {
+    const a = action.action;
+    if (a.type === 'pass') return 'Bemondás: Passz';
+    if (a.type === 'tarokkCount') return `Bemondás: ${a.count} tarokk`;
+    if (a.type === 'declare') return `Bemondás: ${figureLabels[a.declaration] ?? a.declaration}${a.targetCardId ? ` · cél: ${a.targetCardId}` : ''}`;
+  }
+  if (actionLabel === 'game-contra') return `Kontra a játékra: ${contraLabel(after.game?.gameContraState?.level ?? after.game?.gameContra ?? 'kontra')}`;
+  if (actionLabel === 'declaration-contra') {
+    const declaration = after.game?.declarations.declarations.find(d => d.id === action.declarationId);
+    const level = declaration?.contra?.level ?? 'kontra';
+    return `Kontra a ${figureLabels[declaration?.type ?? ''] ?? declaration?.type ?? 'bemondás'}-ra: ${contraLabel(level)}`;
+  }
+  if (actionLabel === 'play-card') {
+    const games = [after.game, before.game].filter((g): g is GameState => Boolean(g));
+    let card: Card | undefined;
+    for (const g of games) { card = g.players.find(p => p.id === playerId)?.hand.find(c => c.id === action.cardId); if (card) break; }
+    const cardLabel = card ? (card.kind === 'tarokk' ? `${card.rank}. tarokk` : `${({ hearts: '♥', diamonds: '♦', spades: '♠', clubs: '♣' } as Record<string, string>)[card.suit]}${card.rank}`) : action.cardId;
+    const trickNo = Number(after.game?.completedTricks.length ?? before.game?.completedTricks.length ?? 0) + 1;
+    return `Kijátszotta: ${cardLabel} · ${trickNo}. ütés`;
+  }
+  return `Akció: ${actionLabel}`;
+}
+function publicCompletedTrick(trick: GameState['completedTricks'][number]): any {
+  return { winner: trick.winner, cards: trick.cards.map(x => ({ player: x.player, card: cloneCard(x.card) })) };
+}
+
 function pairOfId(playerId: string, takerId: string | undefined, partnerId: string | undefined): 'taker' | 'defence' | 'unknown' { return pairOfEngine(playerId, takerId ?? '', partnerId); }
 function sameDeclarationAction(expected: any, actual: any): boolean {
   if (!expected || !actual || expected.type !== actual.type || expected.playerId !== actual.playerId) return false;
@@ -103,6 +158,7 @@ function repairPersistedTalonState(round: RoundState): RoundState {
 }
 
 export class AuthoritativeRoom {
+  private lastCompletedTrick: any | undefined;
   readonly roomId: string;
   readonly playerIds: string[];
   dealerIndex: number;
@@ -244,13 +300,16 @@ export class AuthoritativeRoom {
     if (expectedSequence !== this.sequence && !parallelSkartStale) throw new Error(`Elavult játékállapot: várt szekvencia ${this.sequence}.`);
     const before = this.exportPersistedState();
     try {
+      this.lastCompletedTrick = undefined;
       const beforePhase = phaseOf(this.round, this.game);
       this.applyAction(playerId, action);
       this.sequence += 1;
       this.lastActionAt = Date.now();
       if (this.onCommit) this.onCommit(this.exportPersistedState());
       const afterPhase = phaseOf(this.round, this.game);
-      this.emit({ type: 'action-accepted', playerId, actionType: actionType(action), phase: afterPhase, message: 'Akció elfogadva.' });
+      const trickEvent = action.type === 'play-card' && this.lastCompletedTrick ? { trickCompleted: true, completedTrick: this.lastCompletedTrick } : {};
+      this.emit({ type: 'action-accepted', playerId, actionType: actionType(action), phase: afterPhase, message: actionSummary(action, playerId, before, this.exportPersistedState()), ...trickEvent });
+      this.lastCompletedTrick = undefined;
       if (beforePhase !== afterPhase) {
         this.emit({ type: 'phase-changed', phase: afterPhase, message: `Fázisváltás: ${afterPhase}.` });
       }
@@ -280,7 +339,7 @@ export class AuthoritativeRoom {
       this.lastActionAt = Date.now();
       if (this.onCommit) await this.onCommit(this.exportPersistedState());
       const afterPhase = phaseOf(this.round, this.game);
-      this.emit({ type: 'action-accepted', playerId, actionType: actionType(action), phase: afterPhase, message: 'Akció elfogadva.' });
+      this.emit({ type: 'action-accepted', playerId, actionType: actionType(action), phase: afterPhase, message: actionSummary(action, playerId, before, this.exportPersistedState()), ...(this.lastCompletedTrick ? { trickCompleted: true, completedTrick: this.lastCompletedTrick } : {}) });
       if (beforePhase !== afterPhase) {
         this.emit({ type: 'phase-changed', phase: afterPhase, message: `Fázisváltás: ${afterPhase}.` });
       }
@@ -640,17 +699,25 @@ export class AuthoritativeRoom {
   private applyGameContra(playerId: string): void {
     if (!this.game || !canRaiseGameContraInGame(this.game, playerId)) throw new Error('Most nem mondhatsz kontrát a játékra.');
     this.game = raiseGameContraInGame(this.game, playerId);
+    if (this.declarationWindow && currentDeclarer(this.declarationWindow) === playerId) {
+      this.declarationWindow = markDeclarationTurnAction(this.declarationWindow, playerId);
+    }
   }
 
   private applyDeclarationContra(playerId: string, declarationId: string): void {
     if (!this.game || !canRaiseDeclarationContraInGame(this.game, declarationId, playerId)) throw new Error('Most nem mondhatsz kontrát erre a bemondásra.');
     this.game = raiseDeclarationContraInGame(this.game, declarationId, playerId);
+    if (this.declarationWindow && currentDeclarer(this.declarationWindow) === playerId) {
+      this.declarationWindow = markDeclarationTurnAction(this.declarationWindow, playerId);
+    }
   }
 
   private applyPlayCard(playerId: string, cardId: string): void {
     if (!this.game || this.game.phase !== 'play') throw new Error('Most nincs lejátszási fázis.');
     const completedBefore = this.game.completedTricks.length;
+    this.lastCompletedTrick = undefined;
     this.game = playCard(this.game, playerId, cardId);
+    if (this.game.completedTricks.length > completedBefore) this.lastCompletedTrick = { ...publicCompletedTrick(this.game.completedTricks.at(-1)!), number: completedBefore + 1 };
     const firstTrickJustClosed = completedBefore === 0 && this.game.completedTricks.length === 1;
     const nextPhase: RoundState['phase'] = this.game.phase === 'scoring' ? 'scoring' : this.game.phase === 'complete' ? 'complete' : 'play';
     this.round = {
@@ -672,7 +739,7 @@ export class AuthoritativeRoom {
     for (const id of this.activePlayerIds) if (id !== this.game.takerId && id !== this.game.partnerId) byPlayer[id] = -net;
     this.lastSettlement = {
       contract: this.game.contract, takerId: this.game.takerId, partnerId: this.game.partnerId, calledTarokk: this.game.calledTarokk,
-      result: final.result, takerPairPoints: final.takerPair, defencePairPoints: final.defencePair, netForTakerPair: net, byPlayer,
+      result: final.result, takerPairPoints: final.takerPair, defencePairPoints: final.defencePair, gameContra: this.game.gameContraState?.level ?? this.game.gameContra, netForTakerPair: net, byPlayer,
       declarations: this.game.declarations.declarations.map(d => ({ id: d.id, type: d.type, ownerId: d.ownerId, status: d.status, contra: d.contra?.level ?? 'none' })),
       silentFigures: this.game.declarations.silentFigures.map(s => ({ type: s.type, ownerId: s.ownerId, status: s.status })),
       lines: settlement.lines,

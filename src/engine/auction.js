@@ -509,9 +509,14 @@ export function applyAuctionAction(state, action, hands) {
             else
                 delete next.holdOwnerId;
         }
-        if (state.responseQueue) {
+        if (Array.isArray(state.responseQueue) && state.responseQueue.length) {
             const q = state.responseQueue.filter(id => id !== playerId);
-            return q.length ? nextQueueSeat(next, q) : finish(next);
+            if (q.length) return nextQueueSeat(next, q);
+            // If the queued holder passes, their Tartom right has already moved
+            // to the next bidder. Do not let the response queue terminate the
+            // auction before that new holder receives the explicit Tartom turn.
+            if (successor) return { ...next, currentSeat: seatOf(next, successor) };
+            return finish(next);
         }
         if (next.highest && next.out.includes(next.highest.playerId))
             return finish(next);
@@ -547,6 +552,15 @@ export function applyAuctionAction(state, action, hands) {
             if (hasInviteCard(hands[playerId], next.outstandingInvite.target)) {
                 next.inviteAcceptedBy = playerId;
                 next.inviterLockedOut = true;
+            }
+        }
+        // Late XIX-invite acceptance: A:3, C:2, A:1. The Kettő bidder C is the
+        // intended responder; do not send the auction onward to D as a fresh bid.
+        if (isLateInviteOne) {
+            const responder = bidsBefore[1]?.playerId;
+            if (responder && !next.out.includes(responder)) {
+                delete next.responseQueue;
+                return { ...next, currentSeat: seatOf(next, responder) };
             }
         }
         const owner = holdOwner(next);

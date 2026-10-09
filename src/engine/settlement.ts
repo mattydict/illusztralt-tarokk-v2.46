@@ -123,6 +123,7 @@ export interface SettlementLine {
   type?: DeclarationType;
   points: number;
   positiveForTakerPair: boolean;
+  silent?: boolean;
 }
 
 /**
@@ -220,11 +221,10 @@ export function settlementLines(input: GameSettlementInput): SettlementLine[] {
   const lines = gameLines(input);
   const hasExplicitDouble = input.figures.some(f => f.type === 'doubleGame' && !f.silent);
   const hasExplicitVolat = input.figures.some(f => f.type === 'volat' && !f.silent);
-  const silentVolat = !hasExplicitDouble && !hasExplicitVolat && (input.takerPairVolat === true || input.defencePairVolat === true);
-  const silentDouble = !hasExplicitDouble && !hasExplicitVolat && (input.takerTrickPoints !== undefined) && (((input.takerTrickPoints ?? 0) + (input.takerSkartPoints ?? 0) >= 71) || ((94 - ((input.takerTrickPoints ?? 0) + (input.takerSkartPoints ?? 0))) >= 71));
   for (const figure of input.figures) {
     if (figure.type === 'doubleGame' || figure.type === 'volat') continue;
-    if (figure.silent && (silentVolat || silentDouble) && (figure.type === 'tuletroa' || figure.type === 'fourKings')) continue;
+    // Silent Tulétroá and silent Négykirály are independent figures and must
+    // be scored even when a silent dupla or silent volát is also achieved.
     const multiplier = figure.multiplier ?? 1;
     const silentBase = figure.silent ? silentFigureValue(figure.type) : undefined;
     const effectivePoints = figure.silent
