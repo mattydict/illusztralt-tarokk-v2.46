@@ -37,6 +37,8 @@ function settlementLineLabel(line, declarations = []) {
 }
 function settlementSide(line) { return line.positiveForTakerPair ? 'felvevőpár' : 'ellenpár'; }
 
+import { cardDisplayName, cardImageSrc } from './cardAssets.js';
+
 const apiBase = new URLSearchParams(location.search).get('server') || `${location.protocol}//${location.host}`;
 const wsBase = apiBase.replace(/^http/, 'ws');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -47,7 +49,9 @@ const labels = {
   kismadar:'Kismadár', nagymadar:'Nagymadár', pagatUltimo:'Pagát ultimó', pagatUhu:'Pagát uhu',
   sasUltimo:'Sas ultimó', sasUhu:'Sas uhu', kingUltimo:'Király ultimó', kingUhu:'Király uhu'
 };
-function cardName(c) { return c.kind === 'tarokk' ? `${c.rank}. tarokk` : `${({hearts:'♥',diamonds:'♦',spades:'♠',clubs:'♣'})[c.suit]}${c.rank}`; }
+function cardName(c) { return cardDisplayName(c); }
+function playedCardHtml(player, card) { return `<div class="played played-illustrated"><b>${esc(playerName(player))}</b><img class="played-face" src="${esc(cardImageSrc(card))}" alt="${esc(cardName(card))}" title="${esc(cardName(card))}" loading="lazy" decoding="async"></div>`; }
+function smallCardHtml(card) { return `<img class="inline-card-face" src="${esc(cardImageSrc(card))}" alt="${esc(cardName(card))}" title="${esc(cardName(card))}" loading="lazy" decoding="async">`; }
 function phaseLabel(p) { return ({auction:'Licit','skart':'Fektetés','skart-announcement':'Fektetés közlése','partner-call':'Bemondás',declarations:'Bemondás',play:'Lejátszás',scoring:'Elszámolás',complete:'Lezárva', 'match-complete':'Mérkőzés vége'})[p] ?? p; }
 function saveSession() { try { localStorage.setItem(storageKey, JSON.stringify(session)); } catch {} }
 function loadSession() { try { const raw = localStorage.getItem(storageKey); if(raw) session = JSON.parse(raw); } catch {} }
@@ -216,7 +220,7 @@ function render() {
     // simultaneous server state updates. The server remains authoritative.
     const nativeDisabled = state.phase === 'skart' ? '' : (active ? '' : 'disabled');
     const aria = active ? '' : ' aria-disabled="true"';
-    return `<button type="button" class="card ${suitClass} ${active?'active':'disabled'} ${selectable?'skartable':''} ${selected?'selected':''}" data-card="${esc(c.id)}"${nativeDisabled}${aria}><strong>${esc(cardName(c))}</strong><small>${c.points} pont</small></button>`;
+    return `<button type="button" class="card card-illustrated ${suitClass} ${active?'active':'disabled'} ${selectable?'skartable':''} ${selected?'selected':''}" data-card="${esc(c.id)}"${nativeDisabled}${aria} aria-label="${esc(cardName(c))}" title="${esc(cardName(c))}"><img class="card-face" src="${esc(cardImageSrc(c))}" alt="${esc(cardName(c))}" loading="lazy" decoding="async" draggable="false"><span class="card-points" aria-hidden="true">${c.points}</span><strong class="card-a11y">${esc(cardName(c))}</strong></button>`;
   };
   const groupOrder = ['hearts','diamonds','clubs','spades'];
   const handCards = state.phase === 'play' && isMyTurn && (hints.playCardIds || []).length
@@ -224,7 +228,7 @@ function render() {
     : playerCards;
   const cardGroups = [
     { key: 'tarokk', label: 'Tarokkok · erősségi sorrend', cards: handCards.filter(c => c.kind === 'tarokk').sort(sortCard) },
-    ...groupOrder.map(suit => ({ key: suit, label: `${suitMeta[suit].label} · K–Q–C–J–10`, cards: handCards.filter(c => c.kind === 'suit' && c.suit === suit).sort(sortCard) })),
+    ...groupOrder.map(suit => ({ key: suit, label: `${suitMeta[suit].label} · ${suit === 'hearts' || suit === 'diamonds' ? 'K–Q–C–J–A' : 'K–Q–C–J–10'}`, cards: handCards.filter(c => c.kind === 'suit' && c.suit === suit).sort(sortCard) })),
   ].filter(group => group.cards.length);
   const hand = cardGroups.map(group => `<div class="hand-group hand-group-${group.key}"><h3>${esc(group.label)}</h3><div class="hand-grid">${group.cards.map(renderCard).join('')}</div></div>`).join('');
   const playButtons = state.phase === 'play' && isMyTurn ? playerCards.filter(c => (hints.playCardIds || []).includes(c.id)).map(c => `<button data-action="play" data-card-id="${esc(c.id)}">Kijátszás: ${esc(cardName(c))}</button>`).join('') : '';
@@ -266,13 +270,13 @@ function render() {
   const declarations = state.game?.declarations?.map(d => `${esc(labels[d.type] || d.type)} — ${esc(playerName(d.ownerId))}${d.status ? ` · ${d.status === 'fulfilled' ? 'teljesült' : d.status === 'failed' ? 'bukott' : 'aktív'}` : ''}${d.contra && d.contra !== 'none' ? ` · ${esc(d.contra)}` : ''}`).join('<br>') || (state.lastSettlement?.declarations?.length ? state.lastSettlement.declarations.map(d => `${esc(labels[d.type] || d.type)} — ${esc(playerName(d.ownerId))} · ${d.status === 'fulfilled' ? 'teljesült' : d.status === 'failed' ? 'bukott' : d.status}${d.contra && d.contra !== 'none' ? ` · ${esc(d.contra)}` : ''}`).join('<br>') : 'Nincs');
   const lastCompleted = state.game?.completedTricks?.at?.(-1);
   const trickCards = displayed?.cards || [];
-  const trickHtml = trickCards.length ? trickCards.map(x => `<div class="played"><b>${esc(playerName(x.player))}</b><span>${esc(cardName(x.card))}</span></div>`).join('') : '<span class="muted">Nincs aktív ütés.</span>';
-  const lastTrickHtml = lastCompleted ? lastCompleted.cards.map(x => `<div class="played"><b>${esc(playerName(x.player))}</b><span>${esc(cardName(x.card))}</span></div>`).join('') : '<span class="muted">Még nincs lezárt ütés.</span>';
+  const trickHtml = trickCards.length ? trickCards.map(x => playedCardHtml(x.player, x.card)).join('') : '<span class="muted">Nincs aktív ütés.</span>';
+  const lastTrickHtml = lastCompleted ? lastCompleted.cards.map(x => playedCardHtml(x.player, x.card)).join('') : '<span class="muted">Még nincs lezárt ütés.</span>';
   const settlement = state.game?.settlement;
   const settlementLines = settlement?.lines?.length ? settlement.lines.map(line => `${esc(settlementLineLabel(line, state.game?.declarations || []))}: ${line.positiveForTakerPair ? '+' : '-'}${line.points} · ${esc(settlementSide(line))}`).join(' · ') : '';
   const resultBox = state.lastSettlement ? (() => { const r = state.lastSettlement; const lines = (r.lines || []).map(line => `${esc(settlementLineLabel(line, r.declarations || []))}: ${line.positiveForTakerPair ? '+' : '-'}${line.points} · ${esc(settlementSide(line))}`).join(' · '); const silent = (r.silentFigures || []).map(s => `${esc(labels[s.type] || s.type)} (${s.status === 'fulfilled' ? 'csendes · teljesült' : 'csendes'}) · ${esc(playerName(s.ownerId))}`).join(' · '); return `<div class="result"><strong>Előző leosztás elszámolása</strong> · ${r.result === 'taker' ? 'A felvevő pár nyert.' : 'Az ellenpár nyert.'} · felvevőpár ${r.takerPairPoints} – ellenpár ${r.defencePairPoints} · nettó ${r.netForTakerPair > 0 ? '+' : ''}${r.netForTakerPair}${r.gameContra && r.gameContra !== 'none' ? `<br><small>Parti-kontra: ${esc(r.gameContra)}</small>` : ''}${lines ? `<br><small>${lines}</small>` : ''}${silent ? `<br><small>Csendes figurák: ${silent}</small>` : ''}</div>`; })() : (state.phase === 'scoring' || state.phase === 'complete') ? '<div class="result">Az elszámolás elkészült.</div>' : '';
-  const publicSkartInfo = state.players.filter(p => p.revealedSkart?.length).map(p => `<span class="public-skart"><strong>${esc(playerName(p.id))} fektetett tarokkjai:</strong> ${p.revealedSkart.map(cardName).map(esc).join(', ')}</span>`).join('');
-  const talonInfo = state.phase === 'skart' && talonCount > 0 ? `<div class="talon-info"><strong>Talont kaptál:</strong> ${receivedTalon.length ? `${receivedTalon.map(cardName).map(esc).join(', ')} · ` : ''}${talonCount} lap</div>` : '';
+  const publicSkartInfo = state.players.filter(p => p.revealedSkart?.length).map(p => `<span class="public-skart"><strong>${esc(playerName(p.id))} fektetett tarokkjai:</strong><span class="inline-card-list">${p.revealedSkart.map(c => smallCardHtml(c)).join('')}</span></span>`).join('');
+  const talonInfo = state.phase === 'skart' && talonCount > 0 ? `<div class="talon-info"><strong>Talont kaptál:</strong>${receivedTalon.length ? `<span class="inline-card-list talon-card-list">${receivedTalon.map(c => smallCardHtml(c)).join('')}</span>` : ''}<span class="muted">${talonCount} lap</span></div>` : '';
   app.innerHTML = `
     <div class="top"><div><strong>${esc(me?.displayName || session.playerId)}</strong> · szoba <span class="room-code">${esc(session.roomId)}</span></div><span class="connection ${connected?'good':''}">${status}</span><button id="resync">Szinkronizálás</button><button id="leave">Kilépés</button></div>
     <div class="matchbar"><strong>${esc(phaseLabel(state.phase))}</strong> · ${turnText}<span>${esc(matchText)}</span><span>${scores}</span></div>
@@ -334,24 +338,9 @@ function auctionLabel(a, auction) {
   return a.type;
 }
 async function renderLanding() {
-  const rotatedSeats = (() => {
-    const meIndex = Math.max(0, activeIds.indexOf(session.playerId));
-    return activeIds.map((_, i) => activeIds[(meIndex + i) % activeIds.length]);
-  })();
-  const seatPositions = ['bottom','right','top','left'];
-  const seatHtml = rotatedSeats.slice(0,4).map((id,i) => {
-    const p = state.players.find(x => x.id === id);
-    const online = lobby?.seats?.find(x => x.playerId === id)?.connected ?? p?.connected;
-    const dealer = p?.dealer === true || id === state.match?.dealerPlayerId;
-    const currentSeat = id === current;
-    return `<div class="seat seat-${seatPositions[i]} ${id===session.playerId?'me':''} ${currentSeat?'current':''}"><strong>${esc(playerName(id))}${dealer ? ' · OSZTÓ' : ''}</strong><span>${online ? '● online' : '○ offline'} · ${dealer ? 'kimarad' : `${p?.cardCount ?? 0} lap`}</span>${currentSeat ? '<em>▶ SORON</em>' : ''}</div>`;
-  }).join('');
-  const dealerNote = state.match?.playerCount === 5 && state.match.dealerPlayerId ? `<div class="dealer-note muted">Osztó: ${esc(playerName(state.match.dealerPlayerId))} · ezen a leosztáson kimarad.</div>` : '';
-  const eventItems = (state.publicEvents || []).slice(-40).reverse();
-  const eventHtml = eventItems.length ? eventItems.map(e => { const who = e.playerId ? playerName(e.playerId) : ''; const label = e.type === 'action-accepted' ? (e.message || 'Akció') : (e.message || phaseLabel(e.phase || '')); return `<div class="event-item ${e.type === 'phase-changed' ? 'phase-event' : ''}"><small>#${Number(e.sequence ?? 0)}</small><div>${who ? `<strong>${esc(who)}</strong> · ` : ''}${esc(label)}</div></div>`; }).join('') : '<div class="muted">Még nincs esemény.</div>';
-  const currentTrickLabel = revealActive ? `${Number(revealTrick.number || completedCount || 1)}. ütés · lezárva` : trickNumber ? `${trickNumber}. ütés` : 'Nincs aktív ütés';
+  // The unauthenticated landing page must not read game-state variables.
   app.innerHTML = `
-    <div class="hero"><span class="badge">v2.90 multiplayer</span><h2>Online Illusztrált Tarokk</h2><p class="muted">Szobaalapú lobby, szerveroldali szabályellenőrzés és valós idejű játék.</p></div>
+    <div class="hero"><span class="badge">v2.91.1 multiplayer</span><h2>Online Illusztrált Tarokk</h2><p class="muted">Szobaalapú lobby, szerveroldali szabályellenőrzés és valós idejű játék.</p></div>
     <section class="panel forms"><div><h3>Új szoba</h3><label>Név<input id="createName" maxlength="28" placeholder="Játékos neve"></label><label>Játékosok száma<select id="playerCount"><option value="4" selected>4 fő</option><option value="5">5 fő · az osztó leosztásonként kimarad</option></select></label><label>Játék hossza<select id="matchRounds"><option value="1">1 kör · 4/5 leosztás</option><option value="2">2 kör · 8/10 leosztás</option><option value="4" selected>4 kör · 16/20 leosztás</option></select></label><button id="create">Szoba létrehozása</button></div><div><h3>Csatlakozás</h3><label>Szobakód<input id="roomCode" maxlength="6" placeholder="ABC123"></label><label>Név<input id="joinName" maxlength="28" placeholder="Játékos neve"></label><button id="join">Csatlakozás</button></div></section><p class="server">Szerver: ${esc(apiBase)}</p>${notice ? `<div class="status">${esc(notice)}</div>`:''}`;
   document.querySelector('#create')?.addEventListener('click', async () => {
     const createButton = document.querySelector('#create');

@@ -16,6 +16,7 @@ import { createDeclarationWindow, declarationOrderFromTaker, currentDeclarer, le
 import { legalSkartCards } from '../engine/skart.js';
 import { chooseAISkart } from '../engine/aiSkart.js';
 import { chooseAIPartnerCall } from '../engine/aiPartnerCall.js';
+import { cardDisplayName, cardImageSrc } from './cardAssets.js';
 const app = document.querySelector('#app');
 const HUMAN = 'P1';
 const PLAYER_POOL = ['P1', 'P2', 'P3', 'P4', 'P5'];
@@ -108,8 +109,7 @@ function dealRandom() {
     } catch { /* fall through to Math.random */ }
     return Math.random();
 }
-function cardName(card) { if (card.kind === 'tarokk')
-    return `${card.rank}. tarokk`; const suit = { hearts: '♥', diamonds: '♦', spades: '♠', clubs: '♣' }[card.suit]; return `${suit}${card.rank}`; }
+function cardName(card) { return cardDisplayName(card); }
 function playerName(id) { return id === HUMAN ? 'Te' : `Gépi ${id.slice(1)}`; }
 function phaseLabel(phase) {
     return {
@@ -1083,7 +1083,8 @@ function render() {
         const enabled = canSkart || canPlay;
         const label = canPlay ? `${cardName(c)} – szabályosan kijátszható` : canSkart ? `${cardName(c)} – fektetéshez választható` : `${cardName(c)} – jelenleg nem választható`;
         const suitClass = c.kind === 'suit' ? `suit-${c.suit}` : '';
-        return `<button type="button" class="card ${c.kind === 'tarokk' ? 'tarokk' : suitClass} ${canPlay ? 'legal' : ''} ${canSkart ? 'skartable' : ''} ${selected ? 'selected' : ''} ${enabled ? 'active' : 'disabled'}" data-card="${c.id}" aria-label="${label}" title="${label}" ${enabled ? '' : 'aria-disabled=\"true\" disabled'}><strong>${cardName(c)}</strong><small>${c.points} pont</small></button>`;
+        const face = cardImageSrc(c);
+        return `<button type="button" class="card card-illustrated ${c.kind === 'tarokk' ? 'tarokk' : suitClass} ${canPlay ? 'legal' : ''} ${canSkart ? 'skartable' : ''} ${selected ? 'selected' : ''} ${enabled ? 'active' : 'disabled'}" data-card="${c.id}" aria-label="${label}" title="${label}" ${enabled ? '' : 'aria-disabled="true" disabled'}><img class="card-face" src="${face}" alt="${cardName(c)}" loading="lazy" decoding="async" draggable="false"><span class="card-points" aria-hidden="true">${c.points}</span><strong class="card-a11y">${cardName(c)}</strong></button>`;
     };
     const suitGroups = [
         { key: 'tarokk', label: 'Tarokkok', cards: hand.filter(c => c.kind === 'tarokk') },
@@ -1099,12 +1100,12 @@ function render() {
     }).join('');
     const trick = game?.trick?.cards ?? [];
     const trickNo = game ? game.completedTricks.length + 1 : 0;
-    const trickHtml = trick.length ? trick.map(x => `<div class="played"><strong>${playerName(x.player)}</strong><span>${cardName(x.card)}</span></div>`).join('') : '<span class="muted">Nincs aktív ütés.</span>';
+    const trickHtml = trick.length ? trick.map(x => `<div class="played played-illustrated"><strong>${playerName(x.player)}</strong><img class="played-face" src="${cardImageSrc(x.card)}" alt="${cardName(x.card)}" title="${cardName(x.card)}" loading="lazy" decoding="async"></div>`).join('') : '<span class="muted">Nincs aktív ütés.</span>';
     // The table intentionally exposes only the most recent completed trick;
     // older trick history is not shown to the players.
     const lastCompletedTrick = game?.completedTricks.at(-1);
     const lastTrickHtml = lastCompletedTrick
-        ? `<div class="last-trick"><div class="last-trick-cards">${lastCompletedTrick.cards.map(x => `<div class="played"><strong>${playerName(x.player)}</strong><span>${cardName(x.card)}</span></div>`).join('')}</div><div class="last-trick-winner"><strong>${playerName(lastCompletedTrick.winner)}</strong> vitte az ütést.</div></div>`
+        ? `<div class="last-trick"><div class="last-trick-cards">${lastCompletedTrick.cards.map(x => `<div class="played played-illustrated"><strong>${playerName(x.player)}</strong><img class="played-face" src="${cardImageSrc(x.card)}" alt="${cardName(x.card)}" title="${cardName(x.card)}" loading="lazy" decoding="async"></div>`).join('')}</div><div class="last-trick-winner"><strong>${playerName(lastCompletedTrick.winner)}</strong> vitte az ütést.</div></div>`
         : '<span class="muted">Még nincs lezárt ütés.</span>';
     const declarationHistory = game?.declarations.declarations.slice(-8) ?? [];
     const declarationHtml = declarationHistory.length ? declarationHistory.map(d => `<li>${playerName(d.ownerId)}: ${declarationLabel(d.type)}${d.status === 'fulfilled' ? ' ✓' : d.status === 'failed' ? ' ✗' : ''}</li>`).join('') : '<li class="muted">Még nincs bemondás.</li>';
@@ -1127,7 +1128,7 @@ function render() {
         && takerSkart.some(isTarokk);
     const takerSkartTarokkCards = takerSkart.filter(isTarokk);
     const takerSkartHtml = showTakerSkartTarokks
-        ? `<section class="revealed-scart"><h3>Felvevő által skartba fektetett tarokk</h3><div class="revealed-scart-cards">${takerSkartTarokkCards.map(c => `<div class="played"><span>${cardName(c)}</span></div>`).join('')}</div><small class="muted">Ez az információ az első ütés lezárásáig látható.</small></section>`
+        ? `<section class="revealed-scart"><h3>Felvevő által skartba fektetett tarokk</h3><div class="revealed-scart-cards">${takerSkartTarokkCards.map(c => `<div class="played played-illustrated played-scart"><img class="played-face" src="${cardImageSrc(c)}" alt="${cardName(c)}" title="${cardName(c)}" loading="lazy" decoding="async"></div>`).join('')}</div><small class="muted">Ez az információ az első ütés lezárásáig látható.</small></section>`
         : '';
     const aiControls = game?.phase === 'play' ? `<button id="pauseAi" class="action">${paused ? 'AI folytatása' : 'AI szünet'}</button>` : '';
     const aiReasonHtml = showAiReasons && lastAiReason ? `<details class="ai-reason" open><summary>Legutóbbi AI-indoklás</summary><p><strong>${playerName(lastAiReason.playerId)}:</strong> ${lastAiReason.text}</p></details>` : '';

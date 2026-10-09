@@ -12,7 +12,29 @@
 
 .event-log-panel{margin-top:12px;border:3px solid #222;background:#f8f8f8}.event-log{margin:0;padding-left:28px;max-height:300px;overflow:auto}.event-log li{padding:4px 6px;border-bottom:1px solid #e1e1e1;font-size:14px}.event-index{display:inline-block;min-width:28px;color:#666;font-variant-numeric:tabular-nums}.event-log-panel h2{margin:0 0 8px}.hand{display:flex;flex-direction:column;gap:16px}.cards{display:flex;flex-direction:column;gap:14px}.hand-group{margin:0;padding:12px 12px 14px;border:3px solid #222;border-radius:14px;background:#f8f8f8}.hand-group-tarokk{background:#fff9db;border-color:#665300}.hand-group-hearts{background:#fff0f0;border-color:#8a2222}.hand-group-diamonds{background:#fff4e6;border-color:#8a4d00}.hand-group-clubs{background:#edf8ef;border-color:#245b31}.hand-group-spades{background:#eef4ff;border-color:#1c3b70}.hand-group h3{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:8px 11px;border-radius:9px;font-size:18px;font-weight:950;background:#fff;border:2px solid currentColor}.hand-grid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;align-items:stretch}.card.active{cursor:pointer}.card strong{font-size:31px;line-height:1.05;font-weight:950}.card small{margin-top:10px;color:#111;font-size:14px;font-weight:850}.card.tarokk{background:#ffe36a;border-color:#4d3d00}.card.suit-hearts{background:#ffd1d1;border-color:#680000}.card.suit-diamonds{background:#ffe0b5;border-color:#6a3300}.card.suit-spades{background:#cfdef5;border-color:#102743}.card.suit-clubs{background:#ccebd4;border-color:#103b1c}.card.disabled{opacity:1;filter:saturate(.7) brightness(.98);background:#f3f3f3;border-color:#8b8b8b;color:#222}.card.disabled small{color:#333}.card.active{box-shadow:0 0 0 4px #111,0 5px 0 #0003}.card.selected{outline:6px solid #000;outline-offset:-2px;transform:translateY(-6px);filter:none}.card.selected strong{font-size:30px}.panel{margin-top:15px;padding:15px;border:1px solid #d2d2d2;border-radius:12px;background:#fafafa}.panel h3{margin:0 0 10px}.toolbar{position:sticky;top:0;background:#fff;z-index:8}.status{min-height:36px}.action,.primary{font-weight:850}.opponents{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.opponent{display:flex;flex-direction:column;gap:4px;padding:11px;border:1px solid #d4d4d4;border-radius:9px;background:#fff}.trick{margin-top:15px}.played{width:120px;height:82px}.ai-reason{margin-top:15px;padding:12px;border:2px solid #555;border-radius:10px;background:#fff9db}.revealed-scart{border:3px solid #222;background:#fff9db}
 @media(max-width:1000px){.hand-grid{grid-template-columns:repeat(4,minmax(110px,1fr))}}@media(max-width:700px){.wrap{padding:8px}.table{padding:12px}.hand-grid{grid-template-columns:repeat(2,minmax(110px,1fr))}.card{min-height:112px}.cards{gap:10px}.opponents{grid-template-columns:1fr}.event-log{max-height:240px}.actions{display:grid;grid-template-columns:1fr}.actions button{width:100%}}
+
+/* v2.91: illustrated card faces, separately cached from the game engine. */
+.hand-grid{grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;align-items:start}
+.card.card-illustrated{position:relative;display:block;width:100%;min-width:0;min-height:0;height:auto;aspect-ratio:500 / 850;padding:3px;overflow:hidden;border-radius:8px;background:#fff;line-height:0}
+.card.card-illustrated .card-face{display:block;width:100%;height:100%;object-fit:fill;border-radius:4px;pointer-events:none;user-select:none}
+.card.card-illustrated .card-points{position:absolute;right:5px;top:5px;z-index:1;display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:2px 4px;border:1px solid #fff;border-radius:5px;background:rgba(0,0,0,.84);color:#fff;font-size:11px;font-weight:900;line-height:1}
+.card.card-illustrated .card-a11y{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+.card.card-illustrated.active{box-shadow:0 0 0 3px #111,0 4px 0 #0003}
+.card.card-illustrated.selected{transform:translateY(-4px)}
+.played.played-illustrated{width:68px;height:auto;min-height:0;padding:0;gap:4px;display:flex;flex:0 0 auto;flex-direction:column;justify-content:flex-start;align-items:center;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible}
+.played.played-illustrated strong,.played.played-illustrated b{max-width:100%;font-size:11px;line-height:1.1;text-align:center;overflow-wrap:anywhere}
+.played.played-illustrated .played-face{display:block;width:100%;height:auto;aspect-ratio:500 / 850;object-fit:contain;border:1px solid #b7ad99;border-radius:5px;background:#fff}
+.last-trick-cards,.revealed-scart-cards{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
+.played.played-scart{width:64px}
+.inline-card-list{display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap;margin-left:8px;vertical-align:middle}
+.inline-card-face{display:block;width:34px;height:auto;aspect-ratio:500 / 850;object-fit:contain;vertical-align:middle;border:1px solid #b7ad99;border-radius:3px;background:#fff}
+.talon-card-list{display:flex;margin:8px 0}
+.table-center .played.played-illustrated{width:58px}
+.table-center .trick{justify-content:center;gap:5px;align-items:flex-start}
+.table-center .played.played-illustrated .played-face{border-width:1px}
+@media(max-width:700px){.hand-grid{grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px}.card.card-illustrated{padding:2px}.played.played-illustrated{width:54px}.table-center .played.played-illustrated{width:42px}.table-center .trick{gap:3px}.inline-card-face{width:29px}}
+
 </style>
 </head>
-<body><div class="wrap"><div class="table"><div id="app"></div></div></div><script type="module" src="./main.ts?v=2.79"></script></body>
+<body><div class="wrap"><div class="table"><div id="app"></div></div></div><script type="module" src="./main.ts?v=2.91.1"></script></body>
 </html>

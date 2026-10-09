@@ -29,15 +29,16 @@ for (const name of ['partnershipVisibility.js', 'partnershipVisibility.ts']) {
   const source = path.join(root, 'src', 'engine', name);
   if (fs.existsSync(source)) fs.copyFileSync(source, path.join(out, 'engine', name));
 }
-for (const name of ['main.js', 'multiplayer.js', 'multiplayer.html']) {
+for (const name of ['main.js', 'multiplayer.js', 'multiplayer.html', 'cardAssets.js']) {
   const source = fs.readFileSync(path.join(ui, name), 'utf8');
   const release = name === 'main.js' ? source.replaceAll("from '../engine/", "from './engine/") : source;
   fs.writeFileSync(path.join(out, name), release);
 }
 let index = fs.readFileSync(path.join(ui, 'index.html'), 'utf8');
-index = index.replaceAll(/v\d+\.\d+/g, `v${version.replace(/\.0$/, '')}`).replaceAll(/v=\d+\.\d+/g, `v=${version.replace(/\.0$/, '')}`).replace('./main.ts', './main.js');
+index = index.replace(/([?&]v=)\d+(?:\.\d+){1,2}/g, `$1${version}`).replace(/\bv\d+(?:\.\d+){1,2}\b/g, `v${version}`).replace('./main.ts', './main.js');
 fs.writeFileSync(path.join(out, 'index.html'), index);
-let multiplayer = fs.readFileSync(path.join(out, 'multiplayer.html'), 'utf8').replaceAll(/v\d+\.\d+/g, `v${version.replace(/\.0$/, '')}`);
+let multiplayer = fs.readFileSync(path.join(ui, 'multiplayer.html'), 'utf8').replace(/([?&]v=)\d+(?:\.\d+){1,2}/g, (_, prefix) => `${prefix}${version}`).replace(/\bv\d+(?:\.\d+){1,2}\b/g, `v${version}`);
 fs.writeFileSync(path.join(out, 'multiplayer.html'), multiplayer);
+copyTree(path.join(ui, 'cards'), path.join(out, 'cards'));
 fs.writeFileSync(path.join(out, 'version.json'), JSON.stringify({ version, product: 'Illusztrált Magyar Tarokk' }, null, 2));
 console.log(`Release web build created: ${path.relative(root, out)}`);
