@@ -914,6 +914,7 @@ function playHuman(cardId) {
     }
     try {
         game = playCard(game, HUMAN, cardId);
+        if (round) round = { ...round, eventLog: [...round.eventLog, `${playerName(HUMAN)} kijátszott egy lapot.`].slice(-100) };
         refreshPublicPartnershipSignal();
         syncRoundPhaseFromGame();
         render();
@@ -957,8 +958,7 @@ function runAiPlay() {
         refreshPublicPartnershipSignal();
         setAiReason(id, chosen.reasons);
         if (round) {
-            const reasonText = chosen.reasons.length ? ` — ${chosen.reasons.slice(0, 2).join(' | ')}` : '';
-            round = { ...round, eventLog: [...round.eventLog, `${playerName(id)} kijátszotta: ${cardName(chosen.card)}${reasonText}`] };
+      round = { ...round, eventLog: [...round.eventLog, `${playerName(id)} kijátszott egy lapot.`].slice(-100) };
         }
     }
     catch (e) {
@@ -1144,7 +1144,7 @@ function render() {
         : '<span class="muted">Még nincs lezárt ütés.</span>';
     const declarationHistory = game?.declarations.declarations.slice(-8) ?? [];
     const declarationHtml = declarationHistory.length ? declarationHistory.map(d => `<li>${playerName(d.ownerId)}: ${declarationLabel(d.type)}${d.status === 'fulfilled' ? ' ✓' : d.status === 'failed' ? ' ✗' : ''}</li>`).join('') : '<li class="muted">Még nincs bemondás.</li>';
-    const auctionLog = round.eventLog.slice(-30).reverse().map((x, i) => `<li><span class="event-index">${i + 1}.</span> ${x}</li>`).join('');
+    const auctionLog = round.eventLog.slice(-100).reverse().map((x, i) => `<li><span class="event-index">${i + 1}.</span> ${x}</li>`).join('');
     const settlementLines = game?.settlement?.lines?.length ? game.settlement.lines.map(line => `${declarationLabel(line.type ?? 'game')}${line.silent ? ' (csendes)' : ''}: ${line.positiveForTakerPair ? '+' : '-'}${line.points}`).join(' · ') : '';
     const silentFigureLines = game?.declarations?.silentFigures?.length ? game.declarations.silentFigures.map(f => `${declarationLabel(f.type)}${f.status === 'fulfilled' ? ' ✓' : ' ✗'}`).join(' · ') : '';
     const skartBreakdown = game?.finalPoints ? ` · skart: felvevőpár +${game.finalPoints.takerSkartPoints ?? 0}, ellenpár +${game.finalPoints.defenceSkartPoints ?? 0}` : '';

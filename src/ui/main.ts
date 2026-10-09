@@ -594,7 +594,7 @@ function syncRoundPhaseFromGame() {
 function playHuman(cardId:string) {
   if(!game || game.phase!=='play') return;
   if(game.players[game.nextPlayerIndex]?.id!==HUMAN){message='Most nem te jössz.';render();return;}
-  try { game=playCard(game,HUMAN,cardId); syncRoundPhaseFromGame(); render(); runAiPlay(); }
+  try { game=playCard(game,HUMAN,cardId); if(round) round={...round,eventLog:[...round.eventLog,`${playerName(HUMAN)} kijátszott egy lapot.`].slice(-100)}; syncRoundPhaseFromGame(); render(); runAiPlay(); }
   catch(e){message=e instanceof Error?e.message:'Érvénytelen kijátszás.';render();}
 }
 function runAiPlay(){
@@ -614,8 +614,7 @@ function runAiPlay(){
     game=playCard(gameState,id,chosen.card.id);
     setAiReason(id,chosen.reasons);
     if(round){
-      const reasonText=chosen.reasons.length ? ` — ${chosen.reasons.slice(0,2).join(' | ')}` : '';
-      round={...round,eventLog:[...round.eventLog,`${playerName(id)} kijátszotta: ${cardName(chosen.card)}${reasonText}`]};
+      round={...round,eventLog:[...round.eventLog,`${playerName(id)} kijátszott egy lapot.`].slice(-100)};
     }
   } catch(e) {
     recordUiError(e,'Az AI nem tudott szabályosan lépni.'); render(); return;
@@ -750,7 +749,7 @@ function render(){
     : '<span class="muted">Még nincs lezárt ütés.</span>';
   const declarationHistory=game?.declarations.declarations.slice(-8) ?? [];
   const declarationHtml=declarationHistory.length ? declarationHistory.map(d=>`<li>${playerName(d.ownerId)}: ${declarationLabel(d.type)}${d.status==='fulfilled'?' ✓':d.status==='failed'?' ✗':''}</li>`).join('') : '<li class="muted">Még nincs bemondás.</li>';
-  const auctionLog=round.eventLog.slice(-30).reverse().map((x,i)=>`<li><span class="event-index">${i+1}.</span> ${x}</li>`).join('');
+  const auctionLog=round.eventLog.slice(-100).reverse().map((x,i)=>`<li><span class="event-index">${i+1}.</span> ${x}</li>`).join('');
   const settlementLines = game?.settlement?.lines?.length ? game.settlement.lines.map(line=>`${declarationLabel(line.type ?? 'game')}: ${line.positiveForTakerPair ? '+' : '-'}${line.points}`).join(' · ') : '';
   const result=game?.finalPoints?`<div class="result"><strong>${game.finalPoints.result==='taker'?'A felvevő pár nyert.':'Az ellenpár nyert.'}</strong> · ütés ${game.finalPoints.takerPair}–${game.finalPoints.defencePair}${game.settlement?` · nettó ${game.settlement.netForTakerPair>0?'+':''}${game.settlement.netForTakerPair}`:''}<br><small>Leosztás elszámolása: ${playerIds.map(id=>`${playerName(id)} ${currentDealDeltas[id]>0?'+':''}${currentDealDeltas[id]??0}`).join(' · ')}</small>${settlementLines?`<br><small>${settlementLines}</small>`:''}</div>`:'';
   const matchInfo=match?`<div class="match-info">Forduló ${match.roundNumber}/${match.targetRounds} · Leosztás ${Math.min(match.dealNumberInRound, match.playerCount)}/${match.playerCount} · Osztó: ${playerName(match.playerIds[match.dealerIndex]!)}</div>`:'';

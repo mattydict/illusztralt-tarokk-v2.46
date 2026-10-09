@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateSettlement, declaredFigureValue, silentFigureValue, settlementComponents, settlementLines, figureSettlementsFromProgress } from '../src/engine/settlement.js';
+import { evaluateDeclarations, type DeclarationProgress } from '../src/engine/declarationLifecycle.js';
 
 test('uhu és királyfigurák aktuális értékei', () => {
   assert.equal(declaredFigureValue('pagatUhu'), 20);
@@ -73,7 +74,7 @@ test('a teljes elszámolás megőrzi a parti és figurapontokat', () => {
 });
 
 
-test('lekötött figura mellett ugyanazon ütésen teljesített másik figura csendes', () => {
+test('a kifejezetten csendesként rögzített Pagát ultimó értéke feleződik', () => {
   const input = {
     contract: 'three' as const, takerPairWon: true, takerTrickPoints: 48, gameContra: 'none' as const,
     figures: [
@@ -299,4 +300,38 @@ test('a Dupla és Volát egyszerre bemondva külön kontra-szorzóval számolód
     { kind: 'figure', type: 'doubleGame', points: 16, positiveForTakerPair: true },
     { kind: 'figure', type: 'volat', points: 48, positiveForTakerPair: true },
   ]);
+});
+
+
+test('a bemondott Trull, Négykirály, Duplajáték és Volát nem válik csendessé a lekötött figura azonos ütése miatt', () => {
+  const types = ['centrum', 'doubleGame', 'volat', 'tuletroa', 'fourKings'] as const;
+  const progress = {
+    declarations: types.map(type => ({
+      id: `A:${type}`,
+      type,
+      ownerId: 'A',
+      declaredAtTrick: 1,
+      status: 'fulfilled',
+      outcomeTrick: 1,
+      ...(type === 'centrum' ? { targetCardId: 'T20', lock: { cardId: 'T20', ownerId: 'A' } } : {}),
+      contra: { level: 'none' },
+    })),
+    locks: [],
+    events: [],
+    silentFigures: [],
+  } as unknown as DeclarationProgress;
+  const tricks = [{ winner: 'A', cards: [{ player: 'A', card: { id: 'T20' } }] }];
+  const evaluated = evaluateDeclarations(progress, tricks as never, () => 'taker', 1);
+  assert.equal(evaluated.declarations.some(d => d.silent === true), false);
+
+  const figures = figureSettlementsFromProgress(evaluated, 'A', 'B');
+  const lines = settlementLines({
+    contract: 'two', takerPairWon: true, takerTrickPoints: 90, gameContra: 'none', figures,
+  });
+  for (const type of ['doubleGame', 'volat', 'tuletroa', 'fourKings'] as const) {
+    const line = lines.find(item => item.type === type);
+    assert.ok(line, `${type} must have its own settlement row`);
+    if (!line) throw new Error(`${type} missing settlement row`);
+    assert.notEqual(line.silent, true, `${type} was declared and must not be labelled silent`);
+  }
 });

@@ -1,4 +1,4 @@
-// v2.95.0 multiplayer: public partnership visibility, declaration direction, and Trull label.
+// v2.99.0 multiplayer: pair-level silent Ultimo settlement and privacy-safe 100-event log.
 const app = document.querySelector('#app');
 const storageKey = 'illusztralt-tarokk-multiplayer-session-v2912';
 let session = null;
@@ -261,9 +261,9 @@ function render() {
     return `<button type="button" class="card card-illustrated ${suitClass} ${active?'active':'disabled'} ${selectable?'skartable':''} ${selected?'selected':''}" data-card="${esc(c.id)}"${nativeDisabled}${aria} aria-label="${esc(cardName(c))}" title="${esc(cardName(c))}"><img class="card-face" src="${esc(cardImageSrc(c))}" alt="${esc(cardName(c))}" loading="lazy" decoding="async" draggable="false"><span class="card-points" aria-hidden="true">${c.points}</span><strong class="card-a11y">${esc(cardName(c))}</strong></button>`;
   };
   const groupOrder = ['hearts','diamonds','clubs','spades'];
-  const handCards = state.phase === 'play' && isMyTurn && (hints.playCardIds || []).length
-    ? playerCards.filter(c => (hints.playCardIds || []).includes(c.id))
-    : playerCards;
+  // Always display the full current hand. The server snapshot already removes
+  // played cards; legal play hints only control which remaining cards are enabled.
+  const handCards = playerCards;
   const cardGroups = [
     { key: 'tarokk', label: 'Tarokkok · erősségi sorrend', cards: handCards.filter(c => c.kind === 'tarokk').sort(sortCard) },
     ...groupOrder.map(suit => ({ key: suit, label: `${suitMeta[suit].label} · ${suit === 'hearts' || suit === 'diamonds' ? 'K–Q–C–J–A' : 'K–Q–C–J–10'}`, cards: handCards.filter(c => c.kind === 'suit' && c.suit === suit).sort(sortCard) })),
@@ -334,7 +334,7 @@ function render() {
     ? `${revealActive ? 'Előző ütés' : 'Aktuális ütés'} · ${Number(trickNumber || completedCount + 1)}. ütés / 9`
     : `Asztal · ${phaseLabel(state.phase)}`;
   const eventTypeLabel = { 'action-accepted': 'Akció', 'phase-changed': 'Játékszakasz', 'deal-complete': 'Leosztás', 'match-complete': 'Mérkőzés', 'instant-score': 'Azonnali elszámolás', redeal: 'Újraosztás' };
-  const eventHtml = [...(Array.isArray(state.publicEvents) ? state.publicEvents : [])].slice(-40).reverse().map(event => {
+  const eventHtml = [...(Array.isArray(state.publicEvents) ? state.publicEvents : [])].slice(-100).reverse().map(event => {
     const prefix = event.playerId ? `${playerName(event.playerId)}: ` : '';
     const message = event.message || eventTypeLabel[event.type] || event.type || 'Esemény';
     const stamp = event.sequence == null ? '' : `#${event.sequence}`;
@@ -377,7 +377,7 @@ function render() {
     <section class="panel last-trick-panel"><h2>Legutóbbi lezárt ütés</h2><div class="trick">${lastTrickHtml}</div>${lastCompleted?.winner ? `<p class="muted">Ütést vitte: ${esc(lastCompleted.winner)}</p>` : ''}${publicSkartInfo ? `<div class="public-skart-wrap">${publicSkartInfo}</div>` : ''}</section>
     <section class="panel scoreboard-panel"><h2>Játék állása</h2><p class="muted">Lejátszott leosztások: ${Number(scoreboard.dealsPlayed || 0)}</p><div class="scoreboard-grid">${state.players.map((p, i) => `<div class="score-row"><strong>${esc(playerName(p.id))}</strong><span>${Number(scoreboard.scores?.[p.id] ?? 0)} pont</span></div>`).join('')}</div>${instantScoreHtml ? `<div class="score-history"><h3>Azonnal elszámolt tarokkszámok</h3>${instantScoreHtml}</div>` : ''}${(scoreboard.history || []).length ? `<div class="score-history"><h3>Leosztások</h3>${[...(scoreboard.history || [])].reverse().map(r => { const contract = labels[r.contract] || r.contract || '—'; const taker = lobby?.seats?.find(s => s.playerId === r.takerId)?.displayName || r.takerId || '—'; const delta = Number(r.netForTakerPair ?? 0); const deltaText = state.players.map(p => { const name = lobby?.seats?.find(s => s.playerId === p.id)?.displayName || p.id; const d = Number(r.byPlayer?.[p.id] ?? 0); return `${esc(name)} ${d > 0 ? '+' : ''}${d}`; }).join(' · '); return `<div class="history-row"><span>#${Number(r.dealNumber || 0)} · ${esc(contract)} · felvevő: ${esc(taker)}<br><small>${deltaText}</small></span><strong>${delta > 0 ? '+' : ''}${delta}</strong></div>`; }).join('')}</div>` : '<p class="muted">Még nincs lezárt leosztás.</p>'}</section>
     <section class="panel"><h2>Bemondások</h2><p>${declarations}</p>${settlementLines ? `<p class="settlement-summary"><strong>Elszámolási tételek:</strong> ${settlementLines}</p>` : ''}</section>
-    </main><aside class="panel event-log"><div class="event-log-head"><h2>Eseménynapló</h2><span>utolsó 40 esemény</span></div><div class="event-list">${eventHtml}</div></aside></div>`;
+    </main><aside class="panel event-log"><div class="event-log-head"><h2>Eseménynapló</h2><span>utolsó 100 esemény</span></div><div class="event-list">${eventHtml}</div></aside></div>`;
   document.querySelector('#leave')?.addEventListener('click', clearSession);
   document.querySelector('#resync')?.addEventListener('click', syncNow);
   document.querySelectorAll('[data-card]').forEach(btn => btn.addEventListener('click', () => {
@@ -458,7 +458,7 @@ function auctionLabel(a, auction, hand = []) {
 async function renderLanding() {
   // The unauthenticated landing page must not read game-state variables.
   app.innerHTML = `
-    <div class="hero"><span class="badge">v2.92.0 multiplayer</span><h2>Online Illusztrált Tarokk</h2><p class="muted">Szobaalapú lobby, szerveroldali szabályellenőrzés és valós idejű játék.</p></div>
+    <div class="hero"><span class="badge">v2.99.0 multiplayer</span><h2>Online Illusztrált Tarokk</h2><p class="muted">Szobaalapú lobby, szerveroldali szabályellenőrzés és valós idejű játék.</p></div>
     <section class="panel forms"><div><h3>Új szoba</h3><label>Név<input id="createName" maxlength="28" placeholder="Játékos neve"></label><label>Játékosok száma<select id="playerCount"><option value="4" selected>4 fő</option><option value="5">5 fő · az osztó leosztásonként kimarad</option></select></label><label>Játék hossza<select id="matchRounds"><option value="1">1 kör · 4/5 leosztás</option><option value="2">2 kör · 8/10 leosztás</option><option value="4" selected>4 kör · 16/20 leosztás</option></select></label><button id="create">Szoba létrehozása</button></div><div><h3>Csatlakozás</h3><label>Szobakód<input id="roomCode" maxlength="6" placeholder="ABC123"></label><label>Név<input id="joinName" maxlength="28" placeholder="Játékos neve"></label><button id="join">Csatlakozás</button></div></section><p class="server">Szerver: ${esc(apiBase)}</p>${notice ? `<div class="status">${esc(notice)}</div>`:''}`;
   document.querySelector('#create')?.addEventListener('click', async () => {
     const createButton = document.querySelector('#create');

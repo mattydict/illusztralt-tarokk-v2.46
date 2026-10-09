@@ -20,7 +20,7 @@ export interface ActiveDeclaration {
   contra: ContraState;
   /** Pair identity is needed for pair-level declaration restrictions. */
   pairId?: string;
-  /** True when the figure was only a silent completion on the same trick as a locked-card figure. */
+  /** Legacy settlement marker for saved data; explicit declarations must not be marked silent. */
   silent?: boolean;
   /** A locked target was forced out before its deadline; the figure becomes
    * officially failed only when the current trick is complete. ITVB 7.4. */
@@ -252,25 +252,10 @@ export function evaluateDeclarations(progress: DeclarationProgress, tricks: Figu
     events.push({ declarationId: d.id, status });
   }
 
-  // ITVB 7.7: when a locked-card figure is declared, another figure actually
-  // completed by the same pair on the very same trick is a silent figure.
-  // We mark this after ordinary evaluation, because only the completed trick
-  // reveals whether the locked target was won on that trick.
-  for (const locked of declarations) {
-    if (!locked.lock || locked.status !== 'fulfilled') continue;
-    const targetTrickIndex = tricks.findIndex(t =>
-      t.winner && sideOf(t.winner) === sideOf(locked.ownerId) &&
-      t.cards.some(e => e.card.id === locked.lock!.cardId && e.player === t.winner)
-    );
-    if (targetTrickIndex < 0) continue;
-    const targetTrickNumber = targetTrickIndex + 1;
-    for (const other of declarations) {
-      if (other.id === locked.id || other.status !== 'fulfilled') continue;
-      if (other.pairId && locked.pairId && other.pairId !== locked.pairId) continue;
-      if (!other.pairId && sideOf(other.ownerId) !== sideOf(locked.ownerId)) continue;
-      if (other.outcomeTrick === targetTrickNumber) other.silent = true;
-    }
-  }
+  // Explicit declarations always remain declared for settlement/UI purposes.
+  // A second objective completed on the same trick must not relabel a figure
+  // that the player explicitly announced as "csendes". Unannounced silent
+  // achievements are tracked separately in progress.silentFigures below.
   const silentFigures = [...progress.silentFigures];
 
   // ITVB 6.12: Trull and Négykirály are csendes figures as well.
@@ -357,10 +342,9 @@ export function evaluateDeclarations(progress: DeclarationProgress, tricks: Figu
     }
   }
 
-  // A silent Pagát/Sas Ultimó is an outcome of the actual ninth-trick play:
-  // winning with the target fulfils it, while playing the target on 9th and being
-  // caught creates the corresponding silent failure. Playing the target before
-  // the ninth simply abandons the silent Ultimó attempt without a 5-point loss.
+  // A silent Pagát/Sas Ultimó is decided by the actual ninth-trick play.
+  // The target card itself must win the trick: if the card's partner takes it,
+  // the figure fails. Playing the target before the ninth abandons the silent attempt.
   if (tricks.length === 9) {
     const finalTrick = tricks[8];
     if (finalTrick) {

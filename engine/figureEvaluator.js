@@ -83,5 +83,10 @@ function birdLock(tricks, deadline, cardId, declaringSide, ctx) {
 function deadlineLock(trick, cardId, side, ctx) {
     if (!trick)
         return undefined;
-    return cardWonBySide(trick, cardId, side, ctx) ? 'fulfilled' : 'failed';
+    const targetPlay = trick.cards.find(entry => entry.card.id === cardId);
+    // Ultimó/Uhu is player-specific: the target card itself must take the
+    // deadline trick. Its partner winning the trick does NOT fulfil the figure.
+    return targetPlay && trick.winner === targetPlay.player && ctx.sideOf(trick.winner) === side
+        ? 'fulfilled'
+        : 'failed';
 }

@@ -111,12 +111,8 @@ function actionSummary(action: PlayerAction, playerId: string, before: Persisted
     return `Kontra a ${figureLabels[declaration?.type ?? ''] ?? declaration?.type ?? 'bemondás'}-ra: ${contraLabel(level)}`;
   }
   if (actionLabel === 'play-card') {
-    const games = [after.game, before.game].filter((g): g is GameState => Boolean(g));
-    let card: Card | undefined;
-    for (const g of games) { card = g.players.find(p => p.id === playerId)?.hand.find(c => c.id === action.cardId); if (card) break; }
-    const cardLabel = card ? (card.kind === 'tarokk' ? `${card.rank}. tarokk` : `${({ hearts: '♥', diamonds: '♦', spades: '♠', clubs: '♣' } as Record<string, string>)[card.suit]}${card.rank}`) : action.cardId;
-    const trickNo = Number(after.game?.completedTricks.length ?? before.game?.completedTricks.length ?? 0) + 1;
-    return `Kijátszotta: ${cardLabel} · ${trickNo}. ütés`;
+    // Public event logs identify the player but never reveal the card face.
+    return 'Kijátszott egy lapot';
   }
   return `Akció: ${actionLabel}`;
 }
@@ -361,7 +357,7 @@ export class AuthoritativeRoom {
     this.game = structuredClone(state.game);
     this.declarationWindow = structuredClone(state.declarationWindow);
     this.sequence = state.sequence;
-    this.publicEvents = structuredClone(state.publicEvents);
+    this.publicEvents = structuredClone(state.publicEvents).slice(-100);
     this.lastSettlement = state.lastSettlement ? structuredClone(state.lastSettlement) : this.lastSettlement;
     this.matchScores = structuredClone(state.matchScores ?? this.matchScores);
     this.settlementHistory = structuredClone(state.settlementHistory ?? this.settlementHistory) as any[];
@@ -453,14 +449,18 @@ export class AuthoritativeRoom {
   snapshotFor(playerId: string): AuthoritativeView {
     this.assertPlayer(playerId);
     const publicPlayers = this.round.players.map(p => {
+      const gamePlayer = this.game?.players.find(x => x.id === p.playerId);
+      // While playing, cards are removed from game.players, not from the
+      // original round deal. Use the live game hand for both hand and count.
+      const currentHand = gamePlayer?.hand ?? p.hand;
       const own = p.playerId === playerId;
       const revealed = p.skartRevealed ? p.skart.map(cloneCard) : undefined;
       return {
         id: p.playerId,
-        cardCount: p.hand.length,
-        score: Number(this.matchScores[p.playerId] ?? this.game?.players.find(x => x.id === p.playerId)?.score ?? 0),
+        cardCount: currentHand.length,
+        score: Number(this.matchScores[p.playerId] ?? gamePlayer?.score ?? 0),
         connected: this.connected.has(p.playerId),
-        ...(own ? { hand: p.hand.map(cloneCard) } : {}),
+        ...(own ? { hand: currentHand.map(cloneCard) } : {}),
         ...(own ? { receivedTalon: p.receivedTalon.map(cloneCard), receivedTalonCount: p.receivedTalon.length } : {}),
         ...(own && p.skart.length ? { ownSkart: p.skart.map(cloneCard) } : {}),
         ...(this.round.parallelSkart ? ((p.skartAnnounced || p.skartRevealed) ? { skartCount: p.skart.length } : {}) : { skartCount: p.skart.length }),
@@ -497,7 +497,7 @@ export class AuthoritativeRoom {
       ...(partnership ? { partnership } : {}),
       ...(declarationFlow ? { declarationFlow } : {}),
       scoreboard: { dealsPlayed: this.settlementHistory.length, scores: Object.fromEntries(this.playerIds.map(id => [id, Number(this.matchScores[id] ?? 0)])), history: this.settlementHistory.slice(-12), instantHistory: this.instantScoreHistory.slice(-12) },
-      publicEvents: this.publicEvents.slice(-30),
+      publicEvents: this.publicEvents.slice(-100),
       legalActionTypes: this.legalActionTypes(playerId),
       legalActionHints: this.legalActionHints(playerId),
       ...(this.currentPlayerId ? { turnTimeoutMs: this.turnTimeoutMs(), turnDeadlineAt: this.lastActionAt + this.turnTimeoutMs() } : {}),
@@ -784,6 +784,7 @@ export class AuthoritativeRoom {
     for (const id of this.playerIds) this.matchScores[id] = Number(this.matchScores[id] ?? 0) + Number(deltas[id] ?? 0);
     this.instantScoreHistory = [...this.instantScoreHistory, { type: 'tarokk-count', playerId, count, pointsEach, totalWon: pointsEach * 3, deltas, immediate: true }].slice(-100);
     this.publicEvents.push({ sequence: this.sequence, type: 'deal-complete', message: `${playerId} ${count} tarokkot mondott: ${pointsEach} pont játékosonként, azonnal elszámolva.` });
+    if (this.publicEvents.length > 100) this.publicEvents.shift();
   }
   private redeal(reason: string): void {
     const base = createRound(this.activePlayerIds, this.startingPlayerIndexForDealer);
@@ -794,6 +795,7 @@ export class AuthoritativeRoom {
     this.game = null;
     this.declarationWindow = null;
     this.publicEvents.push({ sequence: this.sequence, type: 'deal-complete', message: `Újraosztás: ${reason}` });
+    if (this.publicEvents.length > 100) this.publicEvents.shift();
   }
   isReady(): boolean { return this.connected.size === this.playerIds.length; }
 

@@ -26,8 +26,8 @@ test('v2.50-ben a fektetés közlése köztes, automatikusan vezérelt fázis é
   const ui = fs.readFileSync(path.resolve('src/ui/multiplayer.js'),'utf8');
   assert.match(ui, /Fektetés közlése/);
   assert.match(ui, /sendAction\(\{type:'skart-announce'\}\)/);
-  assert.match(ui, /auctionLabel\(a, state\.auction\)/);
-  assert.match(ui, /const contract = a\.contract \|\| auction\?\.highest\?\.contract/);
+  assert.match(ui, /auctionLabel\(a, state\.auction, playerCards\)/);
+  assert.match(ui, /const handCards = playerCards/);
 });
 
 
@@ -63,6 +63,23 @@ test('v2.50 a felvevő fektetett tarokkjai az első ütés végéig nyilvánosak
   }
   assert.equal(room.game.completedTricks.length, 1);
   assert.equal(room.snapshotFor('A').players.find(p => p.id === taker)?.revealedSkart, undefined);
+  // The live hand must shrink after a trick; round.players retains the original deal.
+  for (const viewer of room.playerIds) {
+    const snapshot = room.snapshotFor(viewer);
+    for (const id of room.playerIds) {
+      const player = snapshot.players.find(p => p.id === id);
+      assert.equal(player?.cardCount, 8, `${id} should have 8 cards after the first trick`);
+      if (viewer === id) assert.equal(player?.hand?.length, 8, `${id} should see only the 8 remaining cards`);
+      else assert.equal(player?.hand, undefined, `another player's hand must remain private`);
+    }
+  }
+});
+
+test('v2.96 multiplayer UI displays every remaining card; play hints only control which cards can be played', () => {
+  const ui = fs.readFileSync(path.resolve('src/ui/multiplayer.js'), 'utf8');
+  assert.match(ui, /const handCards = playerCards;/);
+  assert.match(ui, /const playable = state\.phase === 'play' && legal\.has\(c\.id\)/);
+  assert.doesNotMatch(ui, /const handCards = state\.phase === 'play' && isMyTurn/);
 });
 
 

@@ -71,15 +71,8 @@ function actionSummary(action, playerId, before, after) {
     return `Kontra a ${figureLabels[declaration?.type] || declaration?.type || 'bemondás'}-ra: ${contraLabel(level)}`;
   }
   if (actionLabel === 'play-card') {
-    const candidates = [after.game, before.game].filter(Boolean);
-    let card;
-    for (const g of candidates) {
-      card = g.players?.find(p => p.id === playerId)?.hand?.find(c => c.id === action.cardId);
-      if (card) break;
-    }
-    const cardLabel = card ? (card.kind === 'tarokk' ? `${card.rank}. tarokk` : `${({hearts:'♥', diamonds:'♦', spades:'♠', clubs:'♣'})[card.suit] ?? card.suit}${card.rank}`) : action.cardId;
-    const trickNo = Number(after.game?.completedTricks?.length ?? before.game?.completedTricks?.length ?? 0) + 1;
-    return `Kijátszotta: ${cardLabel} · ${trickNo}. ütés`;
+    // Public event logs identify the player but never reveal the card face.
+    return 'Kijátszott egy lapot';
   }
   return actionLabel ? `Akció: ${actionLabel}` : 'Akció';
 }
@@ -162,7 +155,7 @@ export class AuthoritativeRoom {
       this.game = structuredClone(options.persisted.game);
       this.declarationWindow = structuredClone(options.persisted.declarationWindow);
       this.sequence = options.persisted.sequence;
-      this.publicEvents = structuredClone(options.persisted.publicEvents);
+      this.publicEvents = structuredClone(options.persisted.publicEvents).slice(-100);
       this.lastSettlement = options.persisted.lastSettlement ? structuredClone(options.persisted.lastSettlement) : this.lastSettlement;
       this.matchScores = structuredClone(options.persisted.matchScores ?? Object.fromEntries(this.playerIds.map(id => [id, this.round.players.find(p => p.playerId === id)?.score ?? 0])));
       this.settlementHistory = structuredClone(options.persisted.settlementHistory ?? (this.lastSettlement ? [this.lastSettlement] : []));
@@ -248,7 +241,7 @@ export class AuthoritativeRoom {
   }
 
   restorePersistedState(state) {
-    this.round = structuredClone(state.round); this.game = structuredClone(state.game); this.declarationWindow = structuredClone(state.declarationWindow); this.sequence = state.sequence; this.publicEvents = structuredClone(state.publicEvents); this.lastSettlement = state.lastSettlement ? structuredClone(state.lastSettlement) : this.lastSettlement; this.matchScores = structuredClone(state.matchScores ?? this.matchScores); this.settlementHistory = structuredClone(state.settlementHistory ?? this.settlementHistory); this.lastActionAt = state.lastActionAt;
+    this.round = structuredClone(state.round); this.game = structuredClone(state.game); this.declarationWindow = structuredClone(state.declarationWindow); this.sequence = state.sequence; this.publicEvents = structuredClone(state.publicEvents).slice(-100); this.lastSettlement = state.lastSettlement ? structuredClone(state.lastSettlement) : this.lastSettlement; this.matchScores = structuredClone(state.matchScores ?? this.matchScores); this.settlementHistory = structuredClone(state.settlementHistory ?? this.settlementHistory); this.lastActionAt = state.lastActionAt;
   }
   turnTimeoutMs() { switch (phaseOf(this.round, this.game)) { case 'auction': return 90000; case 'skart': case 'skart-announcement': return 120000; case 'partner-call': return 60000; case 'declarations': return 60000; case 'play': return 45000; default: return 60000; } }
   eventsSince(sequence) { return this.publicEvents.filter(event => event.sequence > sequence); }
@@ -263,6 +256,10 @@ export class AuthoritativeRoom {
     const activeIds = new Set(this.activePlayerIds);
     const players = this.playerIds.map(id => {
       const p = roundById.get(id);
+      const gamePlayer = this.game?.players?.find(gameSeat => gameSeat.id === id);
+      // The round is the source of truth before play; after the game is created,
+      // its hand is authoritative because cards are removed from game.players.
+      const currentHand = gamePlayer?.hand ?? p?.hand ?? [];
       const own = id === playerId;
       const revealed = p?.skartRevealed ? p.skart.map(cloneCard) : undefined;
       const announcedCount = p ? (this.round.parallelSkart ? (p.skartAnnounced || p.skartRevealed) : true) : false;
@@ -270,10 +267,10 @@ export class AuthoritativeRoom {
         id,
         active: activeIds.has(id),
         dealer: id === this.dealerPlayerId,
-        cardCount: p?.hand?.length ?? 0,
+        cardCount: currentHand.length,
         score: Number(this.matchScores[id] ?? 0),
         connected: this.connected.has(id),
-        ...(own && p ? { hand: p.hand.map(cloneCard) } : {}),
+        ...(own && (gamePlayer || p) ? { hand: currentHand.map(cloneCard) } : {}),
         ...(own && p ? { receivedTalon: p.receivedTalon.map(cloneCard), receivedTalonCount: p.receivedTalon.length } : {}),
         ...(own && p?.skart?.length ? { ownSkart: p.skart.map(cloneCard) } : {}),
         ...(p && announcedCount ? { skartCount: p.skart.length } : {}),
@@ -290,7 +287,7 @@ export class AuthoritativeRoom {
     const declarationFlow = phaseOf(this.round, this.game) === 'declarations' && this.declarationWindow
       ? deriveDeclarationFlowView(this.game, this.round, this.declarationWindow, playerId)
       : undefined;
-    return { roomId: this.roomId, sequence: this.sequence, phase: phaseOf(this.round, this.game), ...(this.currentPlayerId ? { currentPlayerId: this.currentPlayerId } : {}), ...(publicTakerId ? { takerId: publicTakerId } : {}), ...(partnership ? { partnership } : {}), ...(declarationFlow ? { declarationFlow } : {}), players, ...(auction ? { auction } : {}), ...(game ? { game } : {}), ...(this.lastSettlement ? { lastSettlement: this.lastSettlement } : {}), match: { rounds: this.matchRounds, playerCount: this.playerIds.length, dealsPerRound: this.playerIds.length, totalDeals: this.matchRounds * this.playerIds.length, completedDeals: this.settlementHistory.length, currentRound: Math.min(this.matchRounds, Math.floor(this.settlementHistory.length / this.playerIds.length) + 1), dealerPlayerId: this.dealerPlayerId, activePlayerIds: this.activePlayerIds, complete: phaseOf(this.round, this.game) === 'match-complete' }, scoreboard: { dealsPlayed: this.settlementHistory.length, scores: Object.fromEntries(this.playerIds.map(id => [id, Number(this.matchScores[id] ?? 0)])), history: this.settlementHistory.slice(-12), instantHistory: this.instantScoreHistory.slice(-12) }, publicEvents: this.publicEvents.slice(-30), legalActionTypes: this.legalActionTypes(playerId), legalActionHints: this.legalActionHints(playerId), ...(this.currentPlayerId ? { turnTimeoutMs: this.turnTimeoutMs(), turnDeadlineAt: this.lastActionAt + this.turnTimeoutMs() } : {}) };
+    return { roomId: this.roomId, sequence: this.sequence, phase: phaseOf(this.round, this.game), ...(this.currentPlayerId ? { currentPlayerId: this.currentPlayerId } : {}), ...(publicTakerId ? { takerId: publicTakerId } : {}), ...(partnership ? { partnership } : {}), ...(declarationFlow ? { declarationFlow } : {}), players, ...(auction ? { auction } : {}), ...(game ? { game } : {}), ...(this.lastSettlement ? { lastSettlement: this.lastSettlement } : {}), match: { rounds: this.matchRounds, playerCount: this.playerIds.length, dealsPerRound: this.playerIds.length, totalDeals: this.matchRounds * this.playerIds.length, completedDeals: this.settlementHistory.length, currentRound: Math.min(this.matchRounds, Math.floor(this.settlementHistory.length / this.playerIds.length) + 1), dealerPlayerId: this.dealerPlayerId, activePlayerIds: this.activePlayerIds, complete: phaseOf(this.round, this.game) === 'match-complete' }, scoreboard: { dealsPlayed: this.settlementHistory.length, scores: Object.fromEntries(this.playerIds.map(id => [id, Number(this.matchScores[id] ?? 0)])), history: this.settlementHistory.slice(-12), instantHistory: this.instantScoreHistory.slice(-12) }, publicEvents: this.publicEvents.slice(-100), legalActionTypes: this.legalActionTypes(playerId), legalActionHints: this.legalActionHints(playerId), ...(this.currentPlayerId ? { turnTimeoutMs: this.turnTimeoutMs(), turnDeadlineAt: this.lastActionAt + this.turnTimeoutMs() } : {}) };
   }
   publicGameView(game, viewerId) {
     const publicPartner = publicPartnerId(game, this.round, this.declarationWindow);

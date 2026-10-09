@@ -193,29 +193,8 @@ export function evaluateDeclarations(progress, tricks, sideOf, currentTrickNumbe
             lock.resolved = true;
         events.push({ declarationId: d.id, status });
     }
-    // ITVB 7.7: when a locked-card figure is declared, another figure actually
-    // completed by the same pair on the very same trick is a silent figure.
-    // We mark this after ordinary evaluation, because only the completed trick
-    // reveals whether the locked target was won on that trick.
-    for (const locked of declarations) {
-        if (!locked.lock || locked.status !== 'fulfilled')
-            continue;
-        const targetTrickIndex = tricks.findIndex(t => t.winner && sideOf(t.winner) === sideOf(locked.ownerId) &&
-            t.cards.some(e => e.card.id === locked.lock.cardId && e.player === t.winner));
-        if (targetTrickIndex < 0)
-            continue;
-        const targetTrickNumber = targetTrickIndex + 1;
-        for (const other of declarations) {
-            if (other.id === locked.id || other.status !== 'fulfilled')
-                continue;
-            if (other.pairId && locked.pairId && other.pairId !== locked.pairId)
-                continue;
-            if (!other.pairId && sideOf(other.ownerId) !== sideOf(locked.ownerId))
-                continue;
-            if (other.outcomeTrick === targetTrickNumber)
-                other.silent = true;
-        }
-    }
+    // Explicit declarations always remain declared for settlement/UI purposes.
+    // Unannounced silent achievements are tracked separately in silentFigures.
     const silentFigures = [...progress.silentFigures];
     // ITVB 6.12: Trull and Négykirály are csendes figures as well.
     // They may be completed by either side, even without an explicit declaration.

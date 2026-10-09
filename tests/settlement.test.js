@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateSettlement, declaredFigureValue, silentFigureValue, settlementComponents, settlementLines, figureSettlementsFromProgress } from '../src/engine/settlement.js';
+import { evaluateDeclarations } from '../src/engine/declarationLifecycle.js';
 test('uhu és királyfigurák aktuális értékei', () => {
     assert.equal(declaredFigureValue('pagatUhu'), 20);
     assert.equal(declaredFigureValue('sasUhu'), 20);
@@ -63,7 +64,7 @@ test('a teljes elszámolás megőrzi a parti és figurapontokat', () => {
     assert.equal(result.gameWonBy, 'taker');
     assert.equal(result.lines.length, 2);
 });
-test('lekötött figura mellett ugyanazon ütésen teljesített másik figura csendes', () => {
+test('a kifejezetten csendesként rögzített Pagát ultimó értéke feleződik', () => {
     const input = {
         contract: 'three', takerPairWon: true, takerTrickPoints: 48, gameContra: 'none',
         figures: [
@@ -278,4 +279,36 @@ test('a Dupla és Volát egyszerre bemondva külön kontra-szorzóval számolód
         { kind: 'figure', type: 'doubleGame', points: 16, positiveForTakerPair: true },
         { kind: 'figure', type: 'volat', points: 48, positiveForTakerPair: true },
     ]);
+});
+
+test('explicitly declared Trull, Four Kings, Double Game and Volat stay announced when fulfilled with a locked figure on the same trick', () => {
+    const types = ['centrum', 'doubleGame', 'volat', 'tuletroa', 'fourKings'];
+    const progress = {
+        declarations: types.map(type => ({
+            id: `A:${type}`,
+            type,
+            ownerId: 'A',
+            declaredAtTrick: 1,
+            status: 'fulfilled',
+            outcomeTrick: 1,
+            ...(type === 'centrum' ? { targetCardId: 'T20', lock: { cardId: 'T20', ownerId: 'A' } } : {}),
+            contra: { level: 'none' },
+        })),
+        locks: [],
+        events: [],
+        silentFigures: [],
+    };
+    const tricks = [{ winner: 'A', cards: [{ player: 'A', card: { id: 'T20' } }] }];
+    const evaluated = evaluateDeclarations(progress, tricks, () => 'taker', 1);
+    assert.equal(evaluated.declarations.some(d => d.silent === true), false);
+
+    const figures = figureSettlementsFromProgress(evaluated, 'A', 'B');
+    const lines = settlementLines({
+        contract: 'two', takerPairWon: true, takerTrickPoints: 90, gameContra: 'none', figures,
+    });
+    for (const type of ['doubleGame', 'volat', 'tuletroa', 'fourKings']) {
+        const line = lines.find(item => item.type === type);
+        assert.ok(line, `${type} should have its own visible settlement row`);
+        assert.notEqual(line.silent, true, `${type} was declared and must not be labelled silent`);
+    }
 });
