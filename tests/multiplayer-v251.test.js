@@ -27,6 +27,8 @@ function handFromRanks(ranks) {
   let a = createAuction(['A','B','C','D']);
   a = applyAuctionAction(a, {type:'bid', contract:'three'}, hands);
   a = applyAuctionAction(a, {type:'bid', contract:'two'}, hands);
+  a = applyAuctionAction(a, {type:'pass'}, hands); // C gets an explicit response turn
+  a = applyAuctionAction(a, {type:'pass'}, hands); // D gets an explicit response turn
   a = applyAuctionAction(a, {type:'hold', contract:'two'}, hands);
   const actions = legalAuctionActions(a, 'B', hands);
   assert.ok(!actions.some(x => x.type === 'invite' && x.target === 20 && x.contract === 'two'));
@@ -47,6 +49,8 @@ function handFromRanks(ranks) {
   let a = createAuction(['A','B','C','D']);
   a = applyAuctionAction(a, {type:'bid', contract:'three'}, hands);
   a = applyAuctionAction(a, {type:'bid', contract:'two'}, hands);
+  a = applyAuctionAction(a, {type:'pass'}, hands); // C gets an explicit response turn
+  a = applyAuctionAction(a, {type:'pass'}, hands); // D gets an explicit response turn
   a = applyAuctionAction(a, {type:'hold', contract:'two'}, hands);
   assert.equal(a.seats[a.currentSeat].playerId, 'B');
   const actions = legalAuctionActions(a, 'B', hands);
@@ -66,6 +70,8 @@ function handFromRanks(ranks) {
   let a = createAuction(['A','B','C','D']);
   a = applyAuctionAction(a, {type:'bid', contract:'three'}, hands);
   a = applyAuctionAction(a, {type:'bid', contract:'two'}, hands);
+  a = applyAuctionAction(a, {type:'pass'}, hands); // C gets an explicit response turn
+  a = applyAuctionAction(a, {type:'pass'}, hands); // D gets an explicit response turn
   a = applyAuctionAction(a, {type:'hold', contract:'two'}, hands);
   a = applyAuctionAction(a, {type:'invite', target:19, contract:'solo'}, hands);
   assert.equal(a.highest?.playerId, 'B');
@@ -98,9 +104,10 @@ function handFromRanks(ranks) {
   assert.match(ui, /const groupOrder = \['hearts','diamonds','clubs','spades'\]/);
   assert.match(ui, /Number\(b\.rank\) - Number\(a\.rank\)/);
   assert.match(ui, /state\.phase === 'skart' \? ''/);
-  assert.match(ui, /Engedés \(XX invit\)/);
+  const auctionLabels = fs.readFileSync(path.resolve('src/ui/auctionLabels.js'), 'utf8');
+  assert.match(auctionLabels, /Engedés \/ Passz · XX-invit felajánlása/);
   assert.match(ui, /msg\.actionType === 'skart' && msg\.playerId === session\?\.playerId/);
-  assert.match(ui, /contract = a\.contract \|\| auction\?\.highest\?\.contract \|\| 'solo'/);
+  assert.match(auctionLabels, /action\.contract \|\| auction\?\.highest\?\.contract/);
   assert.match(html, /multiplayer\.js\?v=\d+\.\d+\.\d+/);
 }
 

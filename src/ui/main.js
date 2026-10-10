@@ -17,6 +17,7 @@ import { legalSkartCards } from '../engine/skart.js';
 import { chooseAISkart } from '../engine/aiSkart.js';
 import { chooseAIPartnerCall } from '../engine/aiPartnerCall.js';
 import { cardDisplayName, cardImageSrc } from './cardAssets.js';
+import { buildDealReview } from '../engine/dealReview.js';
 const app = document.querySelector('#app');
 const HUMAN = 'P1';
 const PLAYER_POOL = ['P1', 'P2', 'P3', 'P4', 'P5'];
@@ -52,6 +53,8 @@ let lastAiReason;
 let uiError = '';
 let lastUiAction = 'A játék készen áll.';
 let savedRounds = 1;
+let reviewDialogOpen = false;
+let lastDealReview = null;
 function loadUISettings() {
     try {
         const raw = window.localStorage.getItem('illusztralt-tarokk-settings-v241');
@@ -111,6 +114,26 @@ function dealRandom() {
 }
 function cardName(card) { return cardDisplayName(card); }
 function playerName(id) { return id === HUMAN ? 'Te' : `Gépi ${id.slice(1)}`; }
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>\"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' }[character]));
+}
+function reviewCardHtml(card, extraClass = '') {
+    const classes = ['review-card', extraClass].filter(Boolean).join(' ');
+    return `<div class="${classes}" title="${escapeHtml(cardName(card))}"><img class="review-face" src="${escapeHtml(cardImageSrc(card))}" alt="${escapeHtml(cardName(card))}" loading="lazy" decoding="async"><span>${escapeHtml(cardName(card))}</span></div>`;
+}
+function dealReviewMarkup(review) {
+    if (!review) return '';
+    const tricks = (review.tricks ?? []).map(trick => `<section class="review-trick"><h3>${Number(trick.number)}. ütés</h3><div class="review-plays">${(trick.cards ?? []).map(play => `<div class="review-play"><strong>${escapeHtml(playerName(play.player))}</strong><img class="review-face" src="${escapeHtml(cardImageSrc(play.card))}" alt="${escapeHtml(cardName(play.card))}" loading="lazy" decoding="async"></div>`).join('')}</div><p class="review-winner">Ütést vitte: <strong>${escapeHtml(playerName(trick.winner))}</strong></p></section>`).join('');
+    const players = (review.players ?? []).map(player => {
+        const skartIds = new Set((player.skart ?? []).map(card => card.id));
+        const dealt = (player.dealtHand ?? []).map(card => reviewCardHtml(card, skartIds.has(card.id) ? 'discarded' : '')).join('');
+        const talon = (player.receivedTalon ?? []).map(card => reviewCardHtml(card, `talon ${skartIds.has(card.id) ? 'discarded' : ''}`)).join('') || '<span class="review-empty">Nem kapott lapot a talonból.</span>';
+        const discarded = (player.skart ?? []).map(card => reviewCardHtml(card, `discarded ${((player.receivedTalon ?? []).some(c => c.id === card.id)) ? 'talon' : ''}`)).join('') || '<span class="review-empty">Nem skartolt.</span>';
+        return `<section class="review-player"><h3>${escapeHtml(playerName(player.playerId))}</h3><p><strong>Eredetileg kiosztott 9 lap</strong></p><div class="review-card-list">${dealt}</div><p><strong>Talonból kapott lapok</strong> <span class="review-legend-talon">kék jelölés</span></p><div class="review-card-list">${talon}</div><p><strong>Skartolt lapok</strong> <span class="review-legend-discard">áthúzva</span></p><div class="review-card-list">${discarded}</div></section>`;
+    }).join('');
+    const contract = contractLabel(review.contract);
+    return `<dialog id="deal-review-dialog" class="deal-review-dialog" aria-label="Parti visszanézése"><div class="deal-review-shell"><header class="deal-review-header"><div><h2>Parti visszanézése · #${Number(review.dealNumber || 0)}</h2><p>${escapeHtml(contract)}${review.takerId ? ` · Felvevő: ${escapeHtml(playerName(review.takerId))}` : ''}${review.partnerId ? ` · Partner: ${escapeHtml(playerName(review.partnerId))}` : ''}</p></div><button type="button" id="close-deal-review" aria-label="Bezárás">Bezárás ✕</button></header><div class="deal-review-body"><section><h2>A kilenc ütés</h2><div class="review-tricks">${tricks || '<p class="review-empty">Nincs eltárolt ütéstörténet.</p>'}</div></section><section><h2>Kiosztott lapok és fektetés</h2><p class="review-key"><span class="review-legend-talon">Kék háttér: talonból kapott lap</span><span class="review-legend-discard">Piros áthúzás: skartolt lap</span></p><div class="review-hands">${players}</div></section></div></div></dialog>`;
+}
 function phaseLabel(phase) {
     return {
         auction: 'Licit',
@@ -173,6 +196,8 @@ function orderedDealPlayers(state) {
     return activePlayerIds(state);
 }
 function startConfiguredMatch(playerCount, targetRounds) {
+    lastDealReview = null;
+    reviewDialogOpen = false;
     paused = false;
     uiError = '';
     lastAiReason = undefined;
@@ -303,12 +328,23 @@ function applyBid(action) {
         render();
     }
 }
+function inviteTarokkLabel(target) {
+    return target === 20 ? 'XX' : target === 19 ? 'XIX' : target === 18 ? 'XVIII' : `${target}. tarokk`;
+}
 function labelAction(a) {
-    if (a.type === 'pass') return 'Passz';
-    if (a.type === 'bid') return a.honourless ? 'Honőr nélküli Hármas' : contractLabel(a.contract);
+    if (a.acceptsInviteTarget !== undefined) {
+        const verb = a.type === 'bid' ? `Licit: ${contractLabel(a.contract)}` : `Tartom: ${contractLabel(a.contract)}`;
+        return `${verb} · ${inviteTarokkLabel(a.acceptsInviteTarget)}-invit fogadása`;
+    }
+    if (a.invitationSignalTarget !== undefined) {
+        const verb = a.type === 'bid' ? contractLabel(a.contract) : a.type;
+        return `${verb} · ${inviteTarokkLabel(a.invitationSignalTarget)}-invit jelzés`;
+    }
+    if (a.type === 'pass') return a.inviteTarget === 20 ? 'Engedés / Passz · XX-invit' : a.inviteTarget !== undefined ? `Passz · ${inviteTarokkLabel(a.inviteTarget)}-invit jelzés` : 'Passz';
+    if (a.type === 'bid') return a.inviteTarget !== undefined ? `Licit: ${contractLabel(a.contract)} · ${inviteTarokkLabel(a.inviteTarget)}-invit` : a.honourless ? 'Honőr nélküli Hármas' : contractLabel(a.contract);
     if (a.type === 'hold') return `Tartom: ${contractLabel(a.contract)}`;
-    if (a.type === 'hold-invite') return `Tartom: ${contractLabel(a.contract)} (${a.target}. tarokk invit)`;
-    if (a.type === 'invite') return `${a.target}. tarokk invit`;
+    if (a.type === 'hold-invite') return `Tartom: ${contractLabel(a.contract)} · ${inviteTarokkLabel(a.target)}-invit fogadása`;
+    if (a.type === 'invite') return `${inviteTarokkLabel(a.target)}-invit`;
     return `${a.target ?? ''}. tarokk invit`;
 }
 function runAiAuction() {
@@ -900,6 +936,10 @@ function syncRoundPhaseFromGame() {
     if (!round || !game) return;
     if (game.phase === 'scoring') {
         applyCurrentDealSettlement();
+        const dealNumber = Number(match?.completedDeals ?? 0) + 1;
+        if (!lastDealReview || Number(lastDealReview.dealNumber) !== dealNumber) {
+            lastDealReview = buildDealReview(round, game, dealNumber);
+        }
         const { currentPlayerId: _currentPlayerId, ...rest } = round;
         round = { ...rest, phase: 'scoring' };
     }
@@ -1193,14 +1233,24 @@ function render() {
         : '';
     const aiControls = game?.phase === 'play' ? `<button id="pauseAi" class="action">${paused ? 'AI folytatása' : 'AI szünet'}</button>` : '';
     const aiReasonHtml = showAiReasons && lastAiReason ? `<details class="ai-reason" open><summary>Legutóbbi AI-indoklás</summary><p><strong>${playerName(lastAiReason.playerId)}:</strong> ${lastAiReason.text}</p></details>` : '';
+    const dealReviewButton = lastDealReview ? `<button id="open-deal-review" class="review-open" type="button">Parti visszanézése · #${Number(lastDealReview.dealNumber || 0)}</button>` : '';
+    const dealReviewDialog = dealReviewMarkup(lastDealReview);
     const errorHtml = uiError ? `<div class="error"><strong>Az alkalmazás megállt biztonságosan.</strong> <span>${uiError}</span> <button id="clearError">Hiba bezárása</button></div>` : '';
     const handProgress = humanIsDealer ? 0 : Math.max(0, Math.min(100, ((9 - hand.length) / 9) * 100));
     const turnBadge = current ? `<span class="turn-badge">${current === HUMAN ? 'TE JÖSSZ' : playerName(current) + ' gondolkodik'}</span>` : '';
     const progressHtml = phase === 'play' ? `<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="9" aria-valuenow="${Math.min(9, trickNo - 1)}" aria-label="Lejátszás előrehaladása"><span style="width:${handProgress}%"></span></div><div class="compact muted">${Math.min(9, trickNo - 1)}/9 ütés lezárva · ${hand.length} lap nálad · ${legal.size} legális kijátszás</div>` : '';
     const focusNote = phase === 'play' && current === HUMAN ? `<div class="focus-note" role="status"><strong>Te jössz.</strong> A világos kártyák kijátszhatók. <span class="muted">${legal.size} legális lehetőség.</span></div>` : '';
-    app.innerHTML = `<div class="toolbar"><button id="new">Új mérkőzés</button><button id="newDeal" class="action">Új osztás</button>${aiControls}<span class="phase">${phaseLabel(phase)}</span>${result}</div>${errorHtml}${matchInfo}${dealSummary}${rolePanelHtml}${declarationFlowHtml}${scoreTable}<div class="status"><strong>${current ? `${playerName(current)} jön` : 'Leosztás vége'}</strong>${turnBadge}<span>${message}</span></div>${progressHtml}<div class="compact muted" aria-live="polite">${lastUiAction}</div><section class="panel event-log-panel"><h2>Eseménynapló</h2><ol class="event-log">${auctionLog}</ol></section>${focusNote}<div class="opponents">${opponents}</div><section class="panel"><h3>Aktív szakasz</h3><div class="actions">${actionButtons()}</div>${skartInfo}</section>${aiReasonHtml}${takerSkartHtml}<section class="trick"><h3>Aktuális ütés${game && game.phase === 'play' ? ` · ${trickNo}.` : ''}</h3><div class="trick-grid">${trickHtml}</div></section><section class="hand"><h3>Az én lapjaim <small>(${humanIsDealer ? 'osztó / kimarad' : hand.length})</small></h3><div class="cards">${cards}</div></section><section class="history-grid"><details open><summary>Utolsó lezárt ütés</summary>${lastTrickHtml}</details><details><summary>Bemondások</summary><ul>${declarationHtml}</ul></details></section>`;
+    app.innerHTML = `<div class="toolbar"><button id="new">Új mérkőzés</button><button id="newDeal" class="action">Új osztás</button>${aiControls}${dealReviewButton}<span class="phase">${phaseLabel(phase)}</span>${result}</div>${errorHtml}${matchInfo}${dealSummary}${rolePanelHtml}${declarationFlowHtml}${scoreTable}<div class="status"><strong>${current ? `${playerName(current)} jön` : 'Leosztás vége'}</strong>${turnBadge}<span>${message}</span></div>${progressHtml}<div class="compact muted" aria-live="polite">${lastUiAction}</div><section class="panel event-log-panel"><h2>Eseménynapló</h2><ol class="event-log">${auctionLog}</ol></section>${focusNote}<div class="opponents">${opponents}</div><section class="panel"><h3>Aktív szakasz</h3><div class="actions">${actionButtons()}</div>${skartInfo}</section>${aiReasonHtml}${takerSkartHtml}<section class="trick"><h3>Aktuális ütés${game && game.phase === 'play' ? ` · ${trickNo}.` : ''}</h3><div class="trick-grid">${trickHtml}</div></section><section class="hand"><h3>Az én lapjaim <small>(${humanIsDealer ? 'osztó / kimarad' : hand.length})</small></h3><div class="cards">${cards}</div></section><section class="history-grid"><details open><summary>Utolsó lezárt ütés</summary>${lastTrickHtml}</details><details><summary>Bemondások</summary><ul>${declarationHtml}</ul></details></section>${dealReviewDialog}`;
     document.querySelector('#new')?.addEventListener('click', () => { clearAiTimer(); round = null; game = null; match = null; paused = false; uiError = ''; lastAiReason = undefined; render(); });
     document.querySelector('#newDeal')?.addEventListener('click', restartCurrentDeal);
+    document.querySelector('#open-deal-review')?.addEventListener('click', () => { reviewDialogOpen = true; render(); });
+    document.querySelector('#close-deal-review')?.addEventListener('click', () => { reviewDialogOpen = false; render(); });
+    const dealReviewElement = document.querySelector('#deal-review-dialog');
+    if (dealReviewElement && reviewDialogOpen && !dealReviewElement.open) dealReviewElement.showModal();
+    dealReviewElement?.addEventListener('cancel', () => { reviewDialogOpen = false; });
+    dealReviewElement?.addEventListener('click', event => {
+        if (event.target === dealReviewElement) { reviewDialogOpen = false; render(); }
+    });
     document.querySelector('#pauseAi')?.addEventListener('click', () => paused ? resumeAI() : pauseAI());
     document.querySelector('#clearError')?.addEventListener('click', () => { uiError = ''; paused = false; render(); });
     document.querySelector('#nextDeal')?.addEventListener('click', finishCurrentDeal);

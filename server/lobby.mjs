@@ -167,9 +167,16 @@ export class LobbyService {
 
   persistMeta(meta, roomState) {
     if (!meta) return;
-    const record = { schemaVersion: 1, roomId: meta.room.roomId, dealerIndex: meta.room.dealerIndex, createdAt: meta.createdAt, updatedAt: this.clock(), seats: meta.seats, tokenHashes: meta.tokenHashes, roomState: roomState ?? meta.room.exportPersistedState() };
+    const savedState = roomState ?? meta.room.exportPersistedState();
+    const record = { schemaVersion: 1, roomId: meta.room.roomId, dealerIndex: meta.room.dealerIndex, createdAt: meta.createdAt, updatedAt: this.clock(), seats: meta.seats, tokenHashes: meta.tokenHashes, roomState: savedState };
     meta.updatedAt = record.updatedAt;
-    return this.store.save(record);
+    const saved = this.store.save(record);
+    const review = savedState?.lastDealReview;
+    if (!review || !this.store.saveDeal || !Number.isInteger(Number(review.dealNumber))) return saved;
+    const playerNames = Object.fromEntries(Object.entries(meta.seats ?? {}).map(([id, seat]) => [id, seat.displayName || id]));
+    const archivedReview = { ...review, playerNames };
+    const archive = () => this.store.saveDeal({ roomId: meta.room.roomId, dealNumber: Number(review.dealNumber), completedAt: record.updatedAt, review: archivedReview, tokenHashes: meta.tokenHashes });
+    return saved && typeof saved.then === 'function' ? saved.then(archive) : archive();
   }
 
   async persistMetaAsync(meta, roomState) {
@@ -211,6 +218,24 @@ export class LobbyService {
   }
 
   room(roomId) { return this.get(roomId).room; }
+
+  async listArchivedDeals(options = {}) {
+    await this.waitUntilReady();
+    if (!this.store.listDeals) return [];
+    return await this.store.listDeals(options);
+  }
+
+  async getArchivedDeal(roomId, dealNumber) {
+    const deals = await this.listArchivedDeals({ roomId, limit: 10000 });
+    return deals.find(deal => Number(deal.dealNumber) === Number(dealNumber));
+  }
+
+  async canAccessArchivedRoom(roomId, playerId, token) {
+    if (!roomId || !playerId || typeof token !== 'string' || token.length < 20) return false;
+    const deals = await this.listArchivedDeals({ roomId, limit: 10000 });
+    const expected = deals.find(deal => typeof deal.tokenHashes?.[playerId] === 'string')?.tokenHashes?.[playerId];
+    return typeof expected === 'string' && hashToken(token) === expected;
+  }
 
   credentials(meta, playerId, presentedToken) {
     const status = this.status(meta.room.roomId);

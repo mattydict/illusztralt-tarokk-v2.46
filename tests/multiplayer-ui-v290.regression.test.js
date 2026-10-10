@@ -10,7 +10,7 @@ assert.match(html, /event-log/);
 assert.match(html, /table-layout/);
 assert.match(html, /seat-right/);
 assert.match(html, /seat-left/);
-assert.match(js, /v2\.98\.0 multiplayer/);
+assert.match(js, /v3\.0\.3 multiplayer/);
 assert.match(js, /function playerName\(playerId\)/);
 assert.match(js, /state\.publicEvents/);
 assert.match(js, /revealUntil = Date\.now\(\) \+ 5000/);

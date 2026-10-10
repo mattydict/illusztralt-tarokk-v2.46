@@ -9,7 +9,7 @@ export function createRound(playerIds, firstBidder = 0) {
     return {
         phase: 'auction',
         startingPlayerId: playerIds[firstBidder],
-        players: playerIds.map(playerId => ({ playerId, hand: [], receivedTalon: [], skart: [], skartRevealed: false, skartAnnounced: false })),
+        players: playerIds.map(playerId => ({ playerId, hand: [], dealtHand: [], receivedTalon: [], skart: [], skartRevealed: false, skartAnnounced: false })),
         auction: {
             seats: playerIds.map((playerId, seat) => ({ playerId, seat })),
             currentSeat: firstBidder,
@@ -31,6 +31,7 @@ export function dealRound(state, random = Math.random) {
         skart: [],
         skartRevealed: false,
         skartAnnounced: false,
+        dealtHand: [],
     }));
     const talon = deck.slice(0, 6);
     let cursor = 6;
@@ -40,6 +41,7 @@ export function dealRound(state, random = Math.random) {
             players[seat].hand.push(deck[cursor++]);
         }
     }
+    for (const player of players) player.dealtHand = [...player.hand];
     return {
         ...state,
         players,

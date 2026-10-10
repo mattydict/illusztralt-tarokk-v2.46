@@ -1,3 +1,4 @@
+import { buildDealReview } from '../engine/dealReview.js';
 import {
   createRound, dealRound, finishAuction, distributeRoundTalon, preSkartRedealReason, skartRoundPlayer,
   createInitialState, setPartnership, recordPartnerCall, startDeclarations, startPlay,
@@ -41,6 +42,7 @@ export interface PersistedRoomState {
   matchScores?: Record<string, number>;
   settlementHistory?: unknown[];
   lastSettlement?: unknown;
+  lastDealReview?: unknown;
   instantScoreHistory?: unknown[];
 }
 
@@ -70,10 +72,6 @@ function actionSummary(action: PlayerAction, playerId: string, before: Persisted
   const actionLabel = action.type;
   if (actionLabel === 'auction') {
     const a = action.action;
-    const bidHistory = (before.round?.auction?.records ?? []).filter(r => r.action?.type === 'bid');
-    const lateXixInvite = bidHistory.length === 2 && bidHistory[0]?.action?.contract === 'three' && bidHistory[1]?.action?.contract === 'two' && bidHistory[0]?.playerId !== bidHistory[1]?.playerId && before.round?.auction?.highest?.contract === 'two';
-    const inviter = bidHistory[0]?.playerId;
-    const responder = bidHistory[1]?.playerId;
     if (a.invitationSignalTarget !== undefined) return `Licit: ${contractLabels[a.contract] ?? a.contract} · ${a.invitationSignalTarget === 20 ? 'XX' : a.invitationSignalTarget === 19 ? 'XIX' : 'XVIII'}-invit jelzés`;
     if (a.acceptsInviteTarget !== undefined) return `${a.type === 'bid' ? 'Licit' : 'Tartom'}: ${contractLabels[a.contract] ?? a.contract} · ${a.acceptsInviteTarget === 20 ? 'XX' : a.acceptsInviteTarget === 19 ? 'XIX' : 'XVIII'}-invit fogadása`;
     if (a.type === 'pass') {
@@ -83,8 +81,6 @@ function actionSummary(action: PlayerAction, playerId: string, before: Persisted
     }
     if (a.type === 'bid') {
       if (a.honourless) return 'Honőr nélküli Licit: Hármas';
-      if (lateXixInvite && a.contract === 'one' && playerId === inviter) return 'Licit: Egy · XIX-invit';
-      if (lateXixInvite && a.contract === 'solo' && playerId === responder) return 'Licit: Szóló · XIX-invit elfogadása';
       return `Licit: ${contractLabels[a.contract] ?? a.contract}`;
     }
     if (a.type === 'hold') return lateXixInvite && playerId === responder ? 'Tartom: Egy · XIX-invit elfogadása' : `Tartom: ${contractLabels[a.contract] ?? a.contract}`;
@@ -178,6 +174,7 @@ export class AuthoritativeRoom {
   private matchScores: Record<string, number>;
   private settlementHistory: any[];
   private lastSettlement?: any;
+  private lastDealReview?: any;
   private instantScoreHistory: any[];
 
   constructor(options: RoomOptions) {
@@ -226,6 +223,7 @@ export class AuthoritativeRoom {
       this.sequence = options.persisted.sequence;
       this.publicEvents = [...options.persisted.publicEvents];
       this.lastSettlement = options.persisted.lastSettlement as any | undefined;
+      this.lastDealReview = options.persisted.lastDealReview as any | undefined;
       this.lastActionAt = options.persisted.lastActionAt ?? Date.now();
       this.matchScores = structuredClone(options.persisted.matchScores ?? Object.fromEntries(this.playerIds.map(id => [id, this.round.players.find(p => p.playerId === id)?.score ?? 0])));
       this.settlementHistory = structuredClone(options.persisted.settlementHistory ?? (this.lastSettlement ? [this.lastSettlement] : [])) as any[];
@@ -265,6 +263,7 @@ export class AuthoritativeRoom {
       matchScores: this.matchScores,
       settlementHistory: this.settlementHistory,
       lastSettlement: this.lastSettlement,
+      lastDealReview: this.lastDealReview,
     });
   }
 
@@ -359,6 +358,7 @@ export class AuthoritativeRoom {
     this.sequence = state.sequence;
     this.publicEvents = structuredClone(state.publicEvents).slice(-100);
     this.lastSettlement = state.lastSettlement ? structuredClone(state.lastSettlement) : this.lastSettlement;
+    this.lastDealReview = state.lastDealReview ? structuredClone(state.lastDealReview) : this.lastDealReview;
     this.matchScores = structuredClone(state.matchScores ?? this.matchScores);
     this.settlementHistory = structuredClone(state.settlementHistory ?? this.settlementHistory) as any[];
     this.instantScoreHistory = structuredClone(state.instantScoreHistory ?? this.instantScoreHistory) as any[];
@@ -494,6 +494,7 @@ export class AuthoritativeRoom {
       players: publicPlayers,
       ...(auction ? { auction } : {}),
       ...(game ? { game } : {}),
+      ...(this.lastDealReview ? { lastDealReview: this.lastDealReview } : {}),
       ...(partnership ? { partnership } : {}),
       ...(declarationFlow ? { declarationFlow } : {}),
       scoreboard: { dealsPlayed: this.settlementHistory.length, scores: Object.fromEntries(this.playerIds.map(id => [id, Number(this.matchScores[id] ?? 0)])), history: this.settlementHistory.slice(-12), instantHistory: this.instantScoreHistory.slice(-12) },
@@ -765,6 +766,7 @@ export class AuthoritativeRoom {
     this.matchScores = accumulated;
     const dealNumber = this.settlementHistory.length + 1;
     this.lastSettlement = { ...this.lastSettlement, dealNumber, dealerIndex: this.dealerIndex };
+    this.lastDealReview = buildDealReview(this.round, this.game, dealNumber);
     this.settlementHistory = [...this.settlementHistory, this.lastSettlement].slice(-100);
     this.dealerIndex = (this.dealerIndex + 1) % this.playerIds.length;
     const base = createRound(this.activePlayerIds, this.startingPlayerIndexForDealer);

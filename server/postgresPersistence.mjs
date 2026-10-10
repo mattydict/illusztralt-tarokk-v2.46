@@ -38,6 +38,18 @@ export class PostgresRoomStore {
         )
       `;
       await sql`CREATE INDEX IF NOT EXISTS tarokk_rooms_updated_at_idx ON tarokk_rooms (updated_at)`;
+      await sql`
+        CREATE TABLE IF NOT EXISTS tarokk_deal_archive (
+          room_id TEXT NOT NULL,
+          deal_number INTEGER NOT NULL,
+          completed_at BIGINT NOT NULL,
+          review JSONB NOT NULL,
+          token_hashes JSONB NOT NULL DEFAULT '{}'::jsonb,
+          PRIMARY KEY (room_id, deal_number)
+        )
+      `;
+      await sql`ALTER TABLE tarokk_deal_archive ADD COLUMN IF NOT EXISTS token_hashes JSONB NOT NULL DEFAULT '{}'::jsonb`;
+      await sql`CREATE INDEX IF NOT EXISTS tarokk_deal_archive_completed_at_idx ON tarokk_deal_archive (completed_at DESC)`;
     })();
     return this.ready;
   }
@@ -81,10 +93,32 @@ export class PostgresRoomStore {
     }));
   }
 
+  async saveDeal({ roomId, dealNumber, completedAt = Date.now(), review, tokenHashes = {} }) {
+    if (!roomId || !Number.isInteger(Number(dealNumber)) || !review) return;
+    await this.ensureSchema();
+    const sql = await this.client();
+    await sql`
+      INSERT INTO tarokk_deal_archive (room_id, deal_number, completed_at, review, token_hashes)
+      VALUES (${String(roomId).toUpperCase()}, ${Number(dealNumber)}, ${Number(completedAt)}, CAST(${JSON.stringify(review)} AS jsonb), CAST(${JSON.stringify(tokenHashes)} AS jsonb))
+      ON CONFLICT (room_id, deal_number) DO NOTHING
+    `;
+  }
+
+  async listDeals({ roomId, limit = 5000 } = {}) {
+    await this.ensureSchema();
+    const sql = await this.client();
+    const boundedLimit = Math.max(1, Math.min(10000, Number(limit) || 5000));
+    const rows = roomId
+      ? await sql`SELECT room_id, deal_number, completed_at, review, token_hashes FROM tarokk_deal_archive WHERE room_id = ${String(roomId).toUpperCase()} ORDER BY completed_at DESC LIMIT ${boundedLimit}`
+      : await sql`SELECT room_id, deal_number, completed_at, review, token_hashes FROM tarokk_deal_archive ORDER BY completed_at DESC LIMIT ${boundedLimit}`;
+    return rows.map(row => ({ schemaVersion: 1, roomId: row.room_id, dealNumber: Number(row.deal_number), completedAt: Number(row.completed_at), tokenHashes: row.token_hashes ?? {}, review: row.review }));
+  }
+
   async remove(roomId) {
     await this.ensureSchema();
     const sql = await this.client();
     await sql`DELETE FROM tarokk_rooms WHERE room_id = ${String(roomId).toUpperCase()}`;
+    // Archived completed deals intentionally survive room cleanup.
   }
 
   async health() {

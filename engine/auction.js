@@ -242,9 +242,11 @@ function holdCreatesInviteTarget(state, holderId, heldContract, hands) {
     const solo = bids.at(-1);
     const owns = (id, target) => canInviteWithHand(hands[id], target);
 
-    // A:3 B:2 C:Szóló*, A:Tartom. The marked bidder's card decides whether
-    // this is an XIX or XVIII invite; do not infer it from the contract jump.
-    if (opening.action.contract === 'three' && second.action.contract === 'two'
+    // A:3 B:2 C:Szóló*, A:Tartom is an XVIII invite only when Solo is
+    // the immediate third bid. If a third player has already bid Egy, then a
+    // later Solo is the normal next step after Tartom-One, not an invite.
+    if (bids.length === 3 && second.action.contract === 'two'
+        && opening.action.contract === 'three'
         && opening.playerId === holderId && solo.playerId !== holderId && second.playerId !== holderId) {
         if (owns(solo.playerId, 19)) return { inviterId: solo.playerId, target: 19 };
         if (owns(solo.playerId, 18)) return { inviterId: solo.playerId, target: 18 };

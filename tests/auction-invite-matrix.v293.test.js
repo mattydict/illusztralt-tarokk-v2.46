@@ -156,11 +156,11 @@ test('az XX-engedés nem ajánlható fel, ha a játékosnál nincs meg az XX', (
 });
 
 test('a multiplayer licit UI feliratokat ad az invitjelzéshez, az invit elfogadásához és az invit közbeni Szólóhoz', () => {
-  const ui = fs.readFileSync(new URL('../src/ui/multiplayer.js', import.meta.url), 'utf8');
-  assert.match(ui, /\$\{inviteTargetLabel\(a\.invitationSignalTarget\)\}-invit jelzés/);
-  assert.match(ui, /\$\{inviteTargetLabel\(a\.acceptsInviteTarget\)\}-invit fogadása/);
-  assert.match(ui, /folyamatban lévő XIX-invit közbeni válasz/);
-  assert.match(ui, /\$\{inviteTargetLabel\(a\.inviteTarget\)\}-invit \/ partnerhívás/);
+  const ui = fs.readFileSync(new URL('../src/ui/auctionLabels.js', import.meta.url), 'utf8');
+  assert.match(ui, /\$\{inviteTargetLabel\(action\.invitationSignalTarget\)\}-invit jelzés/);
+  assert.match(ui, /\$\{inviteTargetLabel\(action\.acceptsInviteTarget\)\}-invit fogadása/);
+  assert.match(ui, /folyamatban lévő \$\{inviteTargetLabel\(auction\.outstandingInvite\.target\)\}-invit közbeni válasz/);
+  assert.match(ui, /\$\{inviteTargetLabel\(action\.inviteTarget\)\}-invit \/ partnerhívás/);
 });
 
 

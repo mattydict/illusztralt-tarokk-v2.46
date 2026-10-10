@@ -26,7 +26,7 @@ test('v2.50-ben a fektetés közlése köztes, automatikusan vezérelt fázis é
   const ui = fs.readFileSync(path.resolve('src/ui/multiplayer.js'),'utf8');
   assert.match(ui, /Fektetés közlése/);
   assert.match(ui, /sendAction\(\{type:'skart-announce'\}\)/);
-  assert.match(ui, /auctionLabel\(a, state\.auction, playerCards\)/);
+  assert.match(ui, /auctionLabel\(a, state\.auction\)/);
   assert.match(ui, /const handCards = playerCards/);
 });
 

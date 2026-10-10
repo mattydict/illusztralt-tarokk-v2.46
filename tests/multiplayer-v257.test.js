@@ -91,7 +91,7 @@ test('v2.57 multiplayer UI shows specific contra targets and settlement/last-tri
   assert.match(ui, /\$\{esc\(item\.label/);
   assert.match(ui, /Legutóbbi lezárt ütés/);
   assert.match(ui, /nettó/);
-  assert.match(ui, /handCards = state\.phase === 'play'/);
+  assert.match(ui, /const handCards = playerCards/);
 });
 
 

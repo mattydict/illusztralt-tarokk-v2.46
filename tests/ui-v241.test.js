@@ -11,7 +11,7 @@ test('v2.41 UI exposes mobile/accessibility affordances and persisted settings',
   assert.match(ts, /aria-valuenow/);
   assert.match(ts, /legális kijátszás/);
   assert.match(ts, /aria-disabled/);
-  assert.match(html, /v2\.44/);
+  assert.match(html, /v3\.0\.3/);
   assert.match(html, /max-width:760px/);
   assert.match(html, /grid-template-columns:repeat\(4/);
 });

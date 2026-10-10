@@ -25,11 +25,11 @@ function copyTree(src, dst) {
 
 copyTree(engine, path.join(out, 'engine'));
 // Visibility module lives in src/engine as part of the UI/observer model. Keep release build self-contained.
-for (const name of ['partnershipVisibility.js', 'partnershipVisibility.ts']) {
+for (const name of ['partnershipVisibility.js', 'partnershipVisibility.ts', 'dealReview.js']) {
   const source = path.join(root, 'src', 'engine', name);
   if (fs.existsSync(source)) fs.copyFileSync(source, path.join(out, 'engine', name));
 }
-for (const name of ['main.js', 'multiplayer.js', 'multiplayer.html', 'cardAssets.js']) {
+for (const name of ['main.js', 'multiplayer.js', 'multiplayer.html', 'cardAssets.js', 'auctionLabels.js']) {
   const source = fs.readFileSync(path.join(ui, name), 'utf8');
   const release = ['main.js', 'multiplayer.js'].includes(name) ? source.replaceAll("from '../engine/", "from './engine/") : source;
   fs.writeFileSync(path.join(out, name), release);

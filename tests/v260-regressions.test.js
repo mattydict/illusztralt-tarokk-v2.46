@@ -40,12 +40,12 @@ test('v2.61 after 3-2 first speaker cannot plain-pass and may Engedés only with
   const good={A:[t(22),t(21),t(20),t(19),t(18),t(17),t(16),t(15)],B:[t(22),t(21),t(20),t(19),t(18),t(17),t(16),t(15)],C:[],D:[]};
   const goodState={...a,records:[{playerId:'A',action:{type:'bid',contract:'three'}},{playerId:'B',action:{type:'bid',contract:'two'}}],highest:{playerId:'B',contract:'two',seat:1},holdOwnerId:'A',currentSeat:0};
   const goodActs=legalAuctionActions(goodState,'A',good);
-  assert.ok(!goodActs.some(x=>x.type==='pass'));
-  assert.ok(goodActs.some(x=>x.type==='invite'&&x.target===20));
+  assert.ok(!goodActs.some(x=>x.type==='pass' && x.inviteTarget === undefined));
+  assert.ok(goodActs.some(x=>x.type==='pass' && x.inviteTarget===20));
   const bad={...good,A:[t(22),t(21),t(19),t(18),t(17),t(16),t(15),t(14)]};
   const badActs=legalAuctionActions(goodState,'A',bad);
-  assert.ok(!badActs.some(x=>x.type==='pass'));
-  assert.ok(!badActs.some(x=>x.type==='invite'&&x.target===20));
+  assert.ok(!badActs.some(x=>x.type==='pass' && x.inviteTarget === undefined));
+  assert.ok(!badActs.some(x=>x.type==='pass'&&x.inviteTarget===20));
 });
 
 test('v2.61 one-speaker Three closes after the third other Pass', () => {
@@ -166,7 +166,9 @@ test('v2.61 Engedés resolves to a Kettő winner and mandatory XX partner call',
   let a=createAuction(['A','B','C','D'],0);
   a=applyAuctionAction(a,{type:'bid',contract:'three'},hands);
   a=applyAuctionAction(a,{type:'bid',contract:'two'},hands);
-  a=applyAuctionAction(a,{type:'invite',target:20,contract:'two'},hands);
+  a=applyAuctionAction(a,{type:'pass'},hands); // C must receive a response turn
+  a=applyAuctionAction(a,{type:'pass'},hands); // D must receive a response turn
+  a=applyAuctionAction(a,{type:'pass',inviteTarget:20},hands);
   assert.equal(a.finished,true);
   const { resolveAuctionOutcome } = await import('../src/engine/auctionOutcome.js');
   const out=resolveAuctionOutcome(a,hands,[]);

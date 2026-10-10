@@ -55,6 +55,8 @@ export interface AuthoritativeView {
   declarationFlow?: DeclarationFlowView;
   auction?: unknown;
   game?: unknown;
+  /** Fully public card history, exposed only after the previous deal finishes. */
+  lastDealReview?: unknown;
   scoreboard?: { dealsPlayed: number; scores: Record<string, number>; history: unknown[]; instantHistory?: unknown[] };
   publicEvents: PublicEvent[];
   legalActionTypes: PlayerAction['type'][];

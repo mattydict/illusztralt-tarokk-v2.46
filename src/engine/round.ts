@@ -10,6 +10,8 @@ export type RoundPhase = 'auction'|'talon-distribution'|'skart'|'skart-announcem
 export interface PlayerRoundState {
   playerId: string;
   hand: Card[];
+  /** The original nine cards dealt before talon distribution and skart. */
+  dealtHand?: Card[];
   score?: number;
   receivedTalon: Card[];
   skart: Card[];
@@ -47,7 +49,7 @@ export function createRound(playerIds: string[], firstBidder = 0): RoundState {
   return {
     phase: 'auction',
     startingPlayerId: playerIds[firstBidder]!,
-    players: playerIds.map(playerId => ({playerId, hand: [], receivedTalon: [], skart: [], skartRevealed: false, skartAnnounced: false})),
+    players: playerIds.map(playerId => ({playerId, hand: [], dealtHand: [], receivedTalon: [], skart: [], skartRevealed: false, skartAnnounced: false})),
     auction: {
       seats: playerIds.map((playerId, seat) => ({playerId, seat})),
       currentSeat: firstBidder,
@@ -70,6 +72,7 @@ export function dealRound(state: RoundState, random: () => number = Math.random)
     skart: [] as Card[],
     skartRevealed: false,
     skartAnnounced: false,
+    dealtHand: [],
   }));
   const talon = deck.slice(0, 6);
   let cursor = 6;
@@ -79,6 +82,7 @@ export function dealRound(state: RoundState, random: () => number = Math.random)
       players[seat]!.hand.push(deck[cursor++]!);
     }
   }
+  for (const player of players) player.dealtHand = [...player.hand];
   return {
     ...state,
     players,

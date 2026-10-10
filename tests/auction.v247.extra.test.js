@@ -35,6 +35,8 @@ function noHonourHand() {
   let a = createAuction(['A','B','C','D']);
   a = applyAuctionAction(a,{type:'bid',contract:'three'},hands);
   a = applyAuctionAction(a,{type:'bid',contract:'two'},hands);
+  a = applyAuctionAction(a,{type:'pass'},hands); // C's explicit response
+  a = applyAuctionAction(a,{type:'pass'},hands); // D's explicit response
   assert.equal(a.seats[a.currentSeat].playerId,'A');
   assert.deepEqual(legalAuctionActions(a,'A',hands).filter(x => x.type === 'hold'), [{type:'hold',contract:'two'}]);
   assert.equal(legalAuctionActions(a,'B',hands).some(x => x.type === 'hold' && x.contract === 'three'), false);
@@ -51,8 +53,12 @@ function noHonourHand() {
   let a = createAuction(['A','B','C','D']);
   a = applyAuctionAction(a,{type:'bid',contract:'three'},hands);
   a = applyAuctionAction(a,{type:'bid',contract:'two'},hands);
-  assert.equal(legalAuctionActions(a,'A',hands).some(x => x.type === 'pass'), false);
-  a = applyAuctionAction(a,{type:'invite',target:20,contract:'two'},hands);
+  a = applyAuctionAction(a,{type:'pass'},hands);
+  a = applyAuctionAction(a,{type:'pass'},hands);
+  const openerActions = legalAuctionActions(a,'A',hands);
+  assert.equal(openerActions.some(x => x.type === 'pass' && x.inviteTarget === undefined), false);
+  assert.ok(openerActions.some(x => x.type === 'pass' && x.inviteTarget === 20));
+  a = applyAuctionAction(a,{type:'pass',inviteTarget:20},hands);
   assert.equal(a.finished,true);
   assert.equal(a.highest?.playerId,'B');
   assert.equal(a.engedes,true);

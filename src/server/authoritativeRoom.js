@@ -1,3 +1,4 @@
+import { buildDealReview } from '../engine/dealReview.js';
 import { createRound, dealRound, finishAuction, distributeRoundTalon, preSkartRedealReason, skartRoundPlayer, createInitialState, setPartnership, recordPartnerCall, startDeclarations, startPlay, declareFigureInGame, playCard, legalCardsForPlay, canRaiseGameContraInGame, raiseGameContraInGame, canRaiseDeclarationContraInGame, raiseDeclarationContraInGame, getPlayer } from '../engine/index.js';
 import { legalAuctionActions, applyAuctionAction } from '../engine/auction.js';
 import { resolveCalledPartner, pairOf as pairOfEngine } from '../engine/partnership.js';
@@ -37,13 +38,10 @@ function actionSummary(action, playerId, before, after) {
     if (a.type === 'bid') {
       if (a.honourless) return 'Honőr nélküli Licit: Hármas';
       if (markedTarget !== undefined) return `Licit: ${contractLabels[a.contract] || a.contract} · ${targetName(markedTarget)}-invit`;
-      if (lateXixInvite && a.contract === 'one' && playerId === inviter) return 'Licit: Egy · XIX-invit';
-      if (lateXixInvite && a.contract === 'solo' && playerId === responder) return 'Licit: Szóló · XIX-invit elfogadása';
       return `Licit: ${contractLabels[a.contract] || a.contract}`;
     }
     if (a.type === 'hold') {
       if (acceptedInviteTarget !== undefined) return `Tartom: ${contractLabels[a.contract] || a.contract} · ${targetName(acceptedInviteTarget)}-invit fogadása`;
-      if (lateXixInvite && playerId === responder) return `Tartom: ${contractLabels[a.contract] || a.contract} · XIX-invit fogadása`;
       return `Tartom: ${contractLabels[a.contract] || a.contract}`;
     }
     if (a.type === 'hold-invite') return `Tartom: ${contractLabels[a.contract] || a.contract} · ${targetName(a.target)}-invit fogadása`;
@@ -129,6 +127,7 @@ export class AuthoritativeRoom {
     this.onCommit = options.onCommit;
     this.listeners = new Set();
     this.lastSettlement = options.persisted?.lastSettlement ? structuredClone(options.persisted.lastSettlement) : undefined;
+    this.lastDealReview = options.persisted?.lastDealReview ? structuredClone(options.persisted.lastDealReview) : undefined;
     this.matchScores = structuredClone(options.persisted?.matchScores ?? Object.fromEntries(this.playerIds.map(id => [id, 0])));
     this.settlementHistory = structuredClone(options.persisted?.settlementHistory ?? (this.lastSettlement ? [this.lastSettlement] : []));
     this.instantScoreHistory = structuredClone(options.persisted?.instantScoreHistory ?? []);
@@ -157,6 +156,7 @@ export class AuthoritativeRoom {
       this.sequence = options.persisted.sequence;
       this.publicEvents = structuredClone(options.persisted.publicEvents).slice(-100);
       this.lastSettlement = options.persisted.lastSettlement ? structuredClone(options.persisted.lastSettlement) : this.lastSettlement;
+      this.lastDealReview = options.persisted.lastDealReview ? structuredClone(options.persisted.lastDealReview) : this.lastDealReview;
       this.matchScores = structuredClone(options.persisted.matchScores ?? Object.fromEntries(this.playerIds.map(id => [id, this.round.players.find(p => p.playerId === id)?.score ?? 0])));
       this.settlementHistory = structuredClone(options.persisted.settlementHistory ?? (this.lastSettlement ? [this.lastSettlement] : []));
       this.instantScoreHistory = structuredClone(options.persisted.instantScoreHistory ?? []);
@@ -187,7 +187,7 @@ export class AuthoritativeRoom {
   createActiveRound() { return createRound(this.activePlayerIds, this.startingPlayerIndexForDealer); }
 
   exportPersistedState() {
-    return structuredClone({ schemaVersion: 1, roomId: this.roomId, playerIds: this.playerIds, dealerIndex: this.dealerIndex, matchRounds: this.matchRounds, round: this.round, game: this.game, declarationWindow: this.declarationWindow, sequence: this.sequence, publicEvents: this.publicEvents, lastSettlement: this.lastSettlement, matchScores: this.matchScores, settlementHistory: this.settlementHistory, instantScoreHistory: this.instantScoreHistory, lastActionAt: this.lastActionAt });
+    return structuredClone({ schemaVersion: 1, roomId: this.roomId, playerIds: this.playerIds, dealerIndex: this.dealerIndex, matchRounds: this.matchRounds, round: this.round, game: this.game, declarationWindow: this.declarationWindow, sequence: this.sequence, publicEvents: this.publicEvents, lastSettlement: this.lastSettlement, lastDealReview: this.lastDealReview, matchScores: this.matchScores, settlementHistory: this.settlementHistory, instantScoreHistory: this.instantScoreHistory, lastActionAt: this.lastActionAt });
   }
 
   subscribe(listener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
@@ -241,7 +241,7 @@ export class AuthoritativeRoom {
   }
 
   restorePersistedState(state) {
-    this.round = structuredClone(state.round); this.game = structuredClone(state.game); this.declarationWindow = structuredClone(state.declarationWindow); this.sequence = state.sequence; this.publicEvents = structuredClone(state.publicEvents).slice(-100); this.lastSettlement = state.lastSettlement ? structuredClone(state.lastSettlement) : this.lastSettlement; this.matchScores = structuredClone(state.matchScores ?? this.matchScores); this.settlementHistory = structuredClone(state.settlementHistory ?? this.settlementHistory); this.lastActionAt = state.lastActionAt;
+    this.round = structuredClone(state.round); this.game = structuredClone(state.game); this.declarationWindow = structuredClone(state.declarationWindow); this.sequence = state.sequence; this.publicEvents = structuredClone(state.publicEvents).slice(-100); this.lastSettlement = state.lastSettlement ? structuredClone(state.lastSettlement) : this.lastSettlement; this.lastDealReview = state.lastDealReview ? structuredClone(state.lastDealReview) : this.lastDealReview; this.matchScores = structuredClone(state.matchScores ?? this.matchScores); this.settlementHistory = structuredClone(state.settlementHistory ?? this.settlementHistory); this.lastActionAt = state.lastActionAt;
   }
   turnTimeoutMs() { switch (phaseOf(this.round, this.game)) { case 'auction': return 90000; case 'skart': case 'skart-announcement': return 120000; case 'partner-call': return 60000; case 'declarations': return 60000; case 'play': return 45000; default: return 60000; } }
   eventsSince(sequence) { return this.publicEvents.filter(event => event.sequence > sequence); }
@@ -287,7 +287,7 @@ export class AuthoritativeRoom {
     const declarationFlow = phaseOf(this.round, this.game) === 'declarations' && this.declarationWindow
       ? deriveDeclarationFlowView(this.game, this.round, this.declarationWindow, playerId)
       : undefined;
-    return { roomId: this.roomId, sequence: this.sequence, phase: phaseOf(this.round, this.game), ...(this.currentPlayerId ? { currentPlayerId: this.currentPlayerId } : {}), ...(publicTakerId ? { takerId: publicTakerId } : {}), ...(partnership ? { partnership } : {}), ...(declarationFlow ? { declarationFlow } : {}), players, ...(auction ? { auction } : {}), ...(game ? { game } : {}), ...(this.lastSettlement ? { lastSettlement: this.lastSettlement } : {}), match: { rounds: this.matchRounds, playerCount: this.playerIds.length, dealsPerRound: this.playerIds.length, totalDeals: this.matchRounds * this.playerIds.length, completedDeals: this.settlementHistory.length, currentRound: Math.min(this.matchRounds, Math.floor(this.settlementHistory.length / this.playerIds.length) + 1), dealerPlayerId: this.dealerPlayerId, activePlayerIds: this.activePlayerIds, complete: phaseOf(this.round, this.game) === 'match-complete' }, scoreboard: { dealsPlayed: this.settlementHistory.length, scores: Object.fromEntries(this.playerIds.map(id => [id, Number(this.matchScores[id] ?? 0)])), history: this.settlementHistory.slice(-12), instantHistory: this.instantScoreHistory.slice(-12) }, publicEvents: this.publicEvents.slice(-100), legalActionTypes: this.legalActionTypes(playerId), legalActionHints: this.legalActionHints(playerId), ...(this.currentPlayerId ? { turnTimeoutMs: this.turnTimeoutMs(), turnDeadlineAt: this.lastActionAt + this.turnTimeoutMs() } : {}) };
+    return { roomId: this.roomId, sequence: this.sequence, phase: phaseOf(this.round, this.game), ...(this.currentPlayerId ? { currentPlayerId: this.currentPlayerId } : {}), ...(publicTakerId ? { takerId: publicTakerId } : {}), ...(partnership ? { partnership } : {}), ...(declarationFlow ? { declarationFlow } : {}), players, ...(auction ? { auction } : {}), ...(game ? { game } : {}), ...(this.lastSettlement ? { lastSettlement: this.lastSettlement } : {}), ...(this.lastDealReview ? { lastDealReview: this.lastDealReview } : {}), match: { rounds: this.matchRounds, playerCount: this.playerIds.length, dealsPerRound: this.playerIds.length, totalDeals: this.matchRounds * this.playerIds.length, completedDeals: this.settlementHistory.length, currentRound: Math.min(this.matchRounds, Math.floor(this.settlementHistory.length / this.playerIds.length) + 1), dealerPlayerId: this.dealerPlayerId, activePlayerIds: this.activePlayerIds, complete: phaseOf(this.round, this.game) === 'match-complete' }, scoreboard: { dealsPlayed: this.settlementHistory.length, scores: Object.fromEntries(this.playerIds.map(id => [id, Number(this.matchScores[id] ?? 0)])), history: this.settlementHistory.slice(-12), instantHistory: this.instantScoreHistory.slice(-12) }, publicEvents: this.publicEvents.slice(-100), legalActionTypes: this.legalActionTypes(playerId), legalActionHints: this.legalActionHints(playerId), ...(this.currentPlayerId ? { turnTimeoutMs: this.turnTimeoutMs(), turnDeadlineAt: this.lastActionAt + this.turnTimeoutMs() } : {}) };
   }
   publicGameView(game, viewerId) {
     const publicPartner = publicPartnerId(game, this.round, this.declarationWindow);
@@ -578,6 +578,7 @@ export class AuthoritativeRoom {
     this.matchScores = accumulated;
     const dealNumber = this.settlementHistory.length + 1;
     this.lastSettlement = { ...this.lastSettlement, dealNumber, dealerIndex: this.dealerIndex };
+    this.lastDealReview = buildDealReview(this.round, this.game, dealNumber, this.lastSettlement);
     this.settlementHistory = [...this.settlementHistory, this.lastSettlement].slice(-100);
     const totalDeals = this.matchRounds * this.playerIds.length;
     if (this.settlementHistory.length >= totalDeals) {

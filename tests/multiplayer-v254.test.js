@@ -51,8 +51,10 @@ test('v2.54: Engedés csak az első megszólalónak, csak Három-Kettő után', 
   let a = createAuction(['A','B','C','D']);
   a = applyAuctionAction(a, {type:'bid', contract:'three'}, hands);
   a = applyAuctionAction(a, {type:'bid', contract:'two'}, hands);
+  a = applyAuctionAction(a, {type:'pass'}, hands); // C's turn is not skipped
+  a = applyAuctionAction(a, {type:'pass'}, hands); // D's turn is not skipped
   const beforeHold = legalAuctionActions(a, 'A', hands);
-  assert.ok(beforeHold.some(x => x.type === 'invite' && x.target === 20));
+  assert.ok(beforeHold.some(x => x.type === 'pass' && x.inviteTarget === 20));
   a = applyAuctionAction(a, {type:'hold', contract:'two'}, hands);
   assert.equal(a.seats[a.currentSeat].playerId, 'B');
   const secondSpeaker = legalAuctionActions(a, 'B', hands);
@@ -85,12 +87,10 @@ test('v2.55: 3-2-Tartom után a második passza esetén a harmadik megszólaló 
   assert.equal(a.seats[a.currentSeat].playerId, 'C');
   assert.deepEqual(legalAuctionActions(a, 'C', hands), [{type:'pass'}]);
   a = applyAuctionAction(a, {type:'pass'}, hands);
-  assert.equal(a.seats[a.currentSeat].playerId, 'A');
-  a = applyAuctionAction(a, {type:'hold', contract:'two'}, hands);
-  assert.equal(a.seats[a.currentSeat].playerId, 'B');
-  a = applyAuctionAction(a, {type:'pass'}, hands);
   assert.equal(a.seats[a.currentSeat].playerId, 'D');
-  assert.ok(legalAuctionActions(a, 'D', hands).some(x => x.type === 'bid' && x.contract === 'one'));
+  const thirdSpeakerActions = legalAuctionActions(a, 'D', hands);
+  assert.ok(thirdSpeakerActions.some(x => x.type === 'bid' && x.contract === 'one'));
+  assert.ok(thirdSpeakerActions.some(x => x.type === 'bid' && x.contract === 'solo'));
 });
 
 test('v2.55: régi mentett skart állapotból is visszaépül a talon kiosztása', () => {

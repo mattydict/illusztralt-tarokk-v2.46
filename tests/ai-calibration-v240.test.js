@@ -58,5 +58,5 @@ test('v2.41 UI contains the calibrated single-player affordances', () => {
   assert.match(ui, /event\.key\.toLowerCase\(\) === 'p'/);
   assert.match(ui, /event\.key\.toLowerCase\(\) === 'n'/);
   const html = fs.readFileSync(path.resolve('src/ui/index.html'), 'utf8');
-  assert.match(html, /Illusztrált Tarokk · v2\.44/);
+  assert.match(html, /Illusztrált Tarokk · v3\.0\.3/);
 });

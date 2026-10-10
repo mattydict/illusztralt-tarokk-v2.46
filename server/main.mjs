@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { LobbyService } from './lobby.mjs';
 import { acceptWebSocketUpgrade } from './websocket.mjs';
 import { createAuthoritativeRoom } from '../src/server/authoritativeRoom.js';
+import { buildDealLearningDataset } from '../src/engine/dealLearningDataset.js';
 
 export function createServer({ lobby = new LobbyService(), maxBodyBytes = 64 * 1024, maxRequestsPerMinute = 240, enableLegacyApi = false, staticDir } = {}) {
   const sessions = new Map();
@@ -216,6 +217,52 @@ export function createServer({ lobby = new LobbyService(), maxBodyBytes = 64 * 1
       if (req.method === 'GET' && parts[0] === 'health') {
         await lobby.waitUntilReady();
         return send(res, 200, { ok: true, service: 'illusztralt-tarokk-authority', version: process.env.npm_package_version ?? '2.46', storage: lobby.store?.kind ?? (lobby.store?.isAsync ? 'postgres' : 'json') });
+      }
+
+      if (req.method === 'GET' && parts[0] === 'archives') {
+        await lobby.waitUntilReady();
+        const archiveRoomId = parts.length === 3 ? parts[1] : query.get('roomId');
+        const archivePlayerId = query.get('playerId');
+        const archiveToken = authToken(req, query);
+        if (!archiveRoomId || !archivePlayerId || !await lobby.canAccessArchivedRoom(archiveRoomId, archivePlayerId, archiveToken)) {
+          return send(res, 403, { error: 'Az archívum megtekintéséhez az adott szoba valamelyik résztvevőjének érvényes tokenje szükséges.' });
+        }
+        if (parts.length === 3 && parts[2] === 'learning-export') {
+          const deals = await lobby.listArchivedDeals({ roomId: archiveRoomId, limit: 10000 });
+          const dataset = buildDealLearningDataset(deals);
+          const body = dataset.examples.map(example => JSON.stringify(example)).join('\n');
+          res.statusCode = 200;
+          res.setHeader('content-type', 'application/x-ndjson; charset=utf-8');
+          res.setHeader('content-disposition', `attachment; filename=\"tarokk-${String(archiveRoomId).replace(/[^a-z0-9_-]/gi, '')}-learning-v1.jsonl\"`);
+          res.setHeader('x-tarokk-example-count', String(dataset.stats.exampleCount));
+          res.setHeader('x-tarokk-deal-count', String(dataset.stats.dealCount));
+          res.setHeader('access-control-allow-origin', '*');
+          res.setHeader('access-control-allow-headers', 'content-type');
+          res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
+          res.end(body ? `${body}\n` : '');
+          return;
+        }
+        if (parts.length === 3) {
+          const deal = await lobby.getArchivedDeal(parts[1], Number(parts[2]));
+          if (!deal) return send(res, 404, { error: 'A keresett archivált parti nem található.' });
+          const { tokenHashes: _tokenHashes, ...safeDeal } = deal;
+          return send(res, 200, safeDeal);
+        }
+        const limit = Math.max(1, Math.min(500, Number(query.get('limit') ?? 100) || 100));
+        const deals = await lobby.listArchivedDeals({ roomId: archiveRoomId, limit });
+        return send(res, 200, { deals: deals.map(deal => ({
+          roomId: deal.roomId,
+          dealNumber: deal.dealNumber,
+          completedAt: deal.completedAt,
+          contract: deal.review?.contract,
+          takerId: deal.review?.takerId,
+          partnerId: deal.review?.partnerId,
+          playerNames: deal.review?.playerNames ?? {},
+          declarationCount: deal.review?.declarations?.length ?? 0,
+          fulfilledDeclarations: (deal.review?.declarations ?? []).filter(item => item.status === 'fulfilled').length,
+          failedDeclarations: (deal.review?.declarations ?? []).filter(item => item.status === 'failed').length,
+          result: deal.review?.settlement?.result ?? deal.review?.finalPoints?.result,
+        })) });
       }
 
       if (req.method === 'POST' && parts[0] === 'lobby' && parts[1] === 'rooms' && parts.length === 2) {
