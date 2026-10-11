@@ -17,15 +17,28 @@ export function legalPlayCards(hand, trick) {
 /**
  * Enforces the Tarokk "rájátszási kötelezettség" for declared figures.
  * The target card of a declared Centrum/Kismadár/Nagymadár/Uhu/Ultimó may
- * only be played on its designated trick. If the normal follow-suit/trump
- * rules leave that target as the only playable card, the obligation is
- * necessarily released and the card may be played earlier.
+ * may only be played on its designated trick, unless follow-suit/trump rules
+ * make it the only legal card earlier. Ordinary follow-suit/trump legality has
+ * priority over the target-trick obligation: a target card cannot be forced if
+ * it is not legally playable under the normal rules.
  */
 export function applyDeclaredFigureLocks(legallyPlayable, hand, declarations, trickNumber, ownerId, sideOf) {
-    const restrictedTargets = declarations.declarations
+    const relevantDeclarations = declarations.declarations
         .filter(d => d.status !== 'failed' && d.status !== 'fulfilled' && d.targetCardId && (ownerId === undefined || d.ownerId === ownerId || (typeof sideOf === 'function' && sideOf(d.ownerId) === sideOf(ownerId))))
         .map(d => ({ targetCardId: d.targetCardId, deadline: declaredFigureDeadline(d.type) }))
-        .filter((x) => x.deadline !== undefined && trickNumber < x.deadline);
+        .filter((x) => x.deadline !== undefined);
+    // On the target trick, play the target only if it is already legal under
+    // normal follow-suit/trump rules. Suit-following and trump obligations
+    // always take priority; they must never be overridden by a figure target.
+    const dueTargets = relevantDeclarations
+        .filter(x => x.deadline === trickNumber && hand.some(c => c.id === x.targetCardId))
+        .map(x => x.targetCardId);
+    if (dueTargets.length) {
+        const due = new Set(dueTargets);
+        const legalDue = legallyPlayable.filter(c => due.has(c.id));
+        return legalDue.length ? legalDue : legallyPlayable;
+    }
+    const restrictedTargets = relevantDeclarations.filter(x => trickNumber < x.deadline);
     if (!restrictedTargets.length)
         return legallyPlayable;
     const blocked = new Set(restrictedTargets.map(x => x.targetCardId));

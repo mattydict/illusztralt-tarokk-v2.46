@@ -42,6 +42,31 @@
 @media(max-width:800px){.review-tricks{grid-template-columns:repeat(2,minmax(0,1fr))}.review-hands{grid-template-columns:1fr}.deal-review-header{align-items:flex-start}.review-plays .review-face{width:44px}}
 @media(max-width:520px){.review-tricks{grid-template-columns:1fr}.deal-review-header{padding:10px}.deal-review-header h2{font-size:18px}.deal-review-body{padding:10px}.review-player{padding:8px}.review-card{width:68px}}
 
+
+/* v3.0.4: compact, persistent hand dock; keeps playable cards visible on every viewport. */
+body:has(.hand .card){padding-bottom:32vh}
+.hand:has(.card){position:fixed;left:max(8px,calc((100vw - 1240px)/2 + 20px));right:max(8px,calc((100vw - 1240px)/2 + 20px));bottom:0;z-index:30;max-height:29vh;overflow:auto;margin:0;padding:7px 9px;border:2px solid #202820;border-bottom:0;border-radius:12px 12px 0 0;background:rgba(255,255,255,.98);box-shadow:0 -5px 24px #0002;display:flex;flex-direction:row;flex-wrap:wrap;align-content:flex-start;gap:5px}
+.hand:has(.card)>h3{flex:0 0 100%;margin:0;padding:0 2px;font-size:14px;line-height:1.2}
+.hand:has(.card) .hand-group{flex:0 0 auto;margin:0;padding:4px;border-width:1px;border-radius:7px}
+.hand:has(.card) .hand-group h3{margin:0 0 3px;padding:2px 4px;border-width:1px;border-radius:4px;font-size:10px;line-height:1.1}
+.hand:has(.card) .hand-grid{display:flex;flex-wrap:nowrap;gap:3px;align-items:flex-start}
+.hand:has(.card) .card.card-illustrated{width:clamp(37px,4.4vw,57px);flex:0 0 clamp(37px,4.4vw,57px);padding:1px;border-radius:5px}
+.hand:has(.card) .card.card-illustrated.active{box-shadow:0 0 0 2px #111,0 2px 0 #0003}
+.hand:has(.card) .card.card-illustrated.selected{transform:translateY(-3px)}
+.hand-panel:has(.card){position:fixed;left:max(8px,calc((100vw - 1240px)/2 + 20px));right:max(8px,calc((100vw - 1240px)/2 + 20px));bottom:0;z-index:30;max-height:29vh;overflow:auto;margin:0;padding:7px 9px;border:2px solid #202820;border-bottom:0;border-radius:12px 12px 0 0;background:rgba(255,255,255,.98);box-shadow:0 -5px 24px #0002}
+.hand-panel:has(.card)>h2{margin:0 0 4px;font-size:14px;line-height:1.2}
+.hand-panel:has(.card) .talon-info,.hand-panel:has(.card) .skart-active{margin:0 0 4px;padding:4px 6px;font-size:11px;border-width:1px}
+.hand-panel:has(.card) .hand{display:flex;flex-direction:row;flex-wrap:wrap;align-content:flex-start;gap:5px}
+.hand-panel:has(.card) .hand-group{flex:0 0 auto;margin:0;padding:4px;border-width:1px;border-radius:7px}
+.hand-panel:has(.card) .hand-group h3{margin:0 0 3px;padding:2px 4px;border-width:1px;border-radius:4px;font-size:10px;line-height:1.1}
+.hand-panel:has(.card) .hand-grid{display:flex;flex-wrap:nowrap;gap:3px;align-items:flex-start}
+.hand-panel:has(.card) .card.card-illustrated{width:clamp(37px,4.4vw,57px);flex:0 0 clamp(37px,4.4vw,57px);padding:1px;border-radius:5px}
+.hand-panel:has(.card) .card.card-illustrated.active{box-shadow:0 0 0 2px #111,0 2px 0 #0003}
+.hand-panel:has(.card) .card.card-illustrated.selected{transform:translateY(-3px)}
+@media(max-width:700px){body:has(.hand .card){padding-bottom:36vh}.hand:has(.card){left:3px;right:3px;max-height:35vh;padding:4px;gap:3px}.hand:has(.card) .hand-group,.hand-panel:has(.card) .hand-group{padding:2px}.hand:has(.card) .hand-group h3,.hand-panel:has(.card) .hand-group h3{font-size:9px;padding:1px 3px}.hand:has(.card) .hand-grid,.hand-panel:has(.card) .hand-grid{flex-wrap:wrap;max-width:100%;gap:2px}.hand:has(.card) .card.card-illustrated,.hand-panel:has(.card) .card.card-illustrated{width:clamp(30px,7.5vw,43px);flex-basis:clamp(30px,7.5vw,43px)}.hand-panel:has(.card){left:3px;right:3px;max-height:35vh;padding:4px}.hand-panel:has(.card)>h2{font-size:12px}.hand-panel:has(.card) .talon-info,.hand-panel:has(.card) .skart-active{font-size:10px}}
+@media(max-width:700px) and (orientation:portrait){.hand:has(.card) .hand-group,.hand-panel:has(.card) .hand-group{display:contents}.hand:has(.card) .hand-group h3,.hand-panel:has(.card) .hand-group h3{flex:0 0 auto;align-self:flex-start;margin:2px 2px 0 0}.hand:has(.card) .hand-grid,.hand-panel:has(.card) .hand-grid{display:flex;flex-wrap:wrap;flex:0 1 auto;align-content:flex-start}}
+@media(max-height:520px) and (orientation:landscape){body:has(.hand .card){padding-bottom:35vh}.hand:has(.card),.hand-panel:has(.card){max-height:34vh;padding:3px 6px}.hand:has(.card) .card.card-illustrated,.hand-panel:has(.card) .card.card-illustrated{width:clamp(29px,5vh,40px);flex-basis:clamp(29px,5vh,40px)}}
+
 </style>
 </head>
 <body><div class="wrap"><div class="table"><div id="app"></div></div></div><script type="module" src="./main.ts?v=2.99.0"></script></body>

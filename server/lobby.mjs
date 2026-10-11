@@ -214,7 +214,34 @@ export class LobbyService {
       connectedCount: meta.room.playerIds.filter(id => meta.room.isConnected(id)).length,
       joinedCount: meta.room.playerIds.filter(id => meta.seats[id].joined).length,
       matchRounds: Number(meta.room.matchRounds ?? 4),
+      phase: meta.room.game?.phase ?? meta.room.round?.phase ?? 'unknown',
+      createdAt: Number(meta.createdAt ?? 0),
     };
+  }
+
+  listJoinableRooms({ limit = 50 } = {}) {
+    const now = this.clock();
+    return [...this.rooms.values()]
+      .map(meta => ({ meta, status: this.status(meta.room.roomId) }))
+      // Public room discovery only exposes rooms that are still waiting in the lobby.
+      // Joining an in-progress deal would accidentally inherit a hand not dealt to the new player.
+      .filter(({ meta, status }) => status.phase === 'auction'
+        && !meta.room.game
+        && status.joinedCount < status.playerCount
+        && !status.matchComplete)
+      .sort((a, b) => (b.meta.updatedAt ?? b.meta.createdAt ?? 0) - (a.meta.updatedAt ?? a.meta.createdAt ?? 0))
+      .slice(0, Math.max(1, Math.min(100, Number(limit) || 50)))
+      .map(({ meta, status }) => ({
+        roomId: status.roomId,
+        playerCount: status.playerCount,
+        joinedCount: status.joinedCount,
+        connectedCount: status.connectedCount,
+        openSeats: Math.max(0, status.playerCount - status.joinedCount),
+        matchRounds: status.matchRounds,
+        phase: status.phase,
+        createdAt: status.createdAt || now,
+        seats: status.seats.map(seat => ({ displayName: seat.displayName, joined: seat.joined, connected: seat.connected })),
+      }));
   }
 
   room(roomId) { return this.get(roomId).room; }

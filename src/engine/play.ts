@@ -32,11 +32,25 @@ export function applyDeclaredFigureLocks(
   ownerId?: string,
   sideOf?: (playerId: string) => 'taker' | 'defence' | 'unknown'
 ): Card[] {
-  const restrictedTargets = declarations.declarations
+  const relevantDeclarations = declarations.declarations
     .filter(d => d.status !== 'failed' && d.status !== 'fulfilled' && d.targetCardId && (ownerId === undefined || d.ownerId === ownerId || (!!sideOf && sideOf(d.ownerId) === sideOf(ownerId ?? ''))))
     .map(d => ({ targetCardId: d.targetCardId!, deadline: declaredFigureDeadline(d.type) }))
-    .filter((x): x is { targetCardId: string; deadline: number } => x.deadline !== undefined && trickNumber < x.deadline);
+    .filter((x): x is { targetCardId: string; deadline: number } => x.deadline !== undefined);
 
+  // On the announced target trick, a target card that is still in this
+  // player's hand becomes the only legal play. This obligation takes priority
+  // over the ordinary follow-suit / trump rules.
+  const dueTargets = relevantDeclarations
+    .filter(x => x.deadline === trickNumber && hand.some(c => c.id === x.targetCardId))
+    .map(x => x.targetCardId);
+  if (dueTargets.length) {
+    const due = new Set(dueTargets);
+    return legallyPlayable.filter(c => due.has(c.id)).length
+      ? legallyPlayable.filter(c => due.has(c.id))
+      : hand.filter(c => due.has(c.id));
+  }
+
+  const restrictedTargets = relevantDeclarations.filter(x => trickNumber < x.deadline);
   if (!restrictedTargets.length) return legallyPlayable;
   const blocked = new Set(restrictedTargets.map(x => x.targetCardId));
   const nonTargets = legallyPlayable.filter(c => !blocked.has(c.id));

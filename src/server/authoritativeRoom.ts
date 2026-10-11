@@ -12,7 +12,7 @@ import { createDeclarationWindow, declarationOrderFromTaker, currentDeclarer, le
 import type { Card } from '../engine/cards.js';
 import { legalCardsForPlay } from '../engine/game.js';
 import { legalSkartCards } from '../engine/skart.js';
-import type { DeclarationContext } from '../engine/declarations.js';
+import type { DeclarationContext, DeclarationType } from '../engine/declarations.js';
 import type { RoundState } from '../engine/round.js';
 import type { PlayerAction, AuthoritativeView, PublicEvent, PublicPlayerView, PublicCard } from './protocol.js';
 import { publicPartnerId, privateSideForPlayer, publicRoleForPlayer, deriveDeclarationFlowView } from '../engine/partnershipVisibility.js';
@@ -47,6 +47,8 @@ export interface PersistedRoomState {
 }
 
 type Listener = (event: PublicEvent) => void;
+type DeclarationPayload = { type: 'pass' } | { type: 'declare'; declaration: DeclarationType; targetCardId?: string } | { type: 'tarokkCount'; count: 8 | 9 };
+type PendingDeclarationPayload = Exclude<DeclarationPayload, { type: 'pass' }>;
 
 function cloneCard(card: Card): PublicCard {
   return card.kind === 'tarokk'
@@ -56,6 +58,17 @@ function cloneCard(card: Card): PublicCard {
 
 function handsMap(round: RoundState): Record<string, Card[]> {
   return Object.fromEntries(round.players.map(p => [p.playerId, p.hand]));
+}
+
+function localizedTargetCardLabel(cardId: string): string {
+  const match = /^(hearts|diamonds|clubs|spades)-K$/.exec(String(cardId ?? ''));
+  if (!match) return String(cardId ?? '');
+  const suitNames: Record<string, string> = { hearts: 'kőr', diamonds: 'káró', clubs: 'treff', spades: 'pikk' };
+  return `${suitNames[match[1]!] ?? match[1]} király`;
+}
+
+function contraLabel(level: string): string {
+  return ({ kontra: 'Kontra', rekontra: 'Rekontra', szubkontra: 'Szubkontra', mordkontra: 'Mordkontra' } as Record<string, string>)[level] ?? level;
 }
 
 function actionType(action: PlayerAction): PlayerAction['type'] { return action.type; }
@@ -98,7 +111,11 @@ function actionSummary(action: PlayerAction, playerId: string, before: Persisted
     const a = action.action;
     if (a.type === 'pass') return 'Bemondás: Passz';
     if (a.type === 'tarokkCount') return `Bemondás: ${a.count} tarokk`;
-    if (a.type === 'declare') return `Bemondás: ${figureLabels[a.declaration] ?? a.declaration}${a.targetCardId ? ` · cél: ${a.targetCardId}` : ''}`;
+    if (a.type === 'declare') return `Bemondás: ${figureLabels[a.declaration] ?? a.declaration}${a.targetCardId ? ` · cél: ${localizedTargetCardLabel(a.targetCardId)}` : ''}`;
+  }
+  if (actionLabel === 'declaration-batch') {
+    const items = [...action.actions, { type: 'pass' as const }].map(a => a.type === 'pass' ? 'Passz' : a.type === 'tarokkCount' ? `${a.count} tarokk` : `${figureLabels[a.declaration] ?? a.declaration}${a.targetCardId ? ` (${localizedTargetCardLabel(a.targetCardId)})` : ''}`);
+    return `Bemondások rögzítve: ${items.join(', ')}`;
   }
   if (actionLabel === 'game-contra') return `Kontra a játékra: ${contraLabel(after.game?.gameContraState?.level ?? after.game?.gameContra ?? 'kontra')}`;
   if (actionLabel === 'declaration-contra') {
@@ -117,11 +134,18 @@ function publicCompletedTrick(trick: GameState['completedTricks'][number]): any 
 }
 
 function pairOfId(playerId: string, takerId: string | undefined, partnerId: string | undefined): 'taker' | 'defence' | 'unknown' { return pairOfEngine(playerId, takerId ?? '', partnerId); }
-function sameDeclarationAction(expected: any, actual: any): boolean {
+function sameDeclarationAction(expected: any, actual: any, hand: Card[] = []): boolean {
   if (!expected || !actual || expected.type !== actual.type || expected.playerId !== actual.playerId) return false;
   if (expected.type === 'pass') return true;
   if (expected.type === 'tarokkCount') return Number(expected.count) === Number(actual.count);
-  if (expected.type === 'declare') return expected.declaration === actual.declaration && (expected.targetCardId ?? undefined) === (actual.targetCardId ?? undefined);
+  if (expected.type === 'declare') {
+    if (expected.declaration !== actual.declaration) return false;
+    if (actual.declaration === 'kingUltimo' || actual.declaration === 'kingUhu') {
+      const target = hand.find(card => card.id === actual.targetCardId);
+      return Boolean(target && target.kind === 'suit' && target.rank === 'K' && (!expected.targetCardId || expected.targetCardId === actual.targetCardId));
+    }
+    return (expected.targetCardId ?? undefined) === (actual.targetCardId ?? undefined);
+  }
   return false;
 }
 
@@ -262,6 +286,7 @@ export class AuthoritativeRoom {
       lastActionAt: this.lastActionAt,
       matchScores: this.matchScores,
       settlementHistory: this.settlementHistory,
+      instantScoreHistory: this.instantScoreHistory,
       lastSettlement: this.lastSettlement,
       lastDealReview: this.lastDealReview,
     });
@@ -573,6 +598,7 @@ export class AuthoritativeRoom {
       case 'skart-announce': return this.applySkartAnnouncement(playerId);
       case 'partner-call': return this.applyPartnerCall(playerId, action.rank);
       case 'declaration': return this.applyDeclaration(playerId, action.action);
+      case 'declaration-batch': return this.applyDeclarationBatch(playerId, action.actions);
       case 'game-contra': return this.applyGameContra(playerId);
       case 'declaration-contra': return this.applyDeclarationContra(playerId, action.declarationId);
       case 'play-card': return this.applyPlayCard(playerId, action.cardId);
@@ -685,20 +711,47 @@ export class AuthoritativeRoom {
     };
   }
 
-  private applyDeclaration(playerId: string, payload: Omit<import('../engine/declarationWindow.js').DeclarationAction, 'playerId'>): void {
+  previewDeclarationActions(playerId: string, draftActions: PendingDeclarationPayload[]): unknown[] {
+    if (!this.game || this.game.phase !== 'declarations' || !this.declarationWindow) throw new Error('Most nincs bemondási fázis.');
+    if (this.currentPlayerId !== playerId) throw new Error('Most nem ennek a játékosnak van bemondási joga.');
+    if (!Array.isArray(draftActions) || draftActions.length > 20) throw new Error('Érvénytelen bemondási piszkozat.');
+    const before = this.exportPersistedState();
+    try {
+      for (const action of draftActions) {
+        if (!action || !['declare', 'tarokkCount'].includes(action.type)) throw new Error('A piszkozat csak bemondásokat tartalmazhat.');
+        this.applyDeclaration(playerId, action);
+        if (!this.game || this.game.phase !== 'declarations' || this.currentPlayerId !== playerId) throw new Error('A piszkozat folytatása ebben a körben nem lehetséges.');
+      }
+      return [...((this.legalActionHints(playerId).declarationActions as unknown[] | undefined) ?? [])];
+    } finally {
+      this.restorePersistedState(before);
+    }
+  }
+
+  private applyDeclarationBatch(playerId: string, draftActions: PendingDeclarationPayload[]): void {
+    if (!Array.isArray(draftActions) || draftActions.length > 20) throw new Error('Érvénytelen bemondási csomag.');
+    for (const action of draftActions) {
+      if (!action || !['declare', 'tarokkCount'].includes(action.type)) throw new Error('A rögzítendő csomag csak bemondásokat tartalmazhat.');
+      this.applyDeclaration(playerId, action);
+      if (!this.game || this.game.phase !== 'declarations' || this.currentPlayerId !== playerId) throw new Error('A bemondási csomagban maradt érvénytelen vagy lezáró művelet.');
+    }
+    this.applyDeclaration(playerId, { type: 'pass' });
+  }
+
+  private applyDeclaration(playerId: string, payload: DeclarationPayload): void {
     if (!this.game || this.game.phase !== 'declarations' || !this.declarationWindow) throw new Error('Most nincs bemondási fázis.');
     const action = { ...payload, playerId } as import('../engine/declarationWindow.js').DeclarationAction;
     if (action.type === 'declare') {
       const gp = getPlayer(this.game, playerId);
       const legal = legalDeclarationActions(this.declarationWindow, playerId, gp.hand, this.declarationContext(playerId));
-      if (!legal.some(x => JSON.stringify(x) === JSON.stringify(action))) throw new Error('Ez a bemondás ebben a helyzetben nem szabályos.');
+      if (!legal.some(x => sameDeclarationAction(x, action, gp.hand))) throw new Error('Ez a bemondás ebben a helyzetben nem szabályos.')
       const targetCardId = action.targetCardId;
       this.game = declareFigureInGame(this.game, action.declaration, playerId, this.game.completedTricks.length + 1, targetCardId);
     }
     if (action.type !== 'declare') {
       const gp = getPlayer(this.game, playerId);
       const legal = legalDeclarationActions(this.declarationWindow, playerId, gp.hand, this.declarationContext(playerId));
-      if (!legal.some(x => sameDeclarationAction(x, action))) throw new Error('Ez a bemondási akció ebben a helyzetben nem szabályos.');
+      if (!legal.some(x => sameDeclarationAction(x, action, gp.hand))) throw new Error('Ez a bemondási akció ebben a helyzetben nem szabályos.');
     }
     const gp = getPlayer(this.game, playerId);
     this.declarationWindow = applyDeclarationAction(this.declarationWindow, action, gp.hand);

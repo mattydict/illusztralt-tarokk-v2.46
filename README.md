@@ -1,3 +1,12 @@
+# Illusztrált Magyar Tarokk – 3.0.5
+
+## 3.0.5 – célkártya-kötelezettség, invitpontosítás és kompakt kéz
+
+- A bemondott Centrum, Kismadár, Nagymadár, Uhu és Ultimó célkártyája a megfelelő ütésben kötelező, ha még a játékos kezében van.
+- A nyitó Kettes nagyhonőr + legalább öt tarokk mellett XIX-invit jelzést, a nyitó Egyes ugyanezzel a képszerkezettel XVIII-invit jelzést kap. A célkártyát nem tartó invitáló nem passzolhat: Tartommal vissza kell vonnia a jelzést.
+- A Saját Kéz kompakt, rögzített alsó panelként jelenik meg desktopon, mobil álló és fekvő nézetben.
+- Új regressziós tesztek fedik le a célkártya-kötelezettséget és a nyitó invit visszavonását/megerősítését.
+
 ## v2.61 – bemondási kör és csendes ultimó pontosítás
 
 # Illusztrált Magyar Tarokk – v2.46

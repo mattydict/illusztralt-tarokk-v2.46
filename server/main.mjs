@@ -199,6 +199,30 @@ export function createServer({ lobby = new LobbyService(), maxBodyBytes = 64 * 1
       peer.sendJson({ type: 'resync', snapshot: room.snapshotFor(peer.session.playerId), events: room.eventsSince(Number.isFinite(since) ? since : 0), status: publicLobby(lobby.get(peer.session.roomId)) });
       return;
     }
+    if (message?.type === 'declaration-preview') {
+      try {
+        const room = lobby.room(peer.session.roomId);
+        const actions = room.previewDeclarationActions(peer.session.playerId, Array.isArray(message.actions) ? message.actions : []);
+        peer.sendJson({ type: 'declaration-preview-result', requestId: String(message.requestId ?? ''), declarationActions: actions });
+      } catch (error) {
+        peer.sendJson({ type: 'declaration-preview-result', requestId: String(message.requestId ?? ''), error: error instanceof Error ? error.message : 'A bemondás előnézete nem sikerült.', declarationActions: [] });
+      }
+      return;
+    }
+    if (message?.type === 'chat-send') {
+      const text = typeof message.text === 'string' ? message.text.trim() : '';
+      if (!text) return;
+      if (text.length > 500) { peer.sendJson({ type: 'chat-error', message: 'A chatüzenet legfeljebb 500 karakter lehet.' }); return; }
+      const now = Date.now();
+      if (peer.session.lastChatAt && now - peer.session.lastChatAt < 500) { peer.sendJson({ type: 'chat-error', message: 'Kérlek, lassíts egy kicsit az üzenetküldéssel.' }); return; }
+      peer.session.lastChatAt = now;
+      const status = lobby.status(peer.session.roomId);
+      const seat = status.seats.find(item => item.playerId === peer.session.playerId);
+      const chat = { playerId: peer.session.playerId, displayName: seat?.displayName || peer.session.playerId, text, sentAt: now };
+      // Deliberately ephemeral: chat payloads are broadcast to live members only and never persisted or added to room events.
+      broadcastRoom(peer.session.roomId, () => ({ type: 'chat-message', chat }));
+      return;
+    }
     peer.sendJson({ type: 'error', code: 'UNKNOWN_MESSAGE', message: 'Ismeretlen üzenettípus.' });
   }
 
@@ -265,6 +289,11 @@ export function createServer({ lobby = new LobbyService(), maxBodyBytes = 64 * 1
         })) });
       }
 
+      if (req.method === 'GET' && parts[0] === 'lobby' && parts[1] === 'rooms' && parts.length === 2) {
+        await lobby.waitUntilReady();
+        const limit = Math.max(1, Math.min(100, Number(query.get('limit') ?? 50) || 50));
+        return send(res, 200, { rooms: lobby.listJoinableRooms({ limit }) });
+      }
       if (req.method === 'POST' && parts[0] === 'lobby' && parts[1] === 'rooms' && parts.length === 2) {
         const body = await readJson(req);
         await lobby.waitUntilReady();

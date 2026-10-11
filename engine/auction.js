@@ -43,6 +43,12 @@ function sameAuctionAction(state, expected, actual) {
     }
     return JSON.stringify(expected) === JSON.stringify(actual);
 }
+function hasOpeningInviteStructure(hand) {
+    if (!Array.isArray(hand))
+        return true;
+    const tarokks = hand.filter(isTarokk);
+    return tarokks.length >= 5 && tarokks.some(c => c.rank === 21 || c.rank === 22);
+}
 function canInviteWithHand(hand, target) {
     // Unit-level callers sometimes provide no/full-hand information. The live
     // multiplayer authority always supplies the complete hand, where the strict
@@ -282,7 +288,10 @@ function openingInviteForResponse(state, playerId, hands) {
     const response = openingJumpResponse(state, playerId);
     if (!response || response.target === undefined || !hands)
         return undefined;
-    if (!canInviteWithHand(hands[playerId], response.target))
+    // Opening 2/1 is labelled as an invite from the hand structure (big honour
+    // + at least five tarokks). The target card is checked separately: if absent,
+    // the opener must Tartom to withdraw the invitation and cannot pass.
+    if (!hasOpeningInviteStructure(hands[playerId]))
         return undefined;
     return response;
 }
@@ -413,8 +422,13 @@ export function legalAuctionActions(state, playerId, hands) {
     const openingResponse = openingJumpResponse(state, playerId);
     if (openingResponse) {
         const openingInvite = openingInviteForResponse(state, playerId, hands);
-        if (openingInvite)
-            return [{ type: 'pass', inviteTarget: openingInvite.target }, { type: 'hold', contract: openingResponse.contract }];
+        if (openingInvite) {
+            if (hasInviteCard(hand, openingInvite.target))
+                return [{ type: 'pass', inviteTarget: openingInvite.target }, { type: 'hold', contract: openingResponse.contract }];
+            // The opening bid signalled an invite, but the opener does not actually
+            // hold XIX/XVIII. A normal Pass is forbidden; Tartom withdraws the signal.
+            return [{ type: 'hold', contract: openingResponse.contract }];
+        }
         return [{ type: 'pass' }, { type: 'hold', contract: openingResponse.contract }];
     }
     const lateInvite = latePassInviteTarget(state, playerId, hands);
@@ -535,9 +549,9 @@ export function legalAuctionActions(state, playerId, hands) {
     }
     if (!highest) {
         for (const contract of order) {
-            const openingInviteTarget = contract === 'two' && canInviteWithHand(hand, 19)
+            const openingInviteTarget = contract === 'two' && hasOpeningInviteStructure(hand)
                 ? 19
-                : contract === 'one' && canInviteWithHand(hand, 18) ? 18 : undefined;
+                : contract === 'one' && hasOpeningInviteStructure(hand) ? 18 : undefined;
             result.push({ type: 'bid', contract, ...(openingInviteTarget !== undefined ? { invitationSignalTarget: openingInviteTarget } : {}) });
         }
         // A first-spoken Solo is never itself an invite: it cannot yet be accepted.

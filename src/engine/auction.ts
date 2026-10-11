@@ -63,6 +63,12 @@ function sameAuctionAction(state: AuctionState, expected: AuctionAction, actual:
   return expectedContract === actualContract;
 }
 
+function hasOpeningInviteStructure(hand: Card[] | undefined): boolean {
+  if (!Array.isArray(hand)) return true;
+  const tarokks = hand.filter(isTarokk);
+  return tarokks.length >= 5 && tarokks.some(c => c.rank === 21 || c.rank === 22);
+}
+
 function canInviteWithHand(hand: Card[] | undefined, target: 20 | 19 | 18): boolean {
   // Unit-level callers sometimes provide no/full-hand information. The live
   // multiplayer authority always supplies the complete hand, where the strict
@@ -266,7 +272,10 @@ function openingInviteForResponse(
 ): { target: 19 | 18; contract: 'one' | 'solo'; acceptedBy: PlayerId } | undefined {
   const response = openingJumpResponse(state, playerId);
   if (!response || response.target === undefined || !hands) return undefined;
-  if (!canInviteWithHand(hands[playerId], response.target)) return undefined;
+  // Opening 2/1 is labelled as an invite from the hand structure (big honour
+  // + at least five tarokks). The target card is checked separately: if absent,
+  // the opener must Tartom to withdraw the invitation and cannot pass.
+  if (!hasOpeningInviteStructure(hands[playerId])) return undefined;
   return response;
 }
 
@@ -385,7 +394,14 @@ export function legalAuctionActions(state: AuctionState, playerId: PlayerId, han
   const openingResponse = openingJumpResponse(state, playerId);
   if (openingResponse) {
     const openingInvite = openingInviteForResponse(state, playerId, hands);
-    if (openingInvite) return [{ type: 'pass', inviteTarget: openingInvite.target }, { type: 'hold', contract: openingResponse.contract }];
+    if (openingInvite) {
+      if (hasInviteCard(hand, openingInvite.target)) {
+        return [{ type: 'pass', inviteTarget: openingInvite.target }, { type: 'hold', contract: openingResponse.contract }];
+      }
+      // The opening bid signalled an invite, but the opener does not actually
+      // hold XIX/XVIII. A normal Pass is forbidden; Tartom withdraws the signal.
+      return [{ type: 'hold', contract: openingResponse.contract }];
+    }
     return [{ type: 'pass' }, { type: 'hold', contract: openingResponse.contract }];
   }
 
@@ -458,9 +474,9 @@ export function legalAuctionActions(state: AuctionState, playerId: PlayerId, han
   if (!highest) {
     if (outstandingInvite && hands && !hasInviteCard(hand, outstandingInvite.target)) return result;
     for (const contract of order) {
-      const openingInviteTarget = contract === 'two' && canInviteWithHand(hand, 19)
+      const openingInviteTarget = contract === 'two' && hasOpeningInviteStructure(hand)
         ? 19
-        : contract === 'one' && canInviteWithHand(hand, 18) ? 18 : undefined;
+        : contract === 'one' && hasOpeningInviteStructure(hand) ? 18 : undefined;
       result.push({ type: 'bid', contract, ...(openingInviteTarget !== undefined ? { invitationSignalTarget: openingInviteTarget } : {}) });
     }
     // A first-spoken Solo is never itself an invite: it cannot yet be accepted.

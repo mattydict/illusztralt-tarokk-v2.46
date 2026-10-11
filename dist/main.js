@@ -29,6 +29,7 @@ let talon = [];
 let selectedSkart = new Set();
 let calledTarokk;
 let declarationWindow = null;
+let humanDeclarationDraft = [];
 let message = '';
 function createRandomSeed() {
     try {
@@ -157,6 +158,12 @@ function declarationLabel(type) {
 function contractLabel(contract) {
     return { three: 'Hármas', two: 'Kettes', one: 'Egyes', solo: 'Szóló' }[contract ?? ''] ?? contract ?? '—';
 }
+function localizedTargetCardLabel(cardId) {
+    const match = /^(hearts|diamonds|clubs|spades)-K$/.exec(String(cardId ?? ''));
+    if (!match) return String(cardId ?? '');
+    const suitNames = { hearts: 'kőr', diamonds: 'káró', clubs: 'treff', spades: 'pikk' };
+    return `${suitNames[match[1]]} király`;
+}
 function partnerPubliclyKnown(g) {
     return Boolean(publicPartnerId(g, round, declarationWindow));
 }
@@ -180,6 +187,62 @@ function speakerVisibilityContext(g, id) {
         speakerSide: privateSide,
     };
 }
+function humanDeclarationContext() {
+    return { ...speakerVisibilityContext(game, HUMAN), isTaker: HUMAN === game.takerId, invited: round.auctionOutcome?.calledTarokk !== undefined, ...(round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk } : {}), ...(round.contract ? { contract: round.contract } : {}), previousDeclarations: game.declarations.declarations.map(d => d.type), partnersKnown: partnerPubliclyKnown(game), ...(declarationWindow && declarationWindow.announcedTarokkCounts[HUMAN] !== undefined ? { announcedTarokkCount: declarationWindow.announcedTarokkCounts[HUMAN] } : {}), ...(HUMAN === game.partnerId ? { isPartner: true } : {}), ...(round.calledTarokk !== undefined ? { calledTarokk: round.calledTarokk } : {}), ...(game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}), ...(HUMAN === game.takerId && round.calledTarokk === 19 && !game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}) };
+}
+function sameHumanDeclarationChoice(legal, draft, hand) {
+    if (!legal || !draft || legal.type !== draft.type) return false;
+    if (legal.type === 'pass') return true;
+    if (legal.type === 'tarokkCount') return Number(legal.count) === Number(draft.count);
+    if (legal.type !== 'declare' || legal.declaration !== draft.declaration) return false;
+    if (draft.declaration === 'kingUltimo' || draft.declaration === 'kingUhu') {
+        return hand.some(card => card.id === draft.targetCardId && card.kind === 'suit' && card.rank === 'K');
+    }
+    return !draft.targetCardId;
+}
+function humanDeclarationActionSet() {
+    if (!game || game.phase !== 'declarations' || !declarationWindow) return { acts: [], filteredActs: [] };
+    const hp = game.players.find(p => p.id === HUMAN);
+    if (!hp) return { acts: [], filteredActs: [] };
+    const acts = legalDeclarationActions(declarationWindow, HUMAN, hp.hand, humanDeclarationContext());
+    const humanNeedsDefenceIdentification = privateSideForPlayer(game, HUMAN) === 'defence' && !isRolePublicForPlayer(game, round, declarationWindow, HUMAN) && publicDefenderIds(game).size === 0;
+    const humanNeedsRekontra = Boolean(singlePlayerTakerRekontraTarget(game, HUMAN));
+    const currentTrickNumber = game.completedTricks.length + 1;
+    const humanSide = HUMAN === game.takerId || HUMAN === game.partnerId ? 'taker' : 'defence';
+    const pairAlreadyDeclaredThisTrick = game.declarations.declarations.some(d => d.declaredAtTrick === currentTrickNumber && ((d.ownerId === game.takerId || d.ownerId === game.partnerId ? 'taker' : 'defence') === humanSide));
+    const filteredActs = humanNeedsDefenceIdentification
+        ? acts.filter(a => a.type === 'pass')
+        : humanNeedsRekontra
+            ? acts.filter(a => a.type === 'pass')
+            : pairAlreadyDeclaredThisTrick ? acts.filter(a => a.type !== 'declare') : acts;
+    return { acts, filteredActs };
+}
+function previewHumanDeclarationDraft() {
+    if (!humanDeclarationDraft.length || !game || !declarationWindow) return null;
+    const originalGame = game;
+    const originalWindow = declarationWindow;
+    const originalRound = round;
+    try {
+        for (const draft of humanDeclarationDraft) {
+            const hp = game.players.find(p => p.id === HUMAN);
+            if (!hp || currentDeclarer(declarationWindow) !== HUMAN) throw new Error('A piszkozat már nem ehhez a bemondási körhöz tartozik.');
+            const legal = legalDeclarationActions(declarationWindow, HUMAN, hp.hand, humanDeclarationContext());
+            const selected = legal.find(action => sameHumanDeclarationChoice(action, draft, hp.hand));
+            if (!selected) throw new Error('Az előkészített bemondás a korábbi választás után már nem szabályos.');
+            if (selected.type === 'declare') game = declareFigureInGame(game, selected.declaration, HUMAN, game.completedTricks.length + 1, draft.targetCardId);
+            declarationWindow = applyDeclarationAction(declarationWindow, { ...selected, ...(draft.targetCardId ? { targetCardId: draft.targetCardId } : {}) }, hp.hand);
+            refreshPublicPartnershipSignal();
+            if (selected.type === 'tarokkCount') game = { ...game, announcedTarokkCounts: { ...(game.announcedTarokkCounts ?? {}), [HUMAN]: selected.count } };
+        }
+        return humanDeclarationActionSet();
+    } catch {
+        return { acts: [], filteredActs: [] };
+    } finally {
+        game = originalGame;
+        declarationWindow = originalWindow;
+        round = originalRound;
+    }
+}
 function currentDealSummary() {
 
     if (!game)
@@ -196,6 +259,7 @@ function orderedDealPlayers(state) {
     return activePlayerIds(state);
 }
 function startConfiguredMatch(playerCount, targetRounds) {
+    humanDeclarationDraft = [];
     lastDealReview = null;
     reviewDialogOpen = false;
     paused = false;
@@ -215,6 +279,7 @@ function startConfiguredMatch(playerCount, targetRounds) {
 function startNextDeal() {
     if (!match)
         return;
+    humanDeclarationDraft = [];
     paused = false;
     uiError = '';
     lastAiReason = undefined;
@@ -1038,32 +1103,21 @@ function actionButtons() {
     if (round.phase === 'declarations' && game && declarationWindow && currentDeclarer(declarationWindow) === HUMAN) {
         const hp = game.players.find(p => p.id === HUMAN);
         if (hp) {
-            const vis = speakerVisibilityContext(game, HUMAN);
-            const publicPartner = visiblePartnerId(game);
-            const ctx = { ...speakerVisibilityContext(game, HUMAN), isTaker: HUMAN === game.takerId, invited: round.auctionOutcome?.calledTarokk !== undefined, ...(round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk } : {}), ...(round.contract ? { contract: round.contract } : {}), previousDeclarations: game.declarations.declarations.map(d => d.type), partnersKnown: Boolean(publicPartner), ...(HUMAN === game.partnerId ? { isPartner: true } : {}), ...(publicPartner ? { partnerSeat: game.players.findIndex(p => p.id === publicPartner) } : {}), ...vis, ...(round.calledTarokk !== undefined ? { calledTarokk: round.calledTarokk } : {}), ...(game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}), ...(HUMAN === game.takerId && round.calledTarokk === 19 && !game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}) };
-            const acts = legalDeclarationActions(declarationWindow, HUMAN, hp.hand, ctx);
-            const currentGame = game;
-            const humanRole = privateSideForPlayer(currentGame, HUMAN);
-            const humanNeedsDefenceIdentification = humanRole === 'defence' && !isRolePublicForPlayer(currentGame, round, declarationWindow, HUMAN);
-            const humanNeedsRekontra = Boolean(singlePlayerTakerRekontraTarget(currentGame, HUMAN));
-            const currentTrickNumber = currentGame.completedTricks.length + 1;
-            const humanSide = HUMAN === currentGame.takerId || HUMAN === currentGame.partnerId ? 'taker' : 'defence';
-            const pairAlreadyDeclaredThisTrick = currentGame.declarations.declarations.some(d => d.declaredAtTrick === currentTrickNumber && ((d.ownerId === currentGame.takerId || d.ownerId === currentGame.partnerId ? 'taker' : 'defence') === humanSide));
-            const filteredActs = humanNeedsDefenceIdentification
-                ? acts.filter(a => a.type === 'pass')
-                : (humanNeedsRekontra
-                    ? acts.filter(a => a.type === 'pass')
-                    : (pairAlreadyDeclaredThisTrick ? acts.filter(a => a.type !== 'declare') : acts));
+            const declarationActionSet = humanDeclarationDraft.length ? previewHumanDeclarationDraft() : humanDeclarationActionSet();
+            const acts = declarationActionSet.acts;
+            const filteredActs = declarationActionSet.filteredActs;
             const declButtons = filteredActs.flatMap((a) => {
                 const i = acts.indexOf(a);
                 if (a.type === 'declare' && (a.declaration === 'kingUltimo' || a.declaration === 'kingUhu')) {
                     const kings = hp.hand.filter(c => c.kind === 'suit' && c.rank === 'K');
                     return kings.length
-                        ? kings.map(k => `<button class="action" data-decl="${i}" data-target="${k.id}">${declarationLabel(a.declaration)} · ${cardName(k)}</button>`)
+                        ? kings.map(k => `<button class="action" data-decl="${i}" data-target="${k.id}">${declarationLabel(a.declaration)} · ${localizedTargetCardLabel(k.id)}</button>`)
                         : [];
                 }
-                return [`<button class="action" data-decl="${i}">${a.type === 'pass' ? 'Passz' : a.type === 'tarokkCount' ? `${a.count} tarokk` : declarationLabel(a.declaration)}</button>`];
+                const actionText = a.type === 'pass' ? (humanDeclarationDraft.length ? 'Passz – bemondások rögzítése' : 'Passz') : a.type === 'tarokkCount' ? `${a.count} tarokk` : declarationLabel(a.declaration);
+                return [`<button class="action" data-decl="${i}">${actionText}</button>`];
             }).join('');
+            const draftHtml = humanDeclarationDraft.length ? `<div class="declaration-draft"><strong>Előkészített bemondások (még nem rögzítve)</strong><span>${humanDeclarationDraft.map(a => a.type === 'tarokkCount' ? `${a.count} tarokk` : `${declarationLabel(a.declaration)}${a.targetCardId ? ` · ${localizedTargetCardLabel(a.targetCardId)}` : ''}`).join(' · ')}</span><button id="clear-declaration-draft" type="button">Bemondások visszavonása</button></div>` : '';
             const contraButtons = [];
             const forcedHumanRekontraTarget = singlePlayerTakerRekontraTarget(game, HUMAN);
             if (forcedHumanRekontraTarget === 'game') {
@@ -1083,7 +1137,7 @@ function actionButtons() {
                 if (next)
                     contraButtons.push(`<button class="action contra" data-contra="${d.id}">${next} ${d.type}</button>`);
             }
-            return `${declButtons}${contraButtons.length ? `<div class="contra-actions"><strong>Kontra:</strong>${contraButtons.join('')}</div>` : ''}`;
+            return `${declButtons}${draftHtml}${contraButtons.length ? `<div class="contra-actions"><strong>Kontra:</strong>${contraButtons.join('')}</div>` : ''}`;
         }
     }
     if (round.phase === 'scoring' && game?.finalPoints) {
@@ -1241,7 +1295,7 @@ function render() {
     const progressHtml = phase === 'play' ? `<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="9" aria-valuenow="${Math.min(9, trickNo - 1)}" aria-label="Lejátszás előrehaladása"><span style="width:${handProgress}%"></span></div><div class="compact muted">${Math.min(9, trickNo - 1)}/9 ütés lezárva · ${hand.length} lap nálad · ${legal.size} legális kijátszás</div>` : '';
     const focusNote = phase === 'play' && current === HUMAN ? `<div class="focus-note" role="status"><strong>Te jössz.</strong> A világos kártyák kijátszhatók. <span class="muted">${legal.size} legális lehetőség.</span></div>` : '';
     app.innerHTML = `<div class="toolbar"><button id="new">Új mérkőzés</button><button id="newDeal" class="action">Új osztás</button>${aiControls}${dealReviewButton}<span class="phase">${phaseLabel(phase)}</span>${result}</div>${errorHtml}${matchInfo}${dealSummary}${rolePanelHtml}${declarationFlowHtml}${scoreTable}<div class="status"><strong>${current ? `${playerName(current)} jön` : 'Leosztás vége'}</strong>${turnBadge}<span>${message}</span></div>${progressHtml}<div class="compact muted" aria-live="polite">${lastUiAction}</div><section class="panel event-log-panel"><h2>Eseménynapló</h2><ol class="event-log">${auctionLog}</ol></section>${focusNote}<div class="opponents">${opponents}</div><section class="panel"><h3>Aktív szakasz</h3><div class="actions">${actionButtons()}</div>${skartInfo}</section>${aiReasonHtml}${takerSkartHtml}<section class="trick"><h3>Aktuális ütés${game && game.phase === 'play' ? ` · ${trickNo}.` : ''}</h3><div class="trick-grid">${trickHtml}</div></section><section class="hand"><h3>Az én lapjaim <small>(${humanIsDealer ? 'osztó / kimarad' : hand.length})</small></h3><div class="cards">${cards}</div></section><section class="history-grid"><details open><summary>Utolsó lezárt ütés</summary>${lastTrickHtml}</details><details><summary>Bemondások</summary><ul>${declarationHtml}</ul></details></section>${dealReviewDialog}`;
-    document.querySelector('#new')?.addEventListener('click', () => { clearAiTimer(); round = null; game = null; match = null; paused = false; uiError = ''; lastAiReason = undefined; render(); });
+    document.querySelector('#new')?.addEventListener('click', () => { humanDeclarationDraft = []; clearAiTimer(); round = null; game = null; match = null; paused = false; uiError = ''; lastAiReason = undefined; render(); });
     document.querySelector('#newDeal')?.addEventListener('click', restartCurrentDeal);
     document.querySelector('#open-deal-review')?.addEventListener('click', () => { reviewDialogOpen = true; render(); });
     document.querySelector('#close-deal-review')?.addEventListener('click', () => { reviewDialogOpen = false; render(); });
@@ -1256,44 +1310,54 @@ function render() {
     document.querySelector('#nextDeal')?.addEventListener('click', finishCurrentDeal);
     document.querySelector('#skart')?.addEventListener('click', humanSkart);
     document.querySelector('#announce')?.addEventListener('click', humanSkartAnnounce);
-    document.querySelector('#restart')?.addEventListener('click', () => { clearAiTimer(); round = null; game = null; match = null; paused = false; uiError = ''; lastAiReason = undefined; render(); });
+    document.querySelector('#restart')?.addEventListener('click', () => { humanDeclarationDraft = []; clearAiTimer(); round = null; game = null; match = null; paused = false; uiError = ''; lastAiReason = undefined; render(); });
     document.querySelectorAll('[data-bid]').forEach(b => b.addEventListener('click', () => { const acts = legalAuctionActions(round.auction, HUMAN, handsMap()); applyBid(acts[Number(b.dataset.bid)]); }));
     document.querySelectorAll('[data-call]').forEach(b => b.addEventListener('click', () => callPartner(Number(b.dataset.call))));
-    document.querySelectorAll('[data-contra-game]').forEach(b => b.addEventListener('click', () => humanContra('game')));
-    document.querySelectorAll('[data-contra]').forEach(b => b.addEventListener('click', () => humanContra(b.dataset.contra)));
+    document.querySelectorAll('[data-contra-game]').forEach(b => b.addEventListener('click', () => { if (humanDeclarationDraft.length) { message = 'Előbb rögzítsd Passzszal vagy vond vissza a bemondási piszkozatot.'; render(); return; } humanContra('game'); }));
+    document.querySelectorAll('[data-contra]').forEach(b => b.addEventListener('click', () => { if (humanDeclarationDraft.length) { message = 'Előbb rögzítsd Passzszal vagy vond vissza a bemondási piszkozatot.'; render(); return; } humanContra(b.dataset.contra); }));
     document.querySelectorAll('[data-decl]').forEach(b => b.addEventListener('click', () => {
-        if (!game || !round || !declarationWindow)
+        if (!game || !round || !declarationWindow || currentDeclarer(declarationWindow) !== HUMAN) return;
+        const chosenSet = humanDeclarationDraft.length ? previewHumanDeclarationDraft() : humanDeclarationActionSet();
+        const a = chosenSet.acts[Number(b.dataset.decl)];
+        if (!a || !chosenSet.filteredActs.some(item => item === a)) return;
+        const targetCardId = b.dataset.target;
+        if (a.type !== 'pass') {
+            const draftAction = a.type === 'tarokkCount'
+                ? { type: 'tarokkCount', count: Number(a.count) }
+                : { type: 'declare', declaration: a.declaration, ...(targetCardId ? { targetCardId } : {}) };
+            humanDeclarationDraft = [...humanDeclarationDraft, draftAction];
+            message = 'A bemondás piszkozatként lett kijelölve. Passz rögzíti, a visszavonás törli.';
+            render();
             return;
-        const hp = game.players.find(p => p.id === HUMAN);
-        if (!hp)
-            return;
-        const ctx = { ...speakerVisibilityContext(game, HUMAN), isTaker: HUMAN === game.takerId, invited: round.auctionOutcome?.calledTarokk !== undefined, ...(round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk } : {}), ...(round.contract ? { contract: round.contract } : {}), previousDeclarations: game.declarations.declarations.map(d => d.type), partnersKnown: partnerPubliclyKnown(game), ...(declarationWindow && declarationWindow.announcedTarokkCounts[HUMAN] !== undefined ? { announcedTarokkCount: declarationWindow.announcedTarokkCounts[HUMAN] } : {}), ...(HUMAN === game.partnerId ? { isPartner: true } : {}), ...(round.calledTarokk !== undefined ? { calledTarokk: round.calledTarokk } : {}), ...(game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}), ...(HUMAN === game.takerId && round.calledTarokk === 19 && !game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}) };
-        const acts = legalDeclarationActions(declarationWindow, HUMAN, hp.hand, ctx);
-        const a = acts[Number(b.dataset.decl)];
-        if (!a)
-            return;
+        }
+        const before = { game, declarationWindow, round, matchScores: { ...matchScores }, instantScoreHistory: [...instantScoreHistory], currentDealDeltas: { ...currentDealDeltas } };
+        const stagedActions = [...humanDeclarationDraft.map(item => ({ ...item })), { type: 'pass' }];
+        const committedLog = [];
         try {
-            if (a.type !== 'pass' && privateSideForPlayer(game, HUMAN) === 'defence' && !isRolePublicForPlayer(game, round, declarationWindow, HUMAN) && publicDefenderIds(game).size === 0)
-                throw new Error('Bemondás előtt az ellenpárnak kontrával kell azonosítania magát; Passzhoz ez nem szükséges.');
-            if (singlePlayerTakerRekontraTarget(game, HUMAN) && a.type !== 'pass')
-                throw new Error('Az ellenpár kontrája után bemondás csak rekontrával tehető; Passzhoz nem kell rekontra.');
-            // Keep the declaration window transactional with the game state: the
-            // authoritative engine must accept a figure before the window advances.
-            if (a.type === 'declare') {
-                const targetCardId = b.dataset.target;
-                game = declareFigureInGame(game, a.declaration, HUMAN, game.completedTricks.length + 1, targetCardId);
+            for (const draft of stagedActions) {
+                if (!game || game.phase !== 'declarations' || currentDeclarer(declarationWindow) !== HUMAN) throw new Error('A bemondási kör állapota megváltozott; próbáld újra.');
+                const hp = game.players.find(p => p.id === HUMAN);
+                if (!hp) throw new Error('A játékos keze nem található.');
+                const acts = legalDeclarationActions(declarationWindow, HUMAN, hp.hand, humanDeclarationContext());
+                const action = acts.find(item => sameHumanDeclarationChoice(item, draft, hp.hand));
+                if (!action) throw new Error('A bemondások között szabálytalan vagy időközben érvénytelenné vált választás van.');
+                if (draft.type !== 'pass' && privateSideForPlayer(game, HUMAN) === 'defence' && !isRolePublicForPlayer(game, round, declarationWindow, HUMAN) && publicDefenderIds(game).size === 0) throw new Error('Bemondás előtt az ellenpárnak kontrával kell azonosítania magát; Passzhoz ez nem szükséges.');
+                if (draft.type !== 'pass' && singlePlayerTakerRekontraTarget(game, HUMAN)) throw new Error('Az ellenpár kontrája után bemondás csak rekontrával tehető; Passzhoz nem kell rekontra.');
+                if (action.type === 'declare') game = declareFigureInGame(game, action.declaration, HUMAN, game.completedTricks.length + 1, draft.targetCardId);
+                const beforeDeclarationWindow = declarationWindow;
+                declarationWindow = applyDeclarationAction(declarationWindow, { ...action, ...(draft.targetCardId ? { targetCardId: draft.targetCardId } : {}) }, hp.hand);
+                refreshPublicPartnershipSignal();
+                if (action.type === 'tarokkCount') {
+                    recordInstantTarokkScore(HUMAN, action.count);
+                    game = { ...game, announcedTarokkCounts: { ...(game.announcedTarokkCounts ?? {}), [HUMAN]: action.count } };
+                }
+                logDeclarationRoundTransition(beforeDeclarationWindow, declarationWindow);
+                const actionText = action.type === 'pass' ? 'Passz' : action.type === 'tarokkCount' ? `${action.count} tarokk` : declarationLabel(action.declaration);
+                committedLog.push(`Te: ${actionText}`);
             }
-            const beforeDeclarationWindow = declarationWindow;
-            declarationWindow = applyDeclarationAction(declarationWindow, a, hp.hand);
-            refreshPublicPartnershipSignal();
-            if (a.type === 'tarokkCount') {
-                recordInstantTarokkScore(HUMAN, a.count);
-                game = { ...game, announcedTarokkCounts: { ...(game.announcedTarokkCounts ?? {}), [HUMAN]: a.count } };
-            }
-            logDeclarationRoundTransition(beforeDeclarationWindow, declarationWindow);
-            const humanActionText = a.type === 'pass' ? 'Passz' : a.type === 'tarokkCount' ? `${a.count} tarokk` : declarationLabel(a.declaration);
-            round = { ...round, eventLog: [...round.eventLog, `Te: ${humanActionText}`] };
-            message = `Te: ${humanActionText}.`;
+            humanDeclarationDraft = [];
+            round = { ...round, eventLog: [...round.eventLog, ...committedLog] };
+            message = 'A bemondások rögzítve.';
             if (declarationWindow.finished) {
                 const g = game;
                 const startingPlayerId = round.startingPlayerId;
@@ -1302,20 +1366,21 @@ function render() {
                 round = { ...round, phase: 'play', currentPlayerId: game.players[li].id };
                 message = 'A lejátszás kezdődik.';
                 runAiPlay();
-            }
-            else {
+            } else {
                 const next = currentDeclarer(declarationWindow);
                 round = next ? { ...round, currentPlayerId: next } : round;
                 message = 'A bemondási kör folytatódik.';
                 runAiDeclarations();
             }
             render();
-        }
-        catch (e) {
-            message = e instanceof Error ? e.message : 'Szabálytalan bemondás.';
+        } catch (error) {
+            game = before.game; declarationWindow = before.declarationWindow; round = before.round; matchScores = before.matchScores; instantScoreHistory = before.instantScoreHistory; currentDealDeltas = before.currentDealDeltas;
+            humanDeclarationDraft = [];
+            message = error instanceof Error ? error.message : 'Szabálytalan bemondás.';
             render();
         }
     }));
+    document.querySelector('#clear-declaration-draft')?.addEventListener('click', () => { humanDeclarationDraft = []; message = 'Az előkészített bemondásokat visszavontad.'; render(); });
     document.querySelectorAll('[data-card]').forEach(b => b.addEventListener('click', () => { const id = b.dataset.card; if (round.phase === 'skart' && (round.parallelSkart === true || round.currentPlayerId === HUMAN)) {
         const human = humanRound();
         const skartCount = human?.receivedTalon.length ?? 0;

@@ -1,5 +1,4 @@
 import type { AuctionAction } from '../engine/auction.js';
-import type { DeclarationAction } from '../engine/declarationWindow.js';
 import type { DeclarationType } from '../engine/declarations.js';
 import type { DeclarationFlowView } from '../engine/partnershipVisibility.js';
 
@@ -8,7 +7,8 @@ export type PlayerAction =
   | { type: 'skart'; cardIds: string[] }
   | { type: 'skart-announce' }
   | { type: 'partner-call'; rank: 18 | 19 | 20 }
-  | { type: 'declaration'; action: Omit<DeclarationAction, 'playerId'> }
+  | { type: 'declaration'; action: { type: 'pass' } | { type: 'declare'; declaration: DeclarationType; targetCardId?: string } | { type: 'tarokkCount'; count: 8 | 9 } }
+  | { type: 'declaration-batch'; actions: Array<{ type: 'declare'; declaration: DeclarationType; targetCardId?: string } | { type: 'tarokkCount'; count: 8 | 9 }> }
   | { type: 'game-contra' }
   | { type: 'declaration-contra'; declarationId: string }
   | { type: 'play-card'; cardId: string };
