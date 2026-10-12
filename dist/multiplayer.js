@@ -1,4 +1,4 @@
-// v3.0.8 multiplayer: click-to-play, declaration drafts, public lobby rooms, and ephemeral room chat.
+// v3.0.12 multiplayer: preserve skart hand position and add per-room join names.
 const app = document.querySelector('#app');
 const storageKey = 'illusztralt-tarokk-multiplayer-session-v2912';
 let session = null;
@@ -26,6 +26,7 @@ let archiveExporting = false;
 let archiveFilterText = '';
 let archivedReview = null;
 let publicRooms = [];
+const publicRoomNames = new Map();
 let publicRoomsError = '';
 let publicRoomsLoading = false;
 let publicRoomsRefreshTimer = null;
@@ -85,7 +86,7 @@ function publicRoomsMarkup() {
   if (publicRoomsLoading && !publicRooms.length) return '<p class="muted">Nyitott szobák betöltése…</p>';
   if (publicRoomsError && !publicRooms.length) return `<p class="archive-error">${esc(publicRoomsError)}</p>`;
   if (!publicRooms.length) return '<p class="muted">Jelenleg nincs szabad férőhelyű várakozó szoba. Létrehozhatsz egy újat, vagy később frissíthetsz.</p>';
-  return `<div class="public-rooms">${publicRooms.map(room => `<article class="public-room"><div><strong>${esc(room.roomId)}</strong><span>${Number(room.joinedCount)}/${Number(room.playerCount)} hely foglalt · ${Number(room.openSeats)} szabad hely</span><small>${Number(room.matchRounds)} kör · ${Number(room.connectedCount)} játékos online</small><small>${(room.seats || []).filter(seat => seat.joined).map(seat => esc(seat.displayName)).join(' · ') || 'Még nincs játékos'}</small></div><button type="button" data-public-join="${esc(room.roomId)}">Belépés</button></article>`).join('')}</div>`;
+  return `<div class="public-rooms">${publicRooms.map(room => `<article class="public-room"><div><strong>${esc(room.roomId)}</strong><span>${Number(room.joinedCount)}/${Number(room.playerCount)} hely foglalt · ${Number(room.openSeats)} szabad hely</span><small>${Number(room.matchRounds)} kör · ${Number(room.connectedCount)} játékos online</small><small>${(room.seats || []).filter(seat => seat.joined).map(seat => esc(seat.displayName)).join(' · ') || 'Még nincs játékos'}</small></div><div class="public-room-join"><input type="text" data-public-name="${esc(room.roomId)}" maxlength="28" autocomplete="off" placeholder="Játékos neve" aria-label="Név a ${esc(room.roomId)} szobába lépéshez" value="${esc(publicRoomNames.get(String(room.roomId)) ?? '')}"><button type="button" data-public-join="${esc(room.roomId)}">Belépés</button></div></article>`).join('')}</div>`;
 }
 async function refreshPublicRooms() {
   if (session || publicRoomsLoading) return;
@@ -100,8 +101,23 @@ async function refreshPublicRooms() {
   } finally {
     publicRoomsLoading = false;
     const host = document.querySelector('#public-room-list');
+    const activeInput = document.activeElement;
+    const focusedRoomId = activeInput instanceof HTMLInputElement && activeInput.matches('[data-public-name]') ? activeInput.dataset.publicName : null;
+    const selectionStart = activeInput instanceof HTMLInputElement ? activeInput.selectionStart : null;
+    const selectionEnd = activeInput instanceof HTMLInputElement ? activeInput.selectionEnd : null;
     if (host && !session) host.innerHTML = publicRoomsMarkup();
     bindPublicRoomButtons();
+    // Polling runs every five seconds. Keep keyboard focus in the name field so
+    // live room refreshes do not interrupt typing or move the insertion point.
+    if (focusedRoomId && !session) {
+      const nextInput = [...document.querySelectorAll('[data-public-name]')].find(input => input.dataset.publicName === focusedRoomId);
+      if (nextInput) {
+        nextInput.focus({ preventScroll: true });
+        if (selectionStart !== null && selectionEnd !== null) {
+          try { nextInput.setSelectionRange(selectionStart, selectionEnd); } catch { /* input type may not support selection */ }
+        }
+      }
+    }
   }
 }
 function ensurePublicRoomsPolling() {
@@ -120,9 +136,25 @@ async function joinRoom(roomId, displayName) {
   } catch (error) { notice = error instanceof Error ? error.message : 'A szobához csatlakozás sikertelen.'; render(); }
 }
 function bindPublicRoomButtons() {
+  document.querySelectorAll('[data-public-name]').forEach(input => input.addEventListener('input', () => {
+    publicRoomNames.set(String(input.dataset.publicName || ''), input.value);
+    input.setCustomValidity('');
+  }));
   document.querySelectorAll('[data-public-join]').forEach(button => button.addEventListener('click', () => {
-    const displayName = document.querySelector('#joinName')?.value ?? '';
-    void joinRoom(button.dataset.publicJoin, displayName);
+    const roomId = String(button.dataset.publicJoin || '');
+    const row = button.closest('.public-room');
+    const nameInput = row?.querySelector('[data-public-name]');
+    const displayName = String(nameInput?.value ?? publicRoomNames.get(roomId) ?? '').trim();
+    if (!displayName) {
+      if (nameInput) {
+        nameInput.setCustomValidity('A belépéshez add meg a neved.');
+        nameInput.reportValidity();
+        nameInput.focus();
+      }
+      return;
+    }
+    publicRoomNames.set(roomId, displayName);
+    void joinRoom(roomId, displayName);
   }));
 }
 function chatMarkup() {
@@ -692,7 +724,15 @@ function render() {
     if(legalSkart) {
       if(selectedSkart.has(id)) selectedSkart.delete(id);
       else if(selectedSkart.size < Number(hints.skartCount || 0)) selectedSkart.add(id);
-      render();
+      // Update only the selected card and counter. Re-rendering the whole page
+      // moves the viewport away from the hand on some browsers/mobile layouts.
+      btn.classList.toggle('selected', selectedSkart.has(id));
+      btn.setAttribute('aria-pressed', selectedSkart.has(id) ? 'true' : 'false');
+      const submit = document.querySelector('#submit-skart');
+      if (submit) {
+        submit.disabled = selectedSkart.size !== Number(hints.skartCount || 0);
+        submit.textContent = `Fektetés (${selectedSkart.size}/${Number(hints.skartCount || 0)})`;
+      }
     }
   }));
   document.querySelectorAll('[data-auction-index]').forEach(btn => btn.addEventListener('click', () => { const a = auctionActions[Number(btn.dataset.auctionIndex)]; if(a) sendAction({type:'auction', action:a}); }));
@@ -767,7 +807,7 @@ function render() {
 async function renderLanding() {
   // The unauthenticated landing page must not read game-state variables.
   app.innerHTML = `
-    <div class="hero"><span class="badge">v3.0.8 multiplayer</span><h2>Online Illusztrált Tarokk</h2><p class="muted">Szobaalapú lobby, szerveroldali szabályellenőrzés és valós idejű játék.</p></div>
+    <div class="hero"><span class="badge">v3.0.12 multiplayer</span><h2>Online Illusztrált Tarokk</h2><p class="muted">Szobaalapú lobby, szerveroldali szabályellenőrzés és valós idejű játék.</p></div>
     <section class="panel forms"><div><h3>Új szoba</h3><label>Név<input id="createName" maxlength="28" placeholder="Játékos neve"></label><label>Játékosok száma<select id="playerCount"><option value="4" selected>4 fő</option><option value="5">5 fő · az osztó leosztásonként kimarad</option></select></label><label>Játék hossza<select id="matchRounds"><option value="1">1 kör · 4/5 leosztás</option><option value="2">2 kör · 8/10 leosztás</option><option value="4" selected>4 kör · 16/20 leosztás</option></select></label><button id="create">Szoba létrehozása</button></div><div><h3>Csatlakozás</h3><label>Szobakód<input id="roomCode" maxlength="6" placeholder="ABC123"></label><label>Név<input id="joinName" maxlength="28" placeholder="Játékos neve"></label><button id="join">Csatlakozás</button></div></section>
     <section class="panel public-room-panel"><div class="public-room-head"><h2>Nyitott szobák</h2><button type="button" id="refresh-public-rooms">Frissítés</button></div><p class="muted">Azok a szobák jelennek meg, amelyek még várakoznak, és van bennük szabad hely. A név megadása után szobakód nélkül is beléphetsz.</p><div id="public-room-list">${publicRoomsMarkup()}</div></section><p class="server">Szerver: ${esc(apiBase)}</p>${notice ? `<div class="status">${esc(notice)}</div>`:''}`;
   document.querySelector('#create')?.addEventListener('click', async () => {

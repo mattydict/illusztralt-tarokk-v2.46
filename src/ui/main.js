@@ -1241,7 +1241,7 @@ function render() {
         ...['hearts', 'diamonds', 'clubs', 'spades'].map(suit => ({ key: suit, label: { hearts: '♥ Kőr', diamonds: '♦ Káró', clubs: '♣ Treff', spades: '♠ Pikk' }[suit], cards: hand.filter(c => c.kind === 'suit' && c.suit === suit) })),
     ];
     const cards = suitGroups.filter(g => g.cards.length).map(g => `<section class="hand-group hand-group-${g.key}"><h3>${g.label}</h3><div class="hand-grid">${g.cards.map(renderCard).join('')}</div></section>`).join('');
-    const skartInfo = round.phase === 'skart' ? `<p>Fektetendő lapok: ${round.players.find(p => p.playerId === HUMAN).receivedTalon.length}. Kijelölve: ${selectedSkart.size}</p>` : round.phase === 'skart-announcement' ? `<p>A fektetett tarokkok közlése a fektető védők feladata.</p>` : '';
+    const skartInfo = round.phase === 'skart' ? `<p>Fektetendő lapok: ${round.players.find(p => p.playerId === HUMAN).receivedTalon.length}. Kijelölve: <span id="skart-selected-count">${selectedSkart.size}</span></p>` : round.phase === 'skart-announcement' ? `<p>A fektetett tarokkok közlése a fektető védők feladata.</p>` : '';
     const partnerKnown = partnerPubliclyKnown(game);
     const opponents = round.players.filter(p => p.playerId !== HUMAN).map(p => {
         const publicRole = publicRoleForPlayer(game, round, declarationWindow, p.playerId);
@@ -1437,11 +1437,13 @@ function render() {
     document.querySelectorAll('[data-card]').forEach(b => b.addEventListener('click', () => { const id = b.dataset.card; if (round.phase === 'skart' && (round.parallelSkart === true || round.currentPlayerId === HUMAN)) {
         const human = humanRound();
         const skartCount = human?.receivedTalon.length ?? 0;
-        if (selectedSkart.has(id))
-            selectedSkart.delete(id);
-        else if (selectedSkart.size < skartCount)
-            selectedSkart.add(id);
-        render();
+        if (selectedSkart.has(id)) selectedSkart.delete(id);
+        else if (selectedSkart.size < skartCount) selectedSkart.add(id);
+        // Keep the existing hand DOM and scroll position while selecting cards.
+        b.classList.toggle('selected', selectedSkart.has(id));
+        b.setAttribute('aria-pressed', selectedSkart.has(id) ? 'true' : 'false');
+        const countLabel = document.querySelector('#skart-selected-count');
+        if (countLabel) countLabel.textContent = String(selectedSkart.size);
     }
     else
         playHuman(id); }));
