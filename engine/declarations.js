@@ -28,8 +28,17 @@ export function availableDeclarations(hand, context) {
         else if (t >= 9)
             result.push({ type: 'tarokk9', required: false });
     }
-    if (!previous.has('volat')) {
-        result.push({ type: 'tuletroa', required: false }, { type: 'fourKings', required: false }, { type: 'doubleGame', required: false });
+    // Trull retains its existing post-Volát restriction. Négy király and
+    // Duplajáték are pair-scoped: they stay available during the still-open
+    // speaking turn, and an opponent pair may announce them after Volát.
+    if (!previous.has('volat'))
+        result.push({ type: 'tuletroa', required: false });
+    const multiplayerBypass = context.multiplayerUnrestrictedDeclarations === true;
+    const hiddenDefence = context.speakerIsDefence === true && context.speakerRolePubliclyKnown !== true && context.allowHiddenDefenceFourKings !== true;
+    if (!context.pairVolatAlreadyFixed)
+        result.push({ type: 'doubleGame', required: false });
+    if (!context.pairVolatAlreadyFixed && (!hiddenDefence || multiplayerBypass)) {
+        result.push({ type: 'fourKings', required: false });
     }
     result.push({ type: 'volat', required: false }, { type: 'pagatUltimo', required: false }, { type: 'sasUltimo', required: false }, { type: 'kingUltimo', required: false, reason: 'A Király ultimóhoz a jelzett királyt külön kell megadni, ha a felület kéri.' }, { type: 'pagatUhu', required: false }, { type: 'sasUhu', required: false }, { type: 'kingUhu', required: false, reason: 'A Király uhuhoz a jelzett királyt külön kell megadni, ha a felület kéri.' });
     // Undefined means the caller has not supplied an explicit Trull context.
@@ -44,16 +53,16 @@ export function availableDeclarations(hand, context) {
     const strictXixCentrumCore = context.calledTarokk === 19
         ? (hasTarokk(hand, 22) && hasTarokk(hand, 21) && hasTarokk(hand, 20) && hasTarokk(hand, 18))
         : true;
-    if ((hasTrullContext || rareTakerCentrum) && lyukasAllowed && strictXixCentrumCore)
+    if (multiplayerBypass || ((hasTrullContext || rareTakerCentrum) && lyukasAllowed && strictXixCentrumCore))
         result.push({ type: 'centrum', required: false });
     if (hasTrullContext && !rareTakerCentrum && lyukasAllowed) {
         result.push({ type: 'kismadar', required: false }, { type: 'nagymadar', required: false });
     }
-    // XXI-fogás is detected from play; it is not a separately declarable figure.
-    // The declaration-history restrictions (e.g. Volát után tiltott emelések,
+    // XXI-fogás is an explicit announcement; if it is not announced, the
+    // lifecycle may still record it as a silent figure when it is achieved.
+    result.push({ type: 'xxiFogas', required: false });
+    // Declaration-history restrictions (e.g. Volát után tiltott emelések,
     // same-trick pair restrictions, Ultimo -> Uhu) remain in declarationRules.
-    // They are genuine announcement-order rules, not tests of whether a figure
-    // is theoretically makeable from the hidden cards.
     return dedupeDeclarations(result).filter(item => !pairDeclared.has(item.type));
 }
 function dedupeDeclarations(items) {

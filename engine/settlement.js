@@ -48,9 +48,17 @@ export function figureSettlementsFromProgress(progress, takerId, partnerId) {
         if (declaration.status !== 'fulfilled' && declaration.status !== 'failed')
             continue;
         const ownerPairWon = declaration.status === 'fulfilled';
-        const ownerIsTakerPair = pairOf(declaration.ownerId, takerId, partnerId) === 'taker';
+        // Prefer the immutable pair identity captured when the declaration was made.
+        // This prevents a hidden/public partner-view mismatch from moving a fulfilled
+        // defence-side Trull onto the taker side at final settlement.
+        const ownerIsTakerPair = declaration.pairId?.startsWith('taker:') === true
+            ? true
+            : declaration.pairId?.startsWith('defence:') === true
+                ? false
+                : pairOf(declaration.ownerId, takerId, partnerId) === 'taker';
         result.push({
             type: declaration.type,
+            ownerId: declaration.ownerId,
             points,
             ownerPairWon,
             ownerIsTakerPair,
@@ -65,6 +73,7 @@ export function figureSettlementsFromProgress(progress, takerId, partnerId) {
         const ownerIsTakerPair = pairOf(silent.ownerId, takerId, partnerId) === 'taker';
         result.push({
             type: silent.type,
+            ownerId: silent.ownerId,
             points,
             ownerPairWon: silent.status === 'fulfilled',
             silent: true,
@@ -180,6 +189,8 @@ export function settlementLines(input) {
         lines.push({
             kind: 'figure',
             type: figure.type,
+            ...(figure.ownerId ? { ownerId: figure.ownerId } : {}),
+            ...(figure.ownerIsTakerPair !== undefined ? { ownerSide: figure.ownerIsTakerPair ? 'taker' : 'defence' } : {}),
             points: effectivePoints * multiplier,
             positiveForTakerPair: figure.ownerIsTakerPair === undefined
                 ? figure.ownerPairWon

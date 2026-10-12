@@ -8,7 +8,7 @@ export type PlayerAction =
   | { type: 'skart-announce' }
   | { type: 'partner-call'; rank: 18 | 19 | 20 }
   | { type: 'declaration'; action: { type: 'pass' } | { type: 'declare'; declaration: DeclarationType; targetCardId?: string } | { type: 'tarokkCount'; count: 8 | 9 } }
-  | { type: 'declaration-batch'; actions: Array<{ type: 'declare'; declaration: DeclarationType; targetCardId?: string } | { type: 'tarokkCount'; count: 8 | 9 }> }
+  | { type: 'declaration-batch'; actions: Array<{ type: 'declare'; declaration: DeclarationType; targetCardId?: string } | { type: 'tarokkCount'; count: 8 | 9 } | { type: 'game-contra' } | { type: 'declaration-contra'; declarationId: string }> }
   | { type: 'game-contra' }
   | { type: 'declaration-contra'; declarationId: string }
   | { type: 'play-card'; cardId: string };

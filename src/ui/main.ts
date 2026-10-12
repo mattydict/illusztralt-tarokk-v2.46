@@ -11,7 +11,7 @@ import { chooseAIContra } from '../engine/aiContra.js';
 import { chooseAIAuctionAction } from '../engine/aiAuction.js';
 import { chooseAICardAtDifficulty, type AIDifficulty } from '../engine/aiPlay.js';
 import { createInitialState, legalCardsForPlay, playCard, setPartnership, recordPartnerCall, startDeclarations, startPlay, declareFigureInGame, canRaiseGameContraInGame, raiseGameContraInGame, canRaiseDeclarationContraInGame, raiseDeclarationContraInGame, type GameState } from '../engine/game.js';
-import { createDeclarationWindow, declarationOrderFromTaker, currentDeclarer, legalDeclarationActions, applyDeclarationAction, type DeclarationWindowState } from '../engine/declarationWindow.js';
+import { createDeclarationWindow, declarationOrderFromTaker, currentDeclarer, legalDeclarationActions, applyDeclarationAction, pairHasFixedVolatDeclaration, type DeclarationWindowState } from '../engine/declarationWindow.js';
 import { shuffle } from '../engine/game.js';
 import { legalSkartCards } from '../engine/skart.js';
 import { chooseAISkart } from '../engine/aiSkart.js';
@@ -452,6 +452,7 @@ function runAiDeclarations(){
   const gp = game.players.find(p=>p.id===id);
   if(!gp) return;
   const ctx = {
+    pairVolatAlreadyFixed: pairHasFixedVolatDeclaration(declarationWindow, id, game.takerId ?? '', game.partnerId ?? ''),
     isTaker: id===game.takerId,
     invited: round.auctionOutcome?.calledTarokk!==undefined,
     ...(round.auctionOutcome?.calledTarokk!==undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk as 18|19|20 } : {}),
@@ -493,7 +494,7 @@ function runAiDeclarations(){
     if(action.type==='declare'){
       const targetCardId=(action.declaration==='kingUltimo'||action.declaration==='kingUhu')?targetCardForKingDeclaration(action.declaration,gp.hand):undefined;
       if((action.declaration==='kingUltimo'||action.declaration==='kingUhu')&&!targetCardId) action=actions.find(a=>a.type==='pass')??action;
-      else game=declareFigureInGame(game,action.declaration,id,game.completedTricks.length+1,targetCardId);
+      else game=declareFigureInGame(game,action.declaration,id,game.completedTricks.length+1,targetCardId,pairHasFixedVolatDeclaration(declarationWindow,id,game.takerId ?? '',game.partnerId ?? ''));
     }
     declarationWindow=applyDeclarationAction(declarationWindow,action,gp.hand);
     if(action.type==='tarokkCount'){ recordInstantTarokkScore(id,action.count); game={...game,announcedTarokkCounts:{...(game.announcedTarokkCounts??{}),[id]:action.count}}; }
@@ -637,7 +638,7 @@ function actionButtons(){
   if(round.phase==='declarations'&&game&&declarationWindow&&currentDeclarer(declarationWindow)===HUMAN){
     const hp=game.players.find(p=>p.id===HUMAN);
     if(hp){
-      const ctx = {isTaker:HUMAN===game.takerId, invited:round.auctionOutcome?.calledTarokk!==undefined, ...(round.auctionOutcome?.calledTarokk!==undefined?{invitedTarokk:round.auctionOutcome.calledTarokk as 18|19|20}:{}), ...(round.contract?{contract:round.contract}:{}), previousDeclarations:game.declarations.declarations.map(d=>d.type),partnersKnown:partnerPubliclyKnown(game), ...(HUMAN===game.partnerId?{isPartner:true}:{}), ...(round.calledTarokk!==undefined?{calledTarokk:round.calledTarokk as 18|19|20}:{}), ...(game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullDeclared:true}:{}), ...(HUMAN===game.takerId&&round.calledTarokk===19&&!game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullOmittedByTaker:true}:{})};
+      const ctx = {isTaker:HUMAN===game.takerId, invited:round.auctionOutcome?.calledTarokk!==undefined, ...(round.auctionOutcome?.calledTarokk!==undefined?{invitedTarokk:round.auctionOutcome.calledTarokk as 18|19|20}:{}), ...(round.contract?{contract:round.contract}:{}), previousDeclarations:game.declarations.declarations.map(d=>d.type),pairVolatAlreadyFixed:pairHasFixedVolatDeclaration(declarationWindow,HUMAN,game.takerId ?? '',game.partnerId ?? ''),partnersKnown:partnerPubliclyKnown(game), ...(HUMAN===game.partnerId?{isPartner:true}:{}), ...(round.calledTarokk!==undefined?{calledTarokk:round.calledTarokk as 18|19|20}:{}), ...(game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullDeclared:true}:{}), ...(HUMAN===game.takerId&&round.calledTarokk===19&&!game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullOmittedByTaker:true}:{})};
       const acts=legalDeclarationActions(declarationWindow,HUMAN,hp.hand,ctx);
       const currentGame=game;
       const humanNeedsRekontra=Boolean((currentGame.gameContraState?.records ?? []).some(r=>r.side==='defence' && r.level==='kontra' && !((currentGame.gameContraState?.records ?? []).some(x=>x.side==='taker' && x.level==='rekontra')) && HUMAN===currentGame.partnerId));
@@ -728,7 +729,7 @@ function render(){
     const label = canPlay ? `${cardName(c)} – szabályosan kijátszható` : canSkart ? `${cardName(c)} – fektetéshez választható` : `${cardName(c)} – jelenleg nem választható`;
     const suitClass=c.kind==='suit'?`suit-${c.suit}`:'';
     const face = cardImageSrc(c);
-    return `<button type="button" class="card card-illustrated ${c.kind==='tarokk'?'tarokk':suitClass} ${canPlay?'legal':''} ${canSkart?'skartable':''} ${selected?'selected':''} ${enabled?'active':'disabled'}" data-card="${c.id}" aria-label="${label}" title="${label}" ${enabled?'':'aria-disabled="true" disabled'}><img class="card-face" src="${face}" alt="${cardName(c)}" loading="lazy" decoding="async" draggable="false"><span class="card-points" aria-hidden="true">${c.points}</span><strong class="card-a11y">${cardName(c)}</strong></button>`;
+    return `<button type="button" class="card card-illustrated ${c.kind==='tarokk'?'tarokk':suitClass} ${canPlay?'legal':''} ${canSkart?'skartable':''} ${selected?'selected':''} ${enabled?'active':'disabled'}" data-card="${c.id}" aria-label="${label}" title="${label}" ${enabled?'':'aria-disabled="true" disabled'}><img class="card-face" src="${face}" alt="${cardName(c)}" loading="lazy" decoding="async" draggable="false"><strong class="card-a11y">${cardName(c)}</strong></button>`;
   };
   const suitGroups: Array<{key:string;label:string;cards:Card[]}>=[
     {key:'tarokk',label:'Tarokkok',cards:hand.filter(c=>c.kind==='tarokk')},
@@ -790,14 +791,14 @@ function render(){
   document.querySelectorAll<HTMLButtonElement>('[data-decl]').forEach(b=>b.addEventListener('click',()=>{
     if(!game||!round||!declarationWindow)return;
     const hp=game.players.find(p=>p.id===HUMAN); if(!hp)return;
-    const ctx={isTaker:HUMAN===game.takerId,invited:round.auctionOutcome?.calledTarokk!==undefined,...(round.auctionOutcome?.calledTarokk!==undefined?{invitedTarokk:round.auctionOutcome.calledTarokk as 18|19|20}:{}),...(round.contract?{contract:round.contract}:{}),previousDeclarations:game.declarations.declarations.map(d=>d.type),partnersKnown:partnerPubliclyKnown(game),...(declarationWindow && declarationWindow.announcedTarokkCounts[HUMAN]!==undefined?{announcedTarokkCount:declarationWindow.announcedTarokkCounts[HUMAN]}:{}),...(HUMAN===game.partnerId?{isPartner:true}:{}),...(round.calledTarokk!==undefined?{calledTarokk:round.calledTarokk as 18|19|20}:{}),...(game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullDeclared:true}:{}),...(HUMAN===game.takerId&&round.calledTarokk===19&&!game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullOmittedByTaker:true}:{})};
+    const ctx={isTaker:HUMAN===game.takerId,invited:round.auctionOutcome?.calledTarokk!==undefined,...(round.auctionOutcome?.calledTarokk!==undefined?{invitedTarokk:round.auctionOutcome.calledTarokk as 18|19|20}:{}),...(round.contract?{contract:round.contract}:{}),previousDeclarations:game.declarations.declarations.map(d=>d.type),pairVolatAlreadyFixed:pairHasFixedVolatDeclaration(declarationWindow,HUMAN,game.takerId ?? '',game.partnerId ?? ''),partnersKnown:partnerPubliclyKnown(game),...(declarationWindow && declarationWindow.announcedTarokkCounts[HUMAN]!==undefined?{announcedTarokkCount:declarationWindow.announcedTarokkCounts[HUMAN]}:{}),...(HUMAN===game.partnerId?{isPartner:true}:{}),...(round.calledTarokk!==undefined?{calledTarokk:round.calledTarokk as 18|19|20}:{}),...(game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullDeclared:true}:{}),...(HUMAN===game.takerId&&round.calledTarokk===19&&!game.declarations.declarations.some(d=>d.type==='tuletroa')?{trullOmittedByTaker:true}:{})};
     const acts=legalDeclarationActions(declarationWindow,HUMAN,hp.hand,ctx); const a=acts[Number(b.dataset.decl)]; if(!a)return;
     try {
       // Keep the declaration window transactional with the game state: the
       // authoritative engine must accept a figure before the window advances.
       if(a.type==='declare') {
         const targetCardId = b.dataset.target;
-        game=declareFigureInGame(game,a.declaration,HUMAN,game.completedTricks.length+1,targetCardId);
+        game=declareFigureInGame(game,a.declaration,HUMAN,game.completedTricks.length+1,targetCardId,pairHasFixedVolatDeclaration(declarationWindow,HUMAN,game.takerId ?? '',game.partnerId ?? ''));
       }
       declarationWindow=applyDeclarationAction(declarationWindow,a,hp.hand);
       if(a.type==='tarokkCount'){ recordInstantTarokkScore(HUMAN,a.count); game={...game,announcedTarokkCounts:{...(game.announcedTarokkCounts??{}),[HUMAN]:a.count}}; }

@@ -8,14 +8,15 @@ import {
 } from '../engine/index.js';
 import { legalAuctionActions, applyAuctionAction, type AuctionAction, type AuctionState } from '../engine/auction.js';
 import { resolveCalledPartner, pairOf as pairOfEngine } from '../engine/partnership.js';
-import { createDeclarationWindow, declarationOrderFromTaker, currentDeclarer, legalDeclarationActions, applyDeclarationAction, markDeclarationTurnAction, type DeclarationWindowState } from '../engine/declarationWindow.js';
+import { createDeclarationWindow, declarationOrderFromTaker, currentDeclarer, legalDeclarationActions, applyDeclarationAction, markDeclarationTurnAction, pairHasFixedVolatDeclaration, type DeclarationWindowState } from '../engine/declarationWindow.js';
 import type { Card } from '../engine/cards.js';
 import { legalCardsForPlay } from '../engine/game.js';
 import { legalSkartCards } from '../engine/skart.js';
+import { nextContraLevel } from '../engine/contra.js';
 import type { DeclarationContext, DeclarationType } from '../engine/declarations.js';
 import type { RoundState } from '../engine/round.js';
 import type { PlayerAction, AuthoritativeView, PublicEvent, PublicPlayerView, PublicCard } from './protocol.js';
-import { publicPartnerId, privateSideForPlayer, publicRoleForPlayer, deriveDeclarationFlowView } from '../engine/partnershipVisibility.js';
+import { publicPartnerId, privateSideForPlayer, publicRoleForPlayer, publicDefenderIds, deriveDeclarationFlowView } from '../engine/partnershipVisibility.js';
 
 export interface RoomOptions {
   roomId: string;
@@ -48,7 +49,7 @@ export interface PersistedRoomState {
 
 type Listener = (event: PublicEvent) => void;
 type DeclarationPayload = { type: 'pass' } | { type: 'declare'; declaration: DeclarationType; targetCardId?: string } | { type: 'tarokkCount'; count: 8 | 9 };
-type PendingDeclarationPayload = Exclude<DeclarationPayload, { type: 'pass' }>;
+type PendingDeclarationPayload = Exclude<DeclarationPayload, { type: 'pass' }> | { type: 'game-contra'; displayLabel?: string } | { type: 'declaration-contra'; declarationId: string; displayLabel?: string };
 
 function cloneCard(card: Card): PublicCard {
   return card.kind === 'tarokk'
@@ -114,7 +115,17 @@ function actionSummary(action: PlayerAction, playerId: string, before: Persisted
     if (a.type === 'declare') return `Bemondás: ${figureLabels[a.declaration] ?? a.declaration}${a.targetCardId ? ` · cél: ${localizedTargetCardLabel(a.targetCardId)}` : ''}`;
   }
   if (actionLabel === 'declaration-batch') {
-    const items = [...action.actions, { type: 'pass' as const }].map(a => a.type === 'pass' ? 'Passz' : a.type === 'tarokkCount' ? `${a.count} tarokk` : `${figureLabels[a.declaration] ?? a.declaration}${a.targetCardId ? ` (${localizedTargetCardLabel(a.targetCardId)})` : ''}`);
+    const items = [...action.actions, { type: 'pass' as const }].map(a => {
+      if (a.type === 'pass') return 'Passz';
+      if (a.type === 'tarokkCount') return `${a.count} tarokk`;
+      if (a.type === 'game-contra') return 'Kontra a játékra';
+      if (a.type === 'declaration-contra') {
+        const target = after.game?.declarations.declarations.find(d => d.id === a.declarationId);
+        const level = target?.contra?.level ?? 'kontra';
+        return `${contraLabel(level)} a ${figureLabels[target?.type ?? ''] ?? target?.type ?? 'bemondás'}-ra`;
+      }
+      return `${figureLabels[a.declaration] ?? a.declaration}${a.targetCardId ? ` (${localizedTargetCardLabel(a.targetCardId)})` : ''}`;
+    });
     return `Bemondások rögzítve: ${items.join(', ')}`;
   }
   if (actionLabel === 'game-contra') return `Kontra a játékra: ${contraLabel(after.game?.gameContraState?.level ?? after.game?.gameContra ?? 'kontra')}`;
@@ -430,11 +441,15 @@ export class AuthoritativeRoom {
     }
     const current = this.currentPlayerId;
     if (!current || current !== playerId) {
-      const declarationContraIds = this.game?.phase === 'declarations'
-        ? this.game.declarations.declarations.filter(d => canRaiseDeclarationContraInGame(this.game!, d.id, playerId)).map(d => d.id)
-        : [];
-      if (this.game && canRaiseGameContraInGame(this.game, playerId)) result.gameContra = true;
-      if (declarationContraIds.length) result.declarationContraIds = declarationContraIds;
+      if (this.game?.phase === 'declarations') {
+        const gameLevel = nextContraLevel(this.game.gameContraState?.level ?? this.game.gameContra ?? 'none');
+        if (canRaiseGameContraInGame(this.game, playerId) && gameLevel) result.gameContra = { level: gameLevel, label: contraLabel(gameLevel) };
+        const contraActions = this.game.declarations.declarations
+          .filter(d => canRaiseDeclarationContraInGame(this.game!, d.id, playerId))
+          .map(d => { const level = nextContraLevel(d.contra.level); return level ? { id: d.id, type: d.type, ownerId: d.ownerId, level, label: contraLabel(level) } : undefined; })
+          .filter(Boolean);
+        if (contraActions.length) result.declarationContraActions = contraActions;
+      }
       return result;
     }
     if (!this.game && this.round.phase === 'auction') {
@@ -460,6 +475,13 @@ export class AuthoritativeRoom {
         }
         return [action];
       }).flat();
+      const gameLevel = nextContraLevel(this.game.gameContraState?.level ?? this.game.gameContra ?? 'none');
+      if (canRaiseGameContraInGame(this.game, playerId) && gameLevel) result.gameContra = { level: gameLevel, label: contraLabel(gameLevel) };
+      const contraActions = this.game.declarations.declarations
+        .filter(d => canRaiseDeclarationContraInGame(this.game!, d.id, playerId))
+        .map(d => { const level = nextContraLevel(d.contra.level); return level ? { id: d.id, type: d.type, ownerId: d.ownerId, level, label: contraLabel(level) } : undefined; })
+        .filter(Boolean);
+      if (contraActions.length) result.declarationContraActions = contraActions;
     } else if (this.game?.phase === 'play') {
       result.playCardIds = this.game.players[this.game.nextPlayerIndex]?.id === playerId
         ? this.game.players[this.game.nextPlayerIndex].hand.filter(() => true).map(c => c.id)
@@ -469,6 +491,12 @@ export class AuthoritativeRoom {
       result.playCardIds = [...legalIds];
     }
     return result;
+  }
+
+  private refreshPublicPartnershipSignal(): void {
+    if (!this.game || this.game.publicPartnerId) return;
+    const inferredPartner = publicPartnerId(this.game, this.round, this.declarationWindow);
+    if (inferredPartner) this.game = { ...this.game, publicPartnerId: inferredPartner };
   }
 
   snapshotFor(playerId: string): AuthoritativeView {
@@ -569,8 +597,11 @@ export class AuthoritativeRoom {
     }
     const current = this.currentPlayerId;
     if (!current || current !== playerId) {
-      if (this.game?.phase === 'declarations' && this.canContraForAny(playerId)) return ['game-contra', 'declaration-contra'];
-      return [];
+      if (this.game?.phase !== 'declarations') return [];
+      const actions: PlayerAction['type'][] = [];
+      if (canRaiseGameContraInGame(this.game, playerId)) actions.push('game-contra');
+      if (this.game.declarations.declarations.some(d => canRaiseDeclarationContraInGame(this.game!, d.id, playerId))) actions.push('declaration-contra');
+      return actions;
     }
     if (!this.game) {
       if (this.round.phase === 'auction') return legalAuctionActions(this.round.auction, playerId, handsMap(this.round)).length ? ['auction'] : [];
@@ -580,7 +611,12 @@ export class AuthoritativeRoom {
       }
       if (this.round.phase === 'partner-call') return ['partner-call'];
     }
-    if (this.game?.phase === 'declarations') return ['declaration', 'game-contra', 'declaration-contra'];
+    if (this.game?.phase === 'declarations') {
+      const actions: PlayerAction['type'][] = ['declaration'];
+      if (canRaiseGameContraInGame(this.game, playerId)) actions.push('game-contra');
+      if (this.game.declarations.declarations.some(d => canRaiseDeclarationContraInGame(this.game!, d.id, playerId))) actions.push('declaration-contra');
+      return actions;
+    }
     if (this.game?.phase === 'play') return ['play-card'];
     return [];
   }
@@ -691,6 +727,8 @@ export class AuthoritativeRoom {
     const rolePublic = publicRole !== 'unknown';
     const visiblePairDeclaredTypes = rolePublic || privateSide === 'partner' || privateSide === 'taker' ? pairDeclaredTypes : [];
     return {
+      multiplayerUnrestrictedDeclarations: true,
+      pairVolatAlreadyFixed: Boolean(this.declarationWindow && this.game!.partnerId && pairHasFixedVolatDeclaration(this.declarationWindow, playerId, this.game!.takerId ?? '', this.game!.partnerId ?? '')),
       isTaker: playerId === this.game.takerId,
       invited: this.round.auctionOutcome?.calledTarokk !== undefined,
       ...(this.round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: this.round.auctionOutcome.calledTarokk as 18 | 19 | 20 } : {}),
@@ -702,6 +740,9 @@ export class AuthoritativeRoom {
       ...(playerId === this.game.partnerId ? { isPartner: true } : {}),
       ...(publicPartner ? { partnerSeat: this.game.players.findIndex(p => p.id === publicPartner) } : (privateSide === 'partner' ? { partnerSeat: this.game.players.findIndex(p => p.id === this.game.takerId) } : {})),
       speakerIsDefence: privateSide === 'defence',
+      speakerIsPartner: privateSide === 'partner',
+      hasPublicDefenceSignal: publicDefenderIds(this.game).size > 0,
+      turnHadContra: this.declarationWindow?.turnHadContra === true,
       speakerRolePubliclyKnown: rolePublic,
       ...(this.round.calledTarokk !== undefined ? { calledTarokk: this.round.calledTarokk as 18 | 19 | 20 } : {}),
       ...(this.game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}),
@@ -718,8 +759,10 @@ export class AuthoritativeRoom {
     const before = this.exportPersistedState();
     try {
       for (const action of draftActions) {
-        if (!action || !['declare', 'tarokkCount'].includes(action.type)) throw new Error('A piszkozat csak bemondásokat tartalmazhat.');
-        this.applyDeclaration(playerId, action);
+        if (!action || !['declare', 'tarokkCount', 'game-contra', 'declaration-contra'].includes(action.type)) throw new Error('A piszkozat csak bemondást vagy kontrát tartalmazhat.');
+        if (action.type === 'game-contra') this.applyGameContra(playerId);
+        else if (action.type === 'declaration-contra') this.applyDeclarationContra(playerId, action.declarationId);
+        else this.applyDeclaration(playerId, action);
         if (!this.game || this.game.phase !== 'declarations' || this.currentPlayerId !== playerId) throw new Error('A piszkozat folytatása ebben a körben nem lehetséges.');
       }
       return [...((this.legalActionHints(playerId).declarationActions as unknown[] | undefined) ?? [])];
@@ -731,8 +774,10 @@ export class AuthoritativeRoom {
   private applyDeclarationBatch(playerId: string, draftActions: PendingDeclarationPayload[]): void {
     if (!Array.isArray(draftActions) || draftActions.length > 20) throw new Error('Érvénytelen bemondási csomag.');
     for (const action of draftActions) {
-      if (!action || !['declare', 'tarokkCount'].includes(action.type)) throw new Error('A rögzítendő csomag csak bemondásokat tartalmazhat.');
-      this.applyDeclaration(playerId, action);
+      if (!action || !['declare', 'tarokkCount', 'game-contra', 'declaration-contra'].includes(action.type)) throw new Error('A rögzítendő csomag csak bemondásokat vagy kontrákat tartalmazhat.');
+      if (action.type === 'game-contra') this.applyGameContra(playerId);
+      else if (action.type === 'declaration-contra') this.applyDeclarationContra(playerId, action.declarationId);
+      else this.applyDeclaration(playerId, action);
       if (!this.game || this.game.phase !== 'declarations' || this.currentPlayerId !== playerId) throw new Error('A bemondási csomagban maradt érvénytelen vagy lezáró művelet.');
     }
     this.applyDeclaration(playerId, { type: 'pass' });
@@ -743,10 +788,11 @@ export class AuthoritativeRoom {
     const action = { ...payload, playerId } as import('../engine/declarationWindow.js').DeclarationAction;
     if (action.type === 'declare') {
       const gp = getPlayer(this.game, playerId);
-      const legal = legalDeclarationActions(this.declarationWindow, playerId, gp.hand, this.declarationContext(playerId));
+      const context = this.declarationContext(playerId);
+      const legal = legalDeclarationActions(this.declarationWindow, playerId, gp.hand, context);
       if (!legal.some(x => sameDeclarationAction(x, action, gp.hand))) throw new Error('Ez a bemondás ebben a helyzetben nem szabályos.')
       const targetCardId = action.targetCardId;
-      this.game = declareFigureInGame(this.game, action.declaration, playerId, this.game.completedTricks.length + 1, targetCardId);
+      this.game = declareFigureInGame(this.game, action.declaration, playerId, this.game.completedTricks.length + 1, targetCardId, context.pairVolatAlreadyFixed === true);
     }
     if (action.type !== 'declare') {
       const gp = getPlayer(this.game, playerId);
@@ -755,6 +801,7 @@ export class AuthoritativeRoom {
     }
     const gp = getPlayer(this.game, playerId);
     this.declarationWindow = applyDeclarationAction(this.declarationWindow, action, gp.hand);
+    this.refreshPublicPartnershipSignal();
     if (action.type === 'tarokkCount') this.recordInstantTarokkScore(playerId, action.count as 8|9);
     if (!this.declarationWindow.finished) {
       const next = currentDeclarer(this.declarationWindow);
@@ -770,16 +817,18 @@ export class AuthoritativeRoom {
     if (!this.game || !canRaiseGameContraInGame(this.game, playerId)) throw new Error('Most nem mondhatsz kontrát a játékra.');
     this.game = raiseGameContraInGame(this.game, playerId);
     if (this.declarationWindow && currentDeclarer(this.declarationWindow) === playerId) {
-      this.declarationWindow = markDeclarationTurnAction(this.declarationWindow, playerId);
+      this.declarationWindow = markDeclarationTurnAction(this.declarationWindow, playerId, true, { target: 'game' });
     }
+    this.refreshPublicPartnershipSignal();
   }
 
   private applyDeclarationContra(playerId: string, declarationId: string): void {
     if (!this.game || !canRaiseDeclarationContraInGame(this.game, declarationId, playerId)) throw new Error('Most nem mondhatsz kontrát erre a bemondásra.');
     this.game = raiseDeclarationContraInGame(this.game, declarationId, playerId);
     if (this.declarationWindow && currentDeclarer(this.declarationWindow) === playerId) {
-      this.declarationWindow = markDeclarationTurnAction(this.declarationWindow, playerId);
+      this.declarationWindow = markDeclarationTurnAction(this.declarationWindow, playerId, true, { target: 'declaration', declarationId });
     }
+    this.refreshPublicPartnershipSignal();
   }
 
   private applyPlayCard(playerId: string, cardId: string): void {

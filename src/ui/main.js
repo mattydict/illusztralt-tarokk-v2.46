@@ -12,7 +12,7 @@ import { chooseAIContra } from '../engine/aiContra.js';
 import { chooseAIAuctionAction } from '../engine/aiAuction.js';
 import { chooseAICardAtDifficulty } from '../engine/aiPlay.js';
 import { createInitialState, legalCardsForPlay, playCard, setPartnership, recordPartnerCall, startDeclarations, startPlay, declareFigureInGame, canRaiseGameContraInGame, raiseGameContraInGame, canRaiseDeclarationContraInGame, raiseDeclarationContraInGame } from '../engine/game.js';
-import { createDeclarationWindow, declarationOrderFromTaker, currentDeclarer, legalDeclarationActions, applyDeclarationAction, markDeclarationTurnAction } from '../engine/declarationWindow.js';
+import { createDeclarationWindow, declarationOrderFromTaker, currentDeclarer, legalDeclarationActions, applyDeclarationAction, markDeclarationTurnAction, pairHasFixedVolatDeclaration } from '../engine/declarationWindow.js';
 import { legalSkartCards } from '../engine/skart.js';
 import { chooseAISkart } from '../engine/aiSkart.js';
 import { chooseAIPartnerCall } from '../engine/aiPartnerCall.js';
@@ -188,7 +188,7 @@ function speakerVisibilityContext(g, id) {
     };
 }
 function humanDeclarationContext() {
-    return { ...speakerVisibilityContext(game, HUMAN), isTaker: HUMAN === game.takerId, invited: round.auctionOutcome?.calledTarokk !== undefined, ...(round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk } : {}), ...(round.contract ? { contract: round.contract } : {}), previousDeclarations: game.declarations.declarations.map(d => d.type), partnersKnown: partnerPubliclyKnown(game), ...(declarationWindow && declarationWindow.announcedTarokkCounts[HUMAN] !== undefined ? { announcedTarokkCount: declarationWindow.announcedTarokkCounts[HUMAN] } : {}), ...(HUMAN === game.partnerId ? { isPartner: true } : {}), ...(round.calledTarokk !== undefined ? { calledTarokk: round.calledTarokk } : {}), ...(game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}), ...(HUMAN === game.takerId && round.calledTarokk === 19 && !game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}) };
+    return { ...speakerVisibilityContext(game, HUMAN), isTaker: HUMAN === game.takerId, invited: round.auctionOutcome?.calledTarokk !== undefined, ...(round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk } : {}), ...(round.contract ? { contract: round.contract } : {}), previousDeclarations: game.declarations.declarations.map(d => d.type), pairVolatAlreadyFixed: pairHasFixedVolatDeclaration(declarationWindow, HUMAN, game.takerId ?? '', game.partnerId ?? ''), partnersKnown: partnerPubliclyKnown(game), ...(declarationWindow && declarationWindow.announcedTarokkCounts[HUMAN] !== undefined ? { announcedTarokkCount: declarationWindow.announcedTarokkCounts[HUMAN] } : {}), ...(HUMAN === game.partnerId ? { isPartner: true } : {}), ...(round.calledTarokk !== undefined ? { calledTarokk: round.calledTarokk } : {}), ...(game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullDeclared: true } : {}), ...(HUMAN === game.takerId && round.calledTarokk === 19 && !game.declarations.declarations.some(d => d.type === 'tuletroa') ? { trullOmittedByTaker: true } : {}) };
 }
 function sameHumanDeclarationChoice(legal, draft, hand) {
     if (!legal || !draft || legal.type !== draft.type) return false;
@@ -226,10 +226,24 @@ function previewHumanDeclarationDraft() {
         for (const draft of humanDeclarationDraft) {
             const hp = game.players.find(p => p.id === HUMAN);
             if (!hp || currentDeclarer(declarationWindow) !== HUMAN) throw new Error('A piszkozat már nem ehhez a bemondási körhöz tartozik.');
+            if (draft.type === 'game-contra') {
+                if (!canRaiseGameContraInGame(game, HUMAN)) throw new Error('A játékra tett kontra már nem szabályos.');
+                game = raiseGameContraInGame(game, HUMAN);
+                declarationWindow = markDeclarationTurnAction(declarationWindow, HUMAN, true, { target: 'game' });
+                refreshPublicPartnershipSignal();
+                continue;
+            }
+            if (draft.type === 'declaration-contra') {
+                if (!canRaiseDeclarationContraInGame(game, draft.declarationId, HUMAN)) throw new Error('A bemondásra tett kontra már nem szabályos.');
+                game = raiseDeclarationContraInGame(game, draft.declarationId, HUMAN);
+                declarationWindow = markDeclarationTurnAction(declarationWindow, HUMAN, true, { target: 'declaration', declarationId: draft.declarationId });
+                refreshPublicPartnershipSignal();
+                continue;
+            }
             const legal = legalDeclarationActions(declarationWindow, HUMAN, hp.hand, humanDeclarationContext());
             const selected = legal.find(action => sameHumanDeclarationChoice(action, draft, hp.hand));
             if (!selected) throw new Error('Az előkészített bemondás a korábbi választás után már nem szabályos.');
-            if (selected.type === 'declare') game = declareFigureInGame(game, selected.declaration, HUMAN, game.completedTricks.length + 1, draft.targetCardId);
+            if (selected.type === 'declare') game = declareFigureInGame(game, selected.declaration, HUMAN, game.completedTricks.length + 1, draft.targetCardId, humanDeclarationContext().pairVolatAlreadyFixed === true);
             declarationWindow = applyDeclarationAction(declarationWindow, { ...selected, ...(draft.targetCardId ? { targetCardId: draft.targetCardId } : {}) }, hp.hand);
             refreshPublicPartnershipSignal();
             if (selected.type === 'tarokkCount') game = { ...game, announcedTarokkCounts: { ...(game.announcedTarokkCounts ?? {}), [HUMAN]: selected.count } };
@@ -771,6 +785,7 @@ function runAiDeclarations() {
     const partnerIsKnownToSpeaker = Boolean(publicPartner) || id === game.partnerId;
     const ctx = {
         ...vis,
+        pairVolatAlreadyFixed: pairHasFixedVolatDeclaration(declarationWindow, id, game.takerId ?? '', game.partnerId ?? ''),
         isTaker: id === game.takerId,
         invited: round.auctionOutcome?.calledTarokk !== undefined,
         ...(round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk } : {}),
@@ -872,7 +887,7 @@ function runAiDeclarations() {
             if ((action.declaration === 'kingUltimo' || action.declaration === 'kingUhu') && !targetCardId)
                 action = actions.find(a => a.type === 'pass') ?? action;
             else
-                game = declareFigureInGame(game, action.declaration, id, game.completedTricks.length + 1, targetCardId);
+                game = declareFigureInGame(game, action.declaration, id, game.completedTricks.length + 1, targetCardId, ctx.pairVolatAlreadyFixed === true);
         }
         const beforeDeclarationWindow = declarationWindow;
         declarationWindow = applyDeclarationAction(declarationWindow, action, gp.hand);
@@ -1117,7 +1132,13 @@ function actionButtons() {
                 const actionText = a.type === 'pass' ? (humanDeclarationDraft.length ? 'Passz – bemondások rögzítése' : 'Passz') : a.type === 'tarokkCount' ? `${a.count} tarokk` : declarationLabel(a.declaration);
                 return [`<button class="action" data-decl="${i}">${actionText}</button>`];
             }).join('');
-            const draftHtml = humanDeclarationDraft.length ? `<div class="declaration-draft"><strong>Előkészített bemondások (még nem rögzítve)</strong><span>${humanDeclarationDraft.map(a => a.type === 'tarokkCount' ? `${a.count} tarokk` : `${declarationLabel(a.declaration)}${a.targetCardId ? ` · ${localizedTargetCardLabel(a.targetCardId)}` : ''}`).join(' · ')}</span><button id="clear-declaration-draft" type="button">Bemondások visszavonása</button></div>` : '';
+            const draftActionLabel = a => a.type === 'tarokkCount' ? `${a.count} tarokk`
+                : a.type === 'game-contra' ? (a.displayLabel || 'Kontra a játékra')
+                : a.type === 'declaration-contra' ? (a.displayLabel || 'Kontra a bemondásra')
+                : `${declarationLabel(a.declaration)}${a.targetCardId ? ` · ${localizedTargetCardLabel(a.targetCardId)}` : ''}`;
+            const draftHtml = humanDeclarationDraft.length ? `<div class="declaration-draft"><strong>Előkészített bemondások és kontrák (még nem rögzítve)</strong><span>${humanDeclarationDraft.map(a => escapeHtml(draftActionLabel(a))).join(' · ')}</span><button id="clear-declaration-draft" type="button">Bemondások és kontrák visszavonása</button></div>` : '';
+            const draftGameContra = humanDeclarationDraft.some(a => a.type === 'game-contra');
+            const draftDeclarationContras = new Set(humanDeclarationDraft.filter(a => a.type === 'declaration-contra').map(a => String(a.declarationId)));
             const contraButtons = [];
             const forcedHumanRekontraTarget = singlePlayerTakerRekontraTarget(game, HUMAN);
             if (forcedHumanRekontraTarget === 'game') {
@@ -1125,13 +1146,13 @@ function actionButtons() {
             } else if (forcedHumanRekontraTarget) {
                 contraButtons.push(`<button class="action contra" data-contra="${forcedHumanRekontraTarget}">Rekontra bemondás</button>`);
             }
-            if (canRaiseGameContraInGame(game, HUMAN) && !forcedHumanRekontraTarget) {
+            if (canRaiseGameContraInGame(game, HUMAN) && !forcedHumanRekontraTarget && !draftGameContra) {
                 const next = game.gameContraState?.level === 'none' || !game.gameContraState ? 'Kontra' : { kontra: 'Rekontra', rekontra: 'Szubkontra', szubkontra: 'Mordkontra' }[game.gameContraState.level];
                 if (next)
                     contraButtons.push(`<button class="action contra" data-contra-game="1">${next} játék</button>`);
             }
             for (const d of game.declarations.declarations) {
-                if (!canRaiseDeclarationContraInGame(game, d.id, HUMAN))
+                if (draftDeclarationContras.has(String(d.id)) || !canRaiseDeclarationContraInGame(game, d.id, HUMAN))
                     continue;
                 const next = d.contra.level === 'none' ? 'Kontra' : { kontra: 'Rekontra', rekontra: 'Szubkontra', szubkontra: 'Mordkontra' }[d.contra.level];
                 if (next)
@@ -1213,7 +1234,7 @@ function render() {
         const label = canPlay ? `${cardName(c)} – szabályosan kijátszható` : canSkart ? `${cardName(c)} – fektetéshez választható` : `${cardName(c)} – jelenleg nem választható`;
         const suitClass = c.kind === 'suit' ? `suit-${c.suit}` : '';
         const face = cardImageSrc(c);
-        return `<button type="button" class="card card-illustrated ${c.kind === 'tarokk' ? 'tarokk' : suitClass} ${canPlay ? 'legal' : ''} ${canSkart ? 'skartable' : ''} ${selected ? 'selected' : ''} ${enabled ? 'active' : 'disabled'}" data-card="${c.id}" aria-label="${label}" title="${label}" ${enabled ? '' : 'aria-disabled="true" disabled'}><img class="card-face" src="${face}" alt="${cardName(c)}" loading="lazy" decoding="async" draggable="false"><span class="card-points" aria-hidden="true">${c.points}</span><strong class="card-a11y">${cardName(c)}</strong></button>`;
+        return `<button type="button" class="card card-illustrated ${c.kind === 'tarokk' ? 'tarokk' : suitClass} ${canPlay ? 'legal' : ''} ${canSkart ? 'skartable' : ''} ${selected ? 'selected' : ''} ${enabled ? 'active' : 'disabled'}" data-card="${c.id}" aria-label="${label}" title="${label}" ${enabled ? '' : 'aria-disabled="true" disabled'}><img class="card-face" src="${face}" alt="${cardName(c)}" loading="lazy" decoding="async" draggable="false"><strong class="card-a11y">${cardName(c)}</strong></button>`;
     };
     const suitGroups = [
         { key: 'tarokk', label: 'Tarokkok', cards: hand.filter(c => c.kind === 'tarokk') },
@@ -1239,7 +1260,7 @@ function render() {
     const declarationHistory = game?.declarations.declarations.slice(-8) ?? [];
     const declarationHtml = declarationHistory.length ? declarationHistory.map(d => `<li>${playerName(d.ownerId)}: ${declarationLabel(d.type)}${d.status === 'fulfilled' ? ' ✓' : d.status === 'failed' ? ' ✗' : ''}</li>`).join('') : '<li class="muted">Még nincs bemondás.</li>';
     const auctionLog = round.eventLog.slice(-100).reverse().map((x, i) => `<li><span class="event-index">${i + 1}.</span> ${x}</li>`).join('');
-    const settlementLines = game?.settlement?.lines?.length ? game.settlement.lines.map(line => `${declarationLabel(line.type ?? 'game')}${line.silent ? ' (csendes)' : ''}: ${line.positiveForTakerPair ? '+' : '-'}${line.points}`).join(' · ') : '';
+    const settlementLines = game?.settlement?.lines?.length ? game.settlement.lines.map(line => `${declarationLabel(line.type ?? 'game')}${line.silent ? ' (csendes)' : ''}: ${line.positiveForTakerPair ? '+' : '-'}${line.points}${line.ownerId ? ` · bemondó: ${playerName(line.ownerId)} (${line.ownerSide === 'defence' ? 'ellenpár' : line.ownerSide === 'taker' ? 'felvevőpár' : 'oldal'})` : ''}`).join(' · ') : '';
     const silentFigureLines = game?.declarations?.silentFigures?.length ? game.declarations.silentFigures.map(f => `${declarationLabel(f.type)}${f.status === 'fulfilled' ? ' ✓' : ' ✗'}`).join(' · ') : '';
     const skartBreakdown = game?.finalPoints ? ` · skart: felvevőpár +${game.finalPoints.takerSkartPoints ?? 0}, ellenpár +${game.finalPoints.defenceSkartPoints ?? 0}` : '';
     const dealScoreHtml = game?.finalPoints ? `<br><small>Leosztás elszámolása: ${playerIds.map(id => `${playerName(id)} ${currentDealDeltas[id] > 0 ? '+' : ''}${currentDealDeltas[id] ?? 0}`).join(' · ')}</small>` : '';
@@ -1313,8 +1334,22 @@ function render() {
     document.querySelector('#restart')?.addEventListener('click', () => { humanDeclarationDraft = []; clearAiTimer(); round = null; game = null; match = null; paused = false; uiError = ''; lastAiReason = undefined; render(); });
     document.querySelectorAll('[data-bid]').forEach(b => b.addEventListener('click', () => { const acts = legalAuctionActions(round.auction, HUMAN, handsMap()); applyBid(acts[Number(b.dataset.bid)]); }));
     document.querySelectorAll('[data-call]').forEach(b => b.addEventListener('click', () => callPartner(Number(b.dataset.call))));
-    document.querySelectorAll('[data-contra-game]').forEach(b => b.addEventListener('click', () => { if (humanDeclarationDraft.length) { message = 'Előbb rögzítsd Passzszal vagy vond vissza a bemondási piszkozatot.'; render(); return; } humanContra('game'); }));
-    document.querySelectorAll('[data-contra]').forEach(b => b.addEventListener('click', () => { if (humanDeclarationDraft.length) { message = 'Előbb rögzítsd Passzszal vagy vond vissza a bemondási piszkozatot.'; render(); return; } humanContra(b.dataset.contra); }));
+    document.querySelectorAll('[data-contra-game]').forEach(b => b.addEventListener('click', () => {
+        if (!game || !canRaiseGameContraInGame(game, HUMAN) || humanDeclarationDraft.some(a => a.type === 'game-contra')) return;
+        const next = game.gameContraState?.level === 'none' || !game.gameContraState ? 'Kontra' : { kontra: 'Rekontra', rekontra: 'Szubkontra', szubkontra: 'Mordkontra' }[game.gameContraState.level];
+        humanDeclarationDraft = [...humanDeclarationDraft, { type: 'game-contra', displayLabel: `${next} a játékra` }];
+        message = 'A kontra piszkozatként lett kijelölve. Passz rögzíti, a visszavonás törli.';
+        render();
+    }));
+    document.querySelectorAll('[data-contra]').forEach(b => b.addEventListener('click', () => {
+        const targetId = String(b.dataset.contra);
+        if (!game || !canRaiseDeclarationContraInGame(game, targetId, HUMAN) || humanDeclarationDraft.some(a => a.type === 'declaration-contra' && String(a.declarationId) === targetId)) return;
+        const target = game.declarations.declarations.find(d => String(d.id) === targetId);
+        const next = target?.contra?.level === 'none' ? 'Kontra' : { kontra: 'Rekontra', rekontra: 'Szubkontra', szubkontra: 'Mordkontra' }[target?.contra?.level];
+        humanDeclarationDraft = [...humanDeclarationDraft, { type: 'declaration-contra', declarationId: targetId, displayLabel: `${next || 'Kontra'} a ${declarationLabel(target?.type)} bemondásra` }];
+        message = 'A kontra piszkozatként lett kijelölve. Passz rögzíti, a visszavonás törli.';
+        render();
+    }));
     document.querySelectorAll('[data-decl]').forEach(b => b.addEventListener('click', () => {
         if (!game || !round || !declarationWindow || currentDeclarer(declarationWindow) !== HUMAN) return;
         const chosenSet = humanDeclarationDraft.length ? previewHumanDeclarationDraft() : humanDeclarationActionSet();
@@ -1338,12 +1373,30 @@ function render() {
                 if (!game || game.phase !== 'declarations' || currentDeclarer(declarationWindow) !== HUMAN) throw new Error('A bemondási kör állapota megváltozott; próbáld újra.');
                 const hp = game.players.find(p => p.id === HUMAN);
                 if (!hp) throw new Error('A játékos keze nem található.');
+                if (draft.type === 'game-contra') {
+                    if (!canRaiseGameContraInGame(game, HUMAN)) throw new Error('A játékra tett kontra már nem szabályos.');
+                    game = raiseGameContraInGame(game, HUMAN);
+                    declarationWindow = markDeclarationTurnAction(declarationWindow, HUMAN, true, { target: 'game' });
+                    refreshPublicPartnershipSignal();
+                    committedLog.push(`Te: ${contraLabel(game.gameContraState?.level ?? 'kontra')} a játékra`);
+                    continue;
+                }
+                if (draft.type === 'declaration-contra') {
+                    if (!canRaiseDeclarationContraInGame(game, draft.declarationId, HUMAN)) throw new Error('A bemondásra tett kontra már nem szabályos.');
+                    const target = game.declarations.declarations.find(d => String(d.id) === String(draft.declarationId));
+                    game = raiseDeclarationContraInGame(game, draft.declarationId, HUMAN);
+                    declarationWindow = markDeclarationTurnAction(declarationWindow, HUMAN, true, { target: 'declaration', declarationId: draft.declarationId });
+                    refreshPublicPartnershipSignal();
+                    const level = game.declarations.declarations.find(d => String(d.id) === String(draft.declarationId))?.contra.level ?? 'kontra';
+                    committedLog.push(`Te: ${contraLabel(level)} a ${declarationLabel(target?.type)} bemondásra`);
+                    continue;
+                }
                 const acts = legalDeclarationActions(declarationWindow, HUMAN, hp.hand, humanDeclarationContext());
                 const action = acts.find(item => sameHumanDeclarationChoice(item, draft, hp.hand));
                 if (!action) throw new Error('A bemondások között szabálytalan vagy időközben érvénytelenné vált választás van.');
                 if (draft.type !== 'pass' && privateSideForPlayer(game, HUMAN) === 'defence' && !isRolePublicForPlayer(game, round, declarationWindow, HUMAN) && publicDefenderIds(game).size === 0) throw new Error('Bemondás előtt az ellenpárnak kontrával kell azonosítania magát; Passzhoz ez nem szükséges.');
                 if (draft.type !== 'pass' && singlePlayerTakerRekontraTarget(game, HUMAN)) throw new Error('Az ellenpár kontrája után bemondás csak rekontrával tehető; Passzhoz nem kell rekontra.');
-                if (action.type === 'declare') game = declareFigureInGame(game, action.declaration, HUMAN, game.completedTricks.length + 1, draft.targetCardId);
+                if (action.type === 'declare') game = declareFigureInGame(game, action.declaration, HUMAN, game.completedTricks.length + 1, draft.targetCardId, humanDeclarationContext().pairVolatAlreadyFixed === true);
                 const beforeDeclarationWindow = declarationWindow;
                 declarationWindow = applyDeclarationAction(declarationWindow, { ...action, ...(draft.targetCardId ? { targetCardId: draft.targetCardId } : {}) }, hp.hand);
                 refreshPublicPartnershipSignal();

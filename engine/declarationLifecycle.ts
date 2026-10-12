@@ -2,7 +2,7 @@ import { Card } from './cards.js';
 import { DeclarationType } from './declarations.js';
 import { LockedCard, LockedFigure, createLockedCards, nextLockedCard } from './locks.js';
 import { ContraState, initialContraState } from './contra.js';
-import { validateDeclarationCall } from './declarationRules.js';
+import { validateDeclarationCall, type DeclarationRuleContext } from './declarationRules.js';
 import { evaluateDeclaration, FigureTrick } from './figureEvaluator.js';
 
 export type DeclarationStatus = 'declared' | 'active' | 'failed' | 'fulfilled';
@@ -82,7 +82,8 @@ export function declareFigure(
   ownerId: string,
   trickNumber: number,
   explicitTargetCardId?: string,
-  pairId?: string
+  pairId?: string,
+  ruleContext: Pick<DeclarationRuleContext, 'pairVolatAlreadyFixed'> = {}
 ): DeclarationProgress {
   if (type === 'tarokk8' || type === 'tarokk9') {
     throw new Error('A 8/9 tarokk bemondás külön tarokkszám-akció; a 9 tarokkos játékos 8 tarokkot nem mondhat.');
@@ -94,6 +95,7 @@ export function declareFigure(
       .filter(d => d.declaredAtTrick === trickNumber && d.status !== 'failed' && (!pairId || d.pairId === pairId))
       .map(d => d.type),
     ...(pairId ? { pairId } : {}),
+    ...ruleContext,
     previousPairIds: progress.declarations
       .filter(d => d.pairId)
       .map(d => ({ type: d.type, pairId: d.pairId! }))

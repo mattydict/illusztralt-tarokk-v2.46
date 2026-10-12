@@ -25,12 +25,19 @@ test('figure declarations are offered even without the target cards', () => {
   assert.ok(types.includes('kingUltimo'));
 });
 
-test('volat blocks ordinary declarations after it', () => {
+test('Volát csak Passzal rögzítve tiltja a Négy királyt és Duplajátékot a saját párjának', () => {
   const hand = [...t(1), ...t(2), ...t(21)];
-  const types = availableDeclarations(hand, {isTaker:true, firstRound:false, previousDeclarations:['volat'], partnersKnown:true}).map(x=>x.type);
-  assert.ok(!types.includes('tuletroa'));
-  assert.ok(!types.includes('fourKings'));
-  assert.ok(types.includes('pagatUltimo'));
+  const openTurn = availableDeclarations(hand, { isTaker: true, firstRound: false, previousDeclarations: ['volat'], partnersKnown: true, pairVolatAlreadyFixed: false }).map(x => x.type);
+  assert.ok(!openTurn.includes('tuletroa'));
+  assert.ok(openTurn.includes('fourKings'));
+  assert.ok(openTurn.includes('doubleGame'));
+  const lockedPair = availableDeclarations(hand, { isTaker: true, firstRound: false, previousDeclarations: ['volat'], partnersKnown: true, pairVolatAlreadyFixed: true }).map(x => x.type);
+  assert.ok(!lockedPair.includes('fourKings'));
+  assert.ok(!lockedPair.includes('doubleGame'));
+  assert.ok(lockedPair.includes('pagatUltimo'));
+  const opponents = availableDeclarations(hand, { isTaker: false, firstRound: false, previousDeclarations: ['volat'], partnersKnown: true, pairVolatAlreadyFixed: false, speakerRolePubliclyKnown: true, multiplayerUnrestrictedDeclarations: true }).map(x => x.type);
+  assert.ok(opponents.includes('fourKings'));
+  assert.ok(opponents.includes('doubleGame'));
 });
 
 
@@ -169,20 +176,29 @@ test('Lyukas Centrum csak igazolt ollós záróhelyzettel nyílik meg', () => {
   assert.ok(withBridge.includes('centrum'));
 });
 
-test('availability keeps Double Game + Volát legal together, but closes Double Game after Volát', () => {
+test('availability keeps Double Game + Volát legal together and applies post-Pass restriction pair-locally', () => {
   const hand = [...t(1), ...t(2), ...t(21)];
   const before = availableDeclarations(hand, {
     isTaker: true, firstRound: false, previousDeclarations: ['doubleGame'], partnersKnown: false
   }).map(x => x.type);
   assert.ok(before.includes('volat'));
-
-  const after = availableDeclarations(hand, {
-    isTaker: true, firstRound: false, previousDeclarations: ['volat'], partnersKnown: false
+  const afterOpenTurn = availableDeclarations(hand, {
+    isTaker: true, firstRound: false, previousDeclarations: ['volat'], partnersKnown: false, pairVolatAlreadyFixed: false
   }).map(x => x.type);
-  assert.ok(!after.includes('doubleGame'));
-  assert.ok(!after.includes('tuletroa'));
-  assert.ok(!after.includes('fourKings'));
-  assert.ok(after.includes('pagatUltimo'));
+  assert.ok(afterOpenTurn.includes('doubleGame'));
+  assert.ok(afterOpenTurn.includes('fourKings'));
+  assert.ok(!afterOpenTurn.includes('tuletroa'));
+  const afterFixedPass = availableDeclarations(hand, {
+    isTaker: true, firstRound: false, previousDeclarations: ['volat'], partnersKnown: false, pairVolatAlreadyFixed: true
+  }).map(x => x.type);
+  assert.ok(!afterFixedPass.includes('doubleGame'));
+  assert.ok(!afterFixedPass.includes('fourKings'));
+  assert.ok(afterFixedPass.includes('pagatUltimo'));
+  const opponents = availableDeclarations(hand, {
+    isTaker: false, firstRound: false, previousDeclarations: ['volat'], partnersKnown: true, speakerRolePubliclyKnown: true, multiplayerUnrestrictedDeclarations: true
+  }).map(x => x.type);
+  assert.ok(opponents.includes('doubleGame'));
+  assert.ok(opponents.includes('fourKings'));
 });
 
 

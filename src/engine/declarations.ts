@@ -27,8 +27,18 @@ export interface DeclarationContext {
   speakerIsDefence?: boolean;
   /** Whether the speaker's side is publicly identifiable to the table. */
   speakerRolePubliclyKnown?: boolean;
+  /** Public contra signal that identifies the defence side. */
+  hasPublicDefenceSignal?: boolean;
+  /** True when the current declaration turn already contains a contra. */
+  turnHadContra?: boolean;
+  /** Whether the speaker is privately known to be the taker's partner. */
+  speakerIsPartner?: boolean;
   /** AI-only planning hint: lets the AI consider Four Kings, then identify itself with a contra first. */
   allowHiddenDefenceFourKings?: boolean;
+  /** Multiplayer: always offer Four Kings, XXI-fogás and Centrum; outcomes are settled from play. */
+  multiplayerUnrestrictedDeclarations?: boolean;
+  /** True only after Pass has fixed a Volát in this speaker's pair; then Four Kings and Double Game are unavailable to that pair. */
+  pairVolatAlreadyFixed?: boolean;
   /** True when this player is the invited/partner side rather than the taker. */
   isPartner?: boolean;
   /** If the taker explicitly called a tarokk, this is the called card. */
@@ -86,12 +96,14 @@ export function availableDeclarations(hand: Card[], context: DeclarationContext)
     else if (t >= 9) result.push({ type: 'tarokk9', required: false });
   }
 
-  if (!previous.has('volat')) {
-    result.push({ type: 'tuletroa', required: false });
-    const hiddenDefence = context.speakerIsDefence === true && context.speakerRolePubliclyKnown !== true && context.allowHiddenDefenceFourKings !== true;
-    if (!hiddenDefence) result.push({ type: 'fourKings', required: false });
-    result.push({ type: 'doubleGame', required: false });
-  }
+  // Trull retains its existing post-Volát restriction. Négy király and
+  // Duplajáték are pair-scoped: they stay available during the still-open
+  // speaking turn, and an opponent pair may announce them after Volát.
+  if (!previous.has('volat')) result.push({ type: 'tuletroa', required: false });
+  const multiplayerBypass = context.multiplayerUnrestrictedDeclarations === true;
+  const hiddenDefence = context.speakerIsDefence === true && context.speakerRolePubliclyKnown !== true && context.allowHiddenDefenceFourKings !== true;
+  if (!context.pairVolatAlreadyFixed) result.push({ type: 'doubleGame', required: false });
+  if (!context.pairVolatAlreadyFixed && (!hiddenDefence || multiplayerBypass)) result.push({ type: 'fourKings', required: false });
   result.push(
     { type: 'volat', required: false },
     { type: 'pagatUltimo', required: false },
@@ -114,7 +126,7 @@ export function availableDeclarations(hand: Card[], context: DeclarationContext)
   const strictXixCentrumCore = context.calledTarokk === 19
     ? (hasTarokk(hand, 22) && hasTarokk(hand, 21) && hasTarokk(hand, 20) && hasTarokk(hand, 18))
     : true;
-  if ((hasTrullContext || rareTakerCentrum) && lyukasAllowed && strictXixCentrumCore) result.push({ type: 'centrum', required: false });
+  if (multiplayerBypass || ((hasTrullContext || rareTakerCentrum) && lyukasAllowed && strictXixCentrumCore)) result.push({ type: 'centrum', required: false });
   if (hasTrullContext && !rareTakerCentrum && lyukasAllowed) {
     result.push({ type: 'kismadar', required: false }, { type: 'nagymadar', required: false });
   }

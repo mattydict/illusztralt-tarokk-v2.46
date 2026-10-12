@@ -19,13 +19,12 @@ describe('declaration restrictions', () => {
         });
         assert.equal(r.ok, false);
     });
-    it('blocks ordinary declarations after volát', () => {
-        for (const type of ['tuletroa', 'fourKings', 'doubleGame']) {
-            const r = validateDeclarationCall(type, {
-                previousDeclarations: ['volat'],
-                declarationsOnCurrentTrick: []
-            });
-            assert.equal(r.ok, false);
+    it('keeps Trull blocked after Volát but lets Four Kings and Double Game coexist until Pass fixes the pair declaration', () => {
+        assert.equal(validateDeclarationCall('tuletroa', { previousDeclarations: ['volat'], declarationsOnCurrentTrick: [] }).ok, false);
+        assert.equal(validateDeclarationCall('fourKings', { previousDeclarations: ['volat'], declarationsOnCurrentTrick: [] }).ok, true);
+        assert.equal(validateDeclarationCall('doubleGame', { previousDeclarations: ['volat'], declarationsOnCurrentTrick: [] }).ok, true);
+        for (const type of ['fourKings', 'doubleGame']) {
+            assert.equal(validateDeclarationCall(type, { previousDeclarations: ['volat'], declarationsOnCurrentTrick: [], pairVolatAlreadyFixed: true }).ok, false);
         }
     });
     it('blocks ultimo to uhu escalation', () => {
@@ -53,9 +52,7 @@ test('allows Double Game and Volát to coexist in either declaration order', () 
         declarationsOnCurrentTrick: []
     }).ok, true);
 });
-test('does not reopen Double Game after Volát', () => {
-    assert.equal(validateDeclarationCall('doubleGame', {
-        previousDeclarations: ['volat'],
-        declarationsOnCurrentTrick: []
-    }).ok, false);
+test('blocks Double Game after a Pass-fixed Volát by the same pair, not merely because any Volát exists', () => {
+    assert.equal(validateDeclarationCall('doubleGame', { previousDeclarations: ['volat'], declarationsOnCurrentTrick: [], pairVolatAlreadyFixed: true }).ok, false);
+    assert.equal(validateDeclarationCall('doubleGame', { previousDeclarations: ['volat'], declarationsOnCurrentTrick: [], pairVolatAlreadyFixed: false }).ok, true);
 });

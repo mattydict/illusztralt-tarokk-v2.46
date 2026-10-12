@@ -23,6 +23,22 @@ export interface DeclarationContext {
   pairDeclaredTypes?: DeclarationType[];
   /** Whether the player's partner has become unambiguous. */
   partnersKnown: boolean;
+  /** Speaker's own side, as inferred from their private information. */
+  speakerIsDefence?: boolean;
+  /** Whether the speaker's side is publicly identifiable to the table. */
+  speakerRolePubliclyKnown?: boolean;
+  /** Public contra signal that identifies the defence side. */
+  hasPublicDefenceSignal?: boolean;
+  /** True when the current declaration turn already contains a contra. */
+  turnHadContra?: boolean;
+  /** Whether the speaker is privately known to be the taker's partner. */
+  speakerIsPartner?: boolean;
+  /** AI-only planning hint: lets the AI consider Four Kings, then identify itself with a contra first. */
+  allowHiddenDefenceFourKings?: boolean;
+  /** Multiplayer: always offer Four Kings, XXI-fogás and Centrum; outcomes are settled from play. */
+  multiplayerUnrestrictedDeclarations?: boolean;
+  /** True only after Pass has fixed a Volát in this speaker's pair; then Four Kings and Double Game are unavailable to that pair. */
+  pairVolatAlreadyFixed?: boolean;
   /** True when this player is the invited/partner side rather than the taker. */
   isPartner?: boolean;
   /** If the taker explicitly called a tarokk, this is the called card. */
@@ -80,13 +96,14 @@ export function availableDeclarations(hand: Card[], context: DeclarationContext)
     else if (t >= 9) result.push({ type: 'tarokk9', required: false });
   }
 
-  if (!previous.has('volat')) {
-    result.push(
-      { type: 'tuletroa', required: false },
-      { type: 'fourKings', required: false },
-      { type: 'doubleGame', required: false },
-    );
-  }
+  // Trull retains its existing post-Volát restriction. Négy király and
+  // Duplajáték are pair-scoped: they stay available during the still-open
+  // speaking turn, and an opponent pair may announce them after Volát.
+  if (!previous.has('volat')) result.push({ type: 'tuletroa', required: false });
+  const multiplayerBypass = context.multiplayerUnrestrictedDeclarations === true;
+  const hiddenDefence = context.speakerIsDefence === true && context.speakerRolePubliclyKnown !== true && context.allowHiddenDefenceFourKings !== true;
+  if (!context.pairVolatAlreadyFixed) result.push({ type: 'doubleGame', required: false });
+  if (!context.pairVolatAlreadyFixed && (!hiddenDefence || multiplayerBypass)) result.push({ type: 'fourKings', required: false });
   result.push(
     { type: 'volat', required: false },
     { type: 'pagatUltimo', required: false },
@@ -103,11 +120,17 @@ export function availableDeclarations(hand: Card[], context: DeclarationContext)
   const hasTrullContext = context.trullDeclared === true || previous.has('tuletroa') || context.trullDeclared === undefined;
   const rareTakerCentrum = context.isTaker === true && context.trullOmittedByTaker === true;
   const lyukasAllowed = context.seatContext !== 'lyukasCentrum' || context.lastSeatHasXVIIAndUnboundHigherTarokk === true;
-  if ((hasTrullContext || rareTakerCentrum) && lyukasAllowed) result.push({ type: 'centrum', required: false });
+  // XIX partner-call + Centrum is the exceptional XX/XIX communication line.
+  // In this exact XIX-called configuration the speaker must hold the complete
+  // Skíz–XXI–XX–XVIII core; a generic XX + one big honour is not sufficient.
+  const strictXixCentrumCore = context.calledTarokk === 19
+    ? (hasTarokk(hand, 22) && hasTarokk(hand, 21) && hasTarokk(hand, 20) && hasTarokk(hand, 18))
+    : true;
+  if (multiplayerBypass || ((hasTrullContext || rareTakerCentrum) && lyukasAllowed && strictXixCentrumCore)) result.push({ type: 'centrum', required: false });
   if (hasTrullContext && !rareTakerCentrum && lyukasAllowed) {
     result.push({ type: 'kismadar', required: false }, { type: 'nagymadar', required: false });
   }
-  // XXI-fogás is detected from play; it is not a separately declarable figure.
+  result.push({ type: 'xxiFogas', required: false });
 
   // The declaration-history restrictions (e.g. Volát után tiltott emelések,
   // same-trick pair restrictions, Ultimo -> Uhu) remain in declarationRules.

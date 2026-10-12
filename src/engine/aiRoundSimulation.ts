@@ -8,7 +8,7 @@ import { chooseAIDeclaration, communicationBeliefs } from './aiDeclarations.js';
 import { chooseAIContra } from './aiContra.js';
 import { buildAIBeliefSnapshot } from './aiBeliefEngine.js';
 import { buildHandHypotheses } from './aiHandHypotheses.js';
-import { legalDeclarationActions, applyDeclarationAction, createDeclarationWindow, currentDeclarer, DeclarationWindowState } from './declarationWindow.js';
+import { legalDeclarationActions, applyDeclarationAction, createDeclarationWindow, currentDeclarer, pairHasFixedVolatDeclaration, DeclarationWindowState } from './declarationWindow.js';
 import { createRound, dealRound, distributeRoundTalon, skartRoundPlayer, announceSkartCount, roundToGameState, RoundState } from './round.js';
 import { GameState, startDeclarations, startPlay, declareFigureInGame, playCard, legalCardsForPlay, recordPartnerCall, raiseGameContraInGame, raiseDeclarationContraInGame } from './game.js';
 import { resolveCalledPartner } from './partnership.js';
@@ -196,7 +196,7 @@ export function simulateAICompleteDeal(playerIds: string[], firstBidder = 0, ran
         action = actions.find(a => a.type === 'pass') ?? action;
         fallbackReason = 'missing-king-target';
       } else {
-        game = declareFigureInGame(game, action.declaration, id, currentTrickNumber, targetCardId);
+        game = declareFigureInGame(game, action.declaration, id, currentTrickNumber, targetCardId, ctx.pairVolatAlreadyFixed === true);
       }
     }
     declarationWindow = applyDeclarationAction(declarationWindow, action, gp.hand);
@@ -269,6 +269,7 @@ function mapDeclarationDecision(actions: ReturnType<typeof legalDeclarationActio
 
 function declarationContext(game: GameState, round: RoundState, declarationWindow: DeclarationWindowState, id: string, hand: Card[]) {
   return {
+    pairVolatAlreadyFixed: pairHasFixedVolatDeclaration(declarationWindow, id, game.takerId ?? '', game.partnerId ?? ''),
     isTaker: id === game.takerId,
     invited: round.auctionOutcome?.calledTarokk !== undefined,
     ...(round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk as 18 | 19 | 20 } : {}),

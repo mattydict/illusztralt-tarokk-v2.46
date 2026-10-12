@@ -16,6 +16,29 @@ export function createDeclarationWindow(order, firstRound = true) {
 export function currentDeclarer(window) {
     return window.finished ? undefined : window.order[window.currentIndex];
 }
+
+/**
+ * Returns true only after a Pass has closed a speaking turn that contained a
+ * Volát declaration by the same partnership. A Volát in the still-open turn
+ * does not lock out Négy király or Duplajáték, and the opposing pair is never
+ * locked by it.
+ */
+export function pairHasFixedVolatDeclaration(window, playerId, takerId, partnerId) {
+    const sideOf = (id) => id === takerId || id === partnerId ? 'taker' : 'defence';
+    const targetSide = sideOf(playerId);
+    let openTurnRecords = [];
+    for (const record of window.records) {
+        if (record.type !== 'pass') {
+            openTurnRecords.push(record);
+            continue;
+        }
+        const currentTurnHadVolat = openTurnRecords.some(entry => entry.type === 'declare' && entry.playerId === record.playerId && entry.declaration === 'volat');
+        if (currentTurnHadVolat && sideOf(record.playerId) === targetSide)
+            return true;
+        openTurnRecords = [];
+    }
+    return false;
+}
 export function legalDeclarationActions(window, playerId, hand, context) {
     if (window.finished || currentDeclarer(window) !== playerId)
         return [];
@@ -25,14 +48,15 @@ export function legalDeclarationActions(window, playerId, hand, context) {
     // Before either pair is identified, a defender must first signal defence
     // with a contra. After one defender has spoken, the other defenders may
     // declare to that player; the taker's partner must recontra before declaring.
-    if (!roleKnown && context?.speakerIsDefence === true && context?.hasPublicDefenceSignal !== true)
-        return [{ type: 'pass', playerId }];
-    if (!roleKnown && context?.speakerIsPartner === true
-        && context?.hasPublicDefenceSignal === true && window.turnHadContra !== true) {
-        return [{ type: 'pass', playerId }];
-    }
+    const mustSignalFirst = (!roleKnown && context?.speakerIsDefence === true && context?.hasPublicDefenceSignal !== true)
+        || (!roleKnown && context?.speakerIsPartner === true && context?.hasPublicDefenceSignal === true && window.turnHadContra !== true);
     const announced = window.announcedTarokkCounts[playerId];
     const options = availableDeclarations(hand, { ...context, firstRound: window.roundNumber === 1, ...(announced !== undefined ? { announcedTarokkCount: announced } : {}) });
+    // An unidentified player must establish their side first: the three
+    // multiplayer-unrestricted figures are not available before the required
+    // contra/recontra has made the player's role public.
+    if (mustSignalFirst) return [{ type: 'pass', playerId }];
+    const visibleOptions = options;
     const countActions = [];
     const tarokks = hand.filter(c => c.kind === 'tarokk').length;
     if (window.pendingTarokkCountPlayerId === playerId) {
@@ -49,11 +73,11 @@ export function legalDeclarationActions(window, playerId, hand, context) {
 
     return [
         { type: 'pass', playerId },
-        ...countActions,
+        ...(mustSignalFirst ? [] : countActions),
         // Tarokk-count announcements have their own action type. Do not expose
         // tarokk8/tarokk9 as generic declaration buttons as well: that would create
         // a duplicate UI action and could bypass the exact-count rule.
-        ...options
+        ...visibleOptions
             .filter(o => o.type !== 'tarokk8' && o.type !== 'tarokk9')
             .map(o => ({ type: 'declare', playerId, declaration: o.type }))
     ];

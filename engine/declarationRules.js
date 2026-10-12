@@ -2,10 +2,11 @@
  * Competition-rule restrictions that can be decided from the declaration
  * history alone. Card/hand-dependent eligibility remains in declarations.ts.
  *
- * ITVB 7.2: after volát, Trull, four kings and double game may not be
- * declared. ITVB 7.3: an announced ultimo may not be raised to uhu.
- * ITVB 7.13: members of one pair may make only one figure declaration on the
- * same trick. ITVB 7.14: a pair may not repeat a figure already declared.
+ * Volát prevents Trull from being declared afterwards. Négy király and
+ * Duplajáték remain possible in the same open speaking turn, but are blocked
+ * for that pair once a Pass has fixed its Volát; the opposing pair is unaffected.
+ * ITVB 7.3: an announced ultimo may not be raised to uhu. A pair may not
+ * repeat a figure already declared.
  */
 export function validateDeclarationCall(type, context) {
     const previous = new Set(context.previousDeclarations);
@@ -18,8 +19,11 @@ export function validateDeclarationCall(type, context) {
         return { ok: false, reason: 'A pár ezt a figurát már bemondta.' };
     }
     const volat = context.volatAlreadyDeclared || previous.has('volat');
-    if (volat && ['tuletroa', 'fourKings', 'doubleGame'].includes(type)) {
-        return { ok: false, reason: 'Volát után ez a bemondás már nem tehető meg.' };
+    if (volat && type === 'tuletroa') {
+        return { ok: false, reason: 'Volát után Trull már nem mondható be.' };
+    }
+    if (context.pairVolatAlreadyFixed === true && ['fourKings', 'doubleGame'].includes(type)) {
+        return { ok: false, reason: 'A pár Volátja Passzal már rögzült; Négy király és Duplajáték már nem mondható be.' };
     }
     if (type === 'pagatUhu' && previous.has('pagatUltimo')) {
         return { ok: false, reason: 'A bemondott Pagát ultimó nem emelhető Uhu-ra.' };

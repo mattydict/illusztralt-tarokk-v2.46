@@ -109,7 +109,7 @@ test('az Uhu-ból keletkező csendes ulti automatikusan bekerül a settlement in
         silentFigures: [{ type: 'pagatUltimo', ownerId: 'A', trickNumber: 9, status: 'fulfilled', sourceDeclarationId: 'u1' }],
     };
     const figures = figureSettlementsFromProgress(progress, 'A');
-    assert.deepEqual(figures, [{ type: 'pagatUltimo', points: 5, ownerPairWon: true, silent: true, ownerIsTakerPair: true }]);
+    assert.deepEqual(figures, [{ type: 'pagatUltimo', ownerId: 'A', points: 5, ownerPairWon: true, silent: true, ownerIsTakerPair: true }]);
 });
 test('védőpár által bemondott dupla bukása a felvevő párnak jár', () => {
     const total = settlementComponents({
@@ -141,7 +141,7 @@ test('a XXI-fogás bemondva 60, csendben 30 pont', () => {
         silentFigures: [{ type: 'xxiFogas', ownerId: 'A', trickNumber: 4, status: 'fulfilled', sourceDeclarationId: 'silent:xxiFogas' }],
     };
     const figures = figureSettlementsFromProgress(progress, 'A');
-    assert.deepEqual(figures, [{ type: 'xxiFogas', points: 30, ownerPairWon: true, silent: true, ownerIsTakerPair: true }]);
+    assert.deepEqual(figures, [{ type: 'xxiFogas', ownerId: 'A', points: 30, ownerPairWon: true, silent: true, ownerIsTakerPair: true }]);
 });
 test('csendes Tulétroá és Négykirály 1-1 pontot ér', () => {
     assert.equal(silentFigureValue('tuletroa'), 1);

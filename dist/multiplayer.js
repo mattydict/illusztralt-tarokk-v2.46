@@ -1,4 +1,4 @@
-// v3.0.6 multiplayer: click-to-play, declaration drafts, public lobby rooms, and ephemeral room chat.
+// v3.0.8 multiplayer: click-to-play, declaration drafts, public lobby rooms, and ephemeral room chat.
 const app = document.querySelector('#app');
 const storageKey = 'illusztralt-tarokk-multiplayer-session-v2912';
 let session = null;
@@ -34,6 +34,7 @@ let chatMessages = [];
 let chatDraft = '';
 let declarationDraft = [];
 let declarationPreviewActions = null;
+let pendingContraDraft = null;
 let declarationPreviewPending = false;
 let declarationPreviewRequestId = 0;
 
@@ -114,7 +115,7 @@ async function joinRoom(roomId, displayName) {
     const result = await jsonFetch(`/lobby/rooms/${encodeURIComponent(roomId)}/join`, { method: 'POST', body: JSON.stringify({ displayName: name }) });
     session = { roomId: result.roomId, playerId: result.playerId, token: result.token };
     state = result.snapshot; lobby = result.status; chatMessages = []; chatDraft = '';
-    declarationDraft = []; declarationPreviewActions = null; declarationPreviewPending = false;
+    declarationDraft = []; declarationPreviewActions = null; pendingContraDraft = null; declarationPreviewPending = false;
     saveSession(); notice = 'Csatlakozva a szobához.'; render(); connectSocket();
   } catch (error) { notice = error instanceof Error ? error.message : 'A szobához csatlakozás sikertelen.'; render(); }
 }
@@ -193,7 +194,7 @@ function dealReviewMarkup(review) {
   const declarations = (review.declarations || []).map(item => `<li><strong>${esc(reviewPlayerName(review, item.ownerId))}</strong>: ${esc(labels[item.type] || item.type || 'Bemondás')} — ${esc(reviewStatus(item.status))}${item.contra && item.contra !== 'none' ? ` · ${esc(item.contra)}` : ''}${item.targetCardId ? ` · célkártya: ${esc(item.targetCardId)}` : ''}</li>`).join('') || '<li class="review-empty">Nem történt tárolt bemondás.</li>';
   const silentFigures = (review.silentFigures || []).map(item => `<li><strong>${esc(reviewPlayerName(review, item.ownerId))}</strong>: ${esc(labels[item.type] || item.type || 'Figura')} — ${esc(reviewStatus(item.status))}</li>`).join('') || '<li class="review-empty">Nincs rögzített csendes figura.</li>';
   const settlement = review.settlement;
-  const settlementHtml = settlement ? `<section><h2>Elszámolás</h2><p><strong>${settlement.result === 'taker' ? 'A felvevő pár nyert' : 'Az ellenpár nyert'}</strong> · felvevőpár: ${Number(settlement.takerPairPoints ?? settlement.takerPair ?? 0)} pont · ellenpár: ${Number(settlement.defencePairPoints ?? settlement.defencePair ?? 0)} pont</p>${(settlement.lines || []).length ? `<ul>${settlement.lines.map(line => `<li>${esc(labels[line.type] || line.type || 'Tétel')}: ${line.positiveForTakerPair ? '+' : '−'}${Number(line.points || 0)} pont · ${line.positiveForTakerPair ? 'felvevőpár' : 'ellenpár'}${line.silent ? ' · csendes' : ''}</li>`).join('')}</ul>` : ''}</section>` : '';
+  const settlementHtml = settlement ? `<section><h2>Elszámolás</h2><p><strong>${settlement.result === 'taker' ? 'A felvevő pár nyert' : 'Az ellenpár nyert'}</strong> · felvevőpár: ${Number(settlement.takerPairPoints ?? settlement.takerPair ?? 0)} pont · ellenpár: ${Number(settlement.defencePairPoints ?? settlement.defencePair ?? 0)} pont</p>${(settlement.lines || []).length ? `<ul>${settlement.lines.map(line => `<li>${esc(labels[line.type] || line.type || 'Tétel')}: ${line.positiveForTakerPair ? '+' : '−'}${Number(line.points || 0)} pont · elszámolva: ${line.positiveForTakerPair ? 'felvevőpár' : 'ellenpár'}${line.ownerId ? ` · bemondó: ${esc(playerName(line.ownerId))} (${line.ownerSide === 'defence' ? 'ellenpár' : line.ownerSide === 'taker' ? 'felvevőpár' : 'oldal'})` : ''}${line.silent ? ' · csendes' : ''}</li>`).join('')}</ul>` : ''}</section>` : '';
   return `<dialog id="deal-review-dialog" class="deal-review-dialog" aria-label="Parti visszanézése">
     <div class="deal-review-shell"><header class="deal-review-header"><div><h2>Parti visszanézése · #${Number(review.dealNumber || 0)}</h2><p>${esc(contract)}${review.takerId ? ` · Felvevő: ${esc(reviewPlayerName(review, review.takerId))}` : ''}${review.partnerId ? ` · Partner: ${esc(reviewPlayerName(review, review.partnerId))}` : ''}</p></div><button type="button" id="close-deal-review" aria-label="Bezárás">Bezárás ✕</button></header>
     <div class="deal-review-body"><section><h2>Szerepek</h2>${roles}</section>
@@ -207,7 +208,7 @@ function dealReviewMarkup(review) {
 function phaseLabel(p) { return ({auction:'Licit','skart':'Fektetés','skart-announcement':'Fektetés közlése','partner-call':'Bemondás',declarations:'Bemondás',play:'Lejátszás',scoring:'Elszámolás',complete:'Lezárva', 'match-complete':'Mérkőzés vége'})[p] ?? p; }
 function saveSession() { try { sessionStorage.setItem(storageKey, JSON.stringify(session)); } catch {} }
 function loadSession() { try { const raw = sessionStorage.getItem(storageKey); if(raw) session = JSON.parse(raw); } catch {} }
-function clearSession() { try { sessionStorage.removeItem(storageKey); } catch {} if(lobbyRefreshTimer){ clearInterval(lobbyRefreshTimer); lobbyRefreshTimer=null; } session = null; state = null; lobby = null; chatMessages = []; chatDraft = ''; declarationDraft = []; declarationPreviewActions = null; declarationPreviewPending = false; socketAuthFailed = false; disconnectSocket(false); render(); }
+function clearSession() { try { sessionStorage.removeItem(storageKey); } catch {} if(lobbyRefreshTimer){ clearInterval(lobbyRefreshTimer); lobbyRefreshTimer=null; } session = null; state = null; lobby = null; chatMessages = []; chatDraft = ''; declarationDraft = []; declarationPreviewActions = null; pendingContraDraft = null; declarationPreviewPending = false; socketAuthFailed = false; disconnectSocket(false); render(); }
 async function jsonFetch(path, options = {}) {
   const res = await fetch(`${apiBase}${path}`, { ...options, headers: {'content-type':'application/json', ...(options.headers || {})} });
   const body = await res.json().catch(() => ({}));
@@ -537,7 +538,7 @@ function render() {
     // simultaneous server state updates. The server remains authoritative.
     const nativeDisabled = state.phase === 'skart' ? '' : (active ? '' : 'disabled');
     const aria = active ? '' : ' aria-disabled="true"';
-    return `<button type="button" class="card card-illustrated ${suitClass} ${active?'active':'disabled'} ${selectable?'skartable':''} ${selected?'selected':''}" data-card="${esc(c.id)}"${nativeDisabled}${aria} aria-label="${esc(cardName(c))}" title="${esc(cardName(c))}"><img class="card-face" src="${esc(cardImageSrc(c))}" alt="${esc(cardName(c))}" loading="lazy" decoding="async" draggable="false"><span class="card-points" aria-hidden="true">${c.points}</span><strong class="card-a11y">${esc(cardName(c))}</strong></button>`;
+    return `<button type="button" class="card card-illustrated ${suitClass} ${active?'active':'disabled'} ${selectable?'skartable':''} ${selected?'selected':''}" data-card="${esc(c.id)}"${nativeDisabled}${aria} aria-label="${esc(cardName(c))}" title="${esc(cardName(c))}"><img class="card-face" src="${esc(cardImageSrc(c))}" alt="${esc(cardName(c))}" loading="lazy" decoding="async" draggable="false"><strong class="card-a11y">${esc(cardName(c))}</strong></button>`;
   };
   const groupOrder = ['hearts','diamonds','clubs','spades'];
   // Always display the full current hand. The server snapshot already removes
@@ -556,19 +557,29 @@ function render() {
   const auctionButtons = auctionActions.map((a,i) => `<button data-auction-index="${i}">${esc(auctionLabel(a, state.auction))}</button>`).join('');
   const partnerButtons = hints.partnerRanks?.map(r => `<button data-partner="${r}">${r}. tarokk${r===20 ? (myPlayer?.hand?.some(c => c.kind === 'tarokk' && Number(c.rank) === 20) ? ' (önhívás)' : '') : ''}</button>`).join('') || '';
   const displayedDeclarationActions = declarationDraft.length ? (declarationPreviewActions || []) : (hints.declarationActions || []);
+  const declarationDraftLabel = a => a.type === 'tarokkCount' ? `${a.count} tarokk`
+    : a.type === 'game-contra' ? (a.displayLabel || 'Kontra a játékra')
+    : a.type === 'declaration-contra' ? (a.displayLabel || 'Kontra a bemondásra')
+    : `${labels[a.declaration] || a.declaration}${a.targetCardId ? ` · ${localizedTargetCardLabel(a.targetCardId)}` : ''}`;
   const declButtons = displayedDeclarationActions.map((a,i) => `<button data-decl-index="${i}" ${declarationPreviewPending ? 'disabled' : ''}>${esc(a.type==='pass'?(declarationDraft.length ? 'Passz – rögzítés' : 'Passz'):a.type==='tarokkCount'?`${a.count} tarokk`:`${labels[a.declaration] || a.declaration}${a.targetCardId ? ` · ${localizedTargetCardLabel(a.targetCardId)}` : ''}`)}</button>`).join('');
-  const declarationDraftMarkup = declarationDraft.length ? `<div class="declaration-draft"><strong>Előkészített bemondások (még nem rögzítve)</strong><span>${declarationDraft.map(a => esc(a.type === 'tarokkCount' ? `${a.count} tarokk` : `${labels[a.declaration] || a.declaration}${a.targetCardId ? ` · ${localizedTargetCardLabel(a.targetCardId)}` : ''}`)).join(' · ')}</span><button type="button" id="clear-declaration-draft" ${declarationPreviewPending ? 'disabled' : ''}>Bemondások visszavonása</button>${declarationPreviewPending ? '<small>Szabályos következő lehetőségek ellenőrzése…</small>' : ''}</div>` : '';
+  const declarationDraftMarkup = declarationDraft.length ? `<div class="declaration-draft"><strong>Előkészített bemondások és kontrák (még nem rögzítve)</strong><span>${declarationDraft.map(a => esc(declarationDraftLabel(a))).join(' · ')}</span><button type="button" id="clear-declaration-draft" ${declarationPreviewPending ? 'disabled' : ''}>Bemondások és kontrák visszavonása</button>${declarationPreviewPending ? '<small>Szabályos következő lehetőségek ellenőrzése…</small>' : ''}</div>` : '';
+  const pendingContraMarkup = pendingContraDraft ? `<div class="declaration-draft contra-draft"><strong>Előkészített kontra (még nem rögzítve)</strong><span>${esc(pendingContraDraft.displayLabel)}</span><button type="button" id="commit-contra-draft">Kontra rögzítése</button><button type="button" id="clear-contra-draft">Kontra visszavonása</button></div>` : '';
   const selectedCount = selectedSkart.size;
   const skartButton = canSkart ? `<button id="submit-skart" class="primary" ${selectedCount === skartCount ? '' : 'disabled'}>Fektetés (${selectedCount}/${skartCount})</button>` : '';
   const ownSkartTarokkCount = (state.players?.find(p => p.id === session.playerId)?.ownSkart || []).filter(c => c.kind === 'tarokk').length;
   const skartAnnouncementButton = skartAnnouncementPhase && hints.skartNeedsAnnouncement === true && hints.types?.includes('skart-announce')
     ? `<button data-skart-announce>Bejelentem: ${ownSkartTarokkCount} tarokkot fektettem</button>` : '';
   const contra = [];
-  if(hints.gameContra?.level) contra.push(`<button data-contra-game>${esc(hints.gameContra.label || hints.gameContra.level)} a játékra</button>`);
-  (hints.declarationContraActions || []).forEach(item => {
-    const figure = labels[item.type] || item.type;
-    contra.push(`<button data-contra="${esc(item.id)}">${esc(item.label || 'Kontra')} a ${esc(figure)} bemondásra</button>`);
-  });
+  if (!pendingContraDraft) {
+    const draftGameContra = declarationDraft.some(a => a.type === 'game-contra');
+    const draftDeclarationContras = new Set(declarationDraft.filter(a => a.type === 'declaration-contra').map(a => String(a.declarationId)));
+    if(hints.gameContra?.level && !draftGameContra) contra.push(`<button data-contra-game ${declarationPreviewPending ? 'disabled' : ''}>${esc(hints.gameContra.label || hints.gameContra.level)} a játékra</button>`);
+    (hints.declarationContraActions || []).forEach(item => {
+      if (draftDeclarationContras.has(String(item.id))) return;
+      const figure = labels[item.type] || item.type;
+      contra.push(`<button data-contra="${esc(item.id)}" ${declarationPreviewPending ? 'disabled' : ''}>${esc(item.label || 'Kontra')} a ${esc(figure)} bemondásra</button>`);
+    });
+  }
   const status = connected ? '● Real-time kapcsolat aktív' : '○ Reconnecting…';
   const turnText = canSkart
     ? 'Fektetés: minden játékos párhuzamosan fektethet.'
@@ -592,8 +603,8 @@ function render() {
   const trickHtml = trickCards.length ? trickCards.map(x => playedCardHtml(x.player, x.card)).join('') : '<span class="muted">Nincs aktív ütés.</span>';
   const lastTrickHtml = lastCompleted ? lastCompleted.cards.map(x => playedCardHtml(x.player, x.card)).join('') : '<span class="muted">Még nincs lezárt ütés.</span>';
   const settlement = state.game?.settlement;
-  const settlementLines = settlement?.lines?.length ? settlement.lines.map(line => `${esc(settlementLineLabel(line, state.game?.declarations || []))}: ${line.positiveForTakerPair ? '+' : '-'}${line.points} · ${esc(settlementSide(line))}`).join(' · ') : '';
-  const resultBox = state.lastSettlement ? (() => { const r = state.lastSettlement; const lines = (r.lines || []).map(line => `${esc(settlementLineLabel(line, r.declarations || []))}: ${line.positiveForTakerPair ? '+' : '-'}${line.points} · ${esc(settlementSide(line))}`).join(' · '); const silent = (r.silentFigures || []).map(s => `${esc(labels[s.type] || s.type)} (${s.status === 'fulfilled' ? 'csendes · teljesült' : 'csendes'}) · ${esc(playerName(s.ownerId))}`).join(' · '); return `<div class="result"><strong>Előző leosztás elszámolása</strong> · ${r.result === 'taker' ? 'A felvevő pár nyert.' : 'Az ellenpár nyert.'} · felvevőpár ${r.takerPairPoints} – ellenpár ${r.defencePairPoints} · nettó ${r.netForTakerPair > 0 ? '+' : ''}${r.netForTakerPair}${r.gameContra && r.gameContra !== 'none' ? `<br><small>Parti-kontra: ${esc(r.gameContra)}</small>` : ''}${lines ? `<br><small>${lines}</small>` : ''}${silent ? `<br><small>Csendes figurák: ${silent}</small>` : ''}</div>`; })() : (state.phase === 'scoring' || state.phase === 'complete') ? '<div class="result">Az elszámolás elkészült.</div>' : '';
+  const settlementLines = settlement?.lines?.length ? settlement.lines.map(line => `${esc(settlementLineLabel(line, state.game?.declarations || []))}: ${line.positiveForTakerPair ? '+' : '-'}${line.points} · ${esc(settlementSide(line))}${line.ownerId ? ` · bemondó: ${esc(playerName(line.ownerId))} (${line.ownerSide === 'defence' ? 'ellenpár' : line.ownerSide === 'taker' ? 'felvevőpár' : 'oldal'})` : ''}`).join(' · ') : '';
+  const resultBox = state.lastSettlement ? (() => { const r = state.lastSettlement; const lines = (r.lines || []).map(line => `${esc(settlementLineLabel(line, r.declarations || []))}: ${line.positiveForTakerPair ? '+' : '-'}${line.points} · ${esc(settlementSide(line))}${line.ownerId ? ` · bemondó: ${esc(playerName(line.ownerId))} (${line.ownerSide === 'defence' ? 'ellenpár' : line.ownerSide === 'taker' ? 'felvevőpár' : 'oldal'})` : ''}`).join(' · '); const silent = (r.silentFigures || []).map(s => `${esc(labels[s.type] || s.type)} (${s.status === 'fulfilled' ? 'csendes · teljesült' : 'csendes'}) · ${esc(playerName(s.ownerId))}`).join(' · '); return `<div class="result"><strong>Előző leosztás elszámolása</strong> · ${r.result === 'taker' ? 'A felvevő pár nyert.' : 'Az ellenpár nyert.'} · felvevőpár ${r.takerPairPoints} – ellenpár ${r.defencePairPoints} · nettó ${r.netForTakerPair > 0 ? '+' : ''}${r.netForTakerPair}${r.gameContra && r.gameContra !== 'none' ? `<br><small>Parti-kontra: ${esc(r.gameContra)}</small>` : ''}${lines ? `<br><small>${lines}</small>` : ''}${silent ? `<br><small>Csendes figurák: ${silent}</small>` : ''}</div>`; })() : (state.phase === 'scoring' || state.phase === 'complete') ? '<div class="result">Az elszámolás elkészült.</div>' : '';
   const publicSkartInfo = state.players.filter(p => p.revealedSkart?.length).map(p => `<span class="public-skart"><strong>${esc(playerName(p.id))} fektetett tarokkjai:</strong><span class="inline-card-list">${p.revealedSkart.map(c => smallCardHtml(c)).join('')}</span></span>`).join('');
   const talonInfo = state.phase === 'skart' && talonCount > 0 ? `<div class="talon-info"><strong>Talont kaptál:</strong>${receivedTalon.length ? `<span class="inline-card-list talon-card-list">${receivedTalon.map(c => smallCardHtml(c)).join('')}</span>` : ''}<span class="muted">${talonCount} lap</span></div>` : '';
   // The table is rotated to the current viewer: self at the bottom, next player to the right.
@@ -656,7 +667,7 @@ function render() {
     <div class="status">${esc(notice)}</div>${resultBox ? `<section class="panel">${resultBox}</section>` : ''}
     <div class="game-columns"><main class="game-main">${rolePanel}${declarationFlowPanel}
     <section class="panel table-panel"><div class="trick-heading"><strong>${esc(currentTrickLabel)}</strong><span>${isMyTurn ? 'Te vagy soron' : `Soron: ${esc(playerName(current))}`}</span></div><div class="table-layout"><div class="table-seat-layer">${seatHtml}</div><div class="table-center"><div class="turn-badge">${isMyTurn ? '▶ TE VAGY SORON' : `Soron: ${esc(playerName(current))}`}</div><div class="trick">${trickHtml}</div>${revealActive ? `<div class="trick-reveal">Az előző ütés lapjai még 5 másodpercig láthatók.</div>` : ''}</div></div>${dealerNote}</section>
-    <section class="panel"><h2>Akciók</h2><div class="actions">${auctionButtons}${partnerButtons}${declButtons}${skartAnnouncementButton}${skartButton}${playButtons}${contra.join('') || (hints.types?.length ? '' : '<span class="muted">Most nem te cselekszel.</span>')}</div>${declarationDraftMarkup}</section>
+    <section class="panel"><h2>Akciók</h2><div class="actions">${auctionButtons}${partnerButtons}${declButtons}${skartAnnouncementButton}${skartButton}${playButtons}${contra.join('') || (hints.types?.length ? '' : '<span class="muted">Most nem te cselekszel.</span>')}</div>${declarationDraftMarkup}${pendingContraMarkup}</section>
     <section class="panel hand-panel"><h2>Saját kéz (${playerCards.length})</h2>${talonInfo}${canSkart ? `<div class="skart-active"><strong>Fektetés aktív</strong> · ${hints.skartCount} lapot kell kijelölnöd. A lapok megmaradnak a képernyőn, amíg a Fektetés gombra nem kattintasz.</div>` : ''}<div class="hand">${hand}</div></section>
     <section class="panel last-trick-panel"><h2>Legutóbbi lezárt ütés</h2><div class="trick">${lastTrickHtml}</div>${lastCompleted?.winner ? `<p class="muted">Ütést vitte: ${esc(lastCompleted.winner)}</p>` : ''}${publicSkartInfo ? `<div class="public-skart-wrap">${publicSkartInfo}</div>` : ''}</section>
     <section class="panel scoreboard-panel"><h2>Játék állása</h2><p class="muted">Lejátszott leosztások: ${Number(scoreboard.dealsPlayed || 0)}</p><div class="scoreboard-grid">${state.players.map((p, i) => `<div class="score-row"><strong>${esc(playerName(p.id))}</strong><span>${Number(scoreboard.scores?.[p.id] ?? 0)} pont</span></div>`).join('')}</div>${instantScoreHtml ? `<div class="score-history"><h3>Azonnal elszámolt tarokkszámok</h3>${instantScoreHtml}</div>` : ''}${(scoreboard.history || []).length ? `<div class="score-history"><h3>Leosztások</h3>${[...(scoreboard.history || [])].reverse().map(r => { const contract = labels[r.contract] || r.contract || '—'; const taker = lobby?.seats?.find(s => s.playerId === r.takerId)?.displayName || r.takerId || '—'; const delta = Number(r.netForTakerPair ?? 0); const deltaText = state.players.map(p => { const name = lobby?.seats?.find(s => s.playerId === p.id)?.displayName || p.id; const d = Number(r.byPlayer?.[p.id] ?? 0); return `${esc(name)} ${d > 0 ? '+' : ''}${d}`; }).join(' · '); return `<div class="history-row"><span>#${Number(r.dealNumber || 0)} · ${esc(contract)} · felvevő: ${esc(taker)}<br><small>${deltaText}</small></span><strong>${delta > 0 ? '+' : ''}${delta}</strong></div>`; }).join('')}</div>` : '<p class="muted">Még nincs lezárt leosztás.</p>'}</section>
@@ -714,13 +725,49 @@ function render() {
     if(selectedSkart.size === skartCount) sendAction({type:'skart', cardIds:[...selectedSkart]});
   });
   document.querySelectorAll('[data-action="play"]').forEach(btn => btn.addEventListener('click', () => sendAction({type:'play-card', cardId:btn.dataset.cardId})));
-  document.querySelector('[data-contra-game]')?.addEventListener('click', () => { if (declarationDraft.length) { notice = 'Előbb rögzítsd Passzszal vagy vond vissza a bemondási piszkozatot.'; render(); return; } sendAction({type:'game-contra'}); });
-  document.querySelectorAll('[data-contra]').forEach(btn => btn.addEventListener('click', () => { if (declarationDraft.length) { notice = 'Előbb rögzítsd Passzszal vagy vond vissza a bemondási piszkozatot.'; render(); return; } sendAction({type:'declaration-contra', declarationId:btn.dataset.contra}); }));
+  function previewDraftedActions() {
+    declarationPreviewActions = null; declarationPreviewPending = true;
+    const requestId = String(++declarationPreviewRequestId);
+    if (!socket || socket.readyState !== WebSocket.OPEN || !socketAuthenticated) { declarationPreviewPending = false; notice = 'Az előnézethez nincs aktív kapcsolat.'; render(); return; }
+    socket.send(JSON.stringify({ type: 'declaration-preview', requestId, actions: declarationDraft }));
+    notice = 'A bemondás/kontra piszkozatként előkészítve. Passz rögzíti; a visszavonás törli.';
+    render();
+  }
+  function stageOrPendContra(action, displayLabel) {
+    if (state.phase !== 'declarations') return;
+    if (isMyTurn) {
+      if (declarationDraft.length >= 20) { notice = 'Egy körben legfeljebb 20 előkészített akció tárolható.'; render(); return; }
+      const already = declarationDraft.some(a => a.type === action.type && (action.type === 'game-contra' || String(a.declarationId) === String(action.declarationId)));
+      if (already) return;
+      declarationDraft = [...declarationDraft, { ...action, displayLabel }];
+      previewDraftedActions();
+    } else {
+      pendingContraDraft = { ...action, displayLabel };
+      notice = 'A kontra még nincs rögzítve. Ellenőrizd, majd erősítsd meg vagy vond vissza.';
+      render();
+    }
+  }
+  document.querySelector('[data-contra-game]')?.addEventListener('click', () => {
+    if (!hints.gameContra?.level) return;
+    stageOrPendContra({ type: 'game-contra' }, `${hints.gameContra.label || hints.gameContra.level} a játékra`);
+  });
+  document.querySelectorAll('[data-contra]').forEach(btn => btn.addEventListener('click', () => {
+    const item = (hints.declarationContraActions || []).find(x => String(x.id) === String(btn.dataset.contra));
+    if (!item) return;
+    stageOrPendContra({ type: 'declaration-contra', declarationId: item.id }, `${item.label || 'Kontra'} a ${labels[item.type] || item.type} bemondásra`);
+  }));
+  document.querySelector('#commit-contra-draft')?.addEventListener('click', () => {
+    if (!pendingContraDraft) return;
+    const draft = pendingContraDraft; pendingContraDraft = null;
+    sendAction(draft.type === 'game-contra' ? { type: 'game-contra' } : { type: 'declaration-contra', declarationId: draft.declarationId });
+    render();
+  });
+  document.querySelector('#clear-contra-draft')?.addEventListener('click', () => { pendingContraDraft = null; notice = 'A kontra piszkozatát visszavontad.'; render(); });
 }
 async function renderLanding() {
   // The unauthenticated landing page must not read game-state variables.
   app.innerHTML = `
-    <div class="hero"><span class="badge">v3.0.6 multiplayer</span><h2>Online Illusztrált Tarokk</h2><p class="muted">Szobaalapú lobby, szerveroldali szabályellenőrzés és valós idejű játék.</p></div>
+    <div class="hero"><span class="badge">v3.0.8 multiplayer</span><h2>Online Illusztrált Tarokk</h2><p class="muted">Szobaalapú lobby, szerveroldali szabályellenőrzés és valós idejű játék.</p></div>
     <section class="panel forms"><div><h3>Új szoba</h3><label>Név<input id="createName" maxlength="28" placeholder="Játékos neve"></label><label>Játékosok száma<select id="playerCount"><option value="4" selected>4 fő</option><option value="5">5 fő · az osztó leosztásonként kimarad</option></select></label><label>Játék hossza<select id="matchRounds"><option value="1">1 kör · 4/5 leosztás</option><option value="2">2 kör · 8/10 leosztás</option><option value="4" selected>4 kör · 16/20 leosztás</option></select></label><button id="create">Szoba létrehozása</button></div><div><h3>Csatlakozás</h3><label>Szobakód<input id="roomCode" maxlength="6" placeholder="ABC123"></label><label>Név<input id="joinName" maxlength="28" placeholder="Játékos neve"></label><button id="join">Csatlakozás</button></div></section>
     <section class="panel public-room-panel"><div class="public-room-head"><h2>Nyitott szobák</h2><button type="button" id="refresh-public-rooms">Frissítés</button></div><p class="muted">Azok a szobák jelennek meg, amelyek még várakoznak, és van bennük szabad hely. A név megadása után szobakód nélkül is beléphetsz.</p><div id="public-room-list">${publicRoomsMarkup()}</div></section><p class="server">Szerver: ${esc(apiBase)}</p>${notice ? `<div class="status">${esc(notice)}</div>`:''}`;
   document.querySelector('#create')?.addEventListener('click', async () => {

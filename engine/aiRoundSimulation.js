@@ -8,7 +8,7 @@ import { chooseAIDeclaration, communicationBeliefs } from './aiDeclarations.js';
 import { chooseAIContra } from './aiContra.js';
 import { buildAIBeliefSnapshot } from './aiBeliefEngine.js';
 import { buildHandHypotheses } from './aiHandHypotheses.js';
-import { legalDeclarationActions, applyDeclarationAction, createDeclarationWindow, currentDeclarer } from './declarationWindow.js';
+import { legalDeclarationActions, applyDeclarationAction, createDeclarationWindow, currentDeclarer, pairHasFixedVolatDeclaration } from './declarationWindow.js';
 import { createRound, dealRound, distributeRoundTalon, skartRoundPlayer, announceSkartCount, roundToGameState } from './round.js';
 import { startDeclarations, startPlay, declareFigureInGame, playCard, legalCardsForPlay, recordPartnerCall, raiseGameContraInGame, raiseDeclarationContraInGame } from './game.js';
 import { resolveCalledPartner } from './partnership.js';
@@ -148,7 +148,7 @@ export function simulateAICompleteDeal(playerIds, firstBidder = 0, random = Math
                 fallbackReason = 'missing-king-target';
             }
             else {
-                game = declareFigureInGame(game, action.declaration, id, currentTrickNumber, targetCardId);
+                game = declareFigureInGame(game, action.declaration, id, currentTrickNumber, targetCardId, ctx.pairVolatAlreadyFixed === true);
             }
         }
         declarationWindow = applyDeclarationAction(declarationWindow, action, gp.hand);
@@ -225,6 +225,7 @@ function mapDeclarationDecision(actions, actionType) {
 }
 function declarationContext(game, round, declarationWindow, id, hand) {
     return {
+        pairVolatAlreadyFixed: pairHasFixedVolatDeclaration(declarationWindow, id, game.takerId ?? '', game.partnerId ?? ''),
         isTaker: id === game.takerId,
         invited: round.auctionOutcome?.calledTarokk !== undefined,
         ...(round.auctionOutcome?.calledTarokk !== undefined ? { invitedTarokk: round.auctionOutcome.calledTarokk } : {}),

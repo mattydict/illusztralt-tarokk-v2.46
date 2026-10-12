@@ -9,6 +9,8 @@ export interface DeclarationRuleContext {
   partnerKnown?: boolean;
   /** Trull is normally the communication context, but not a formal prerequisite. */
   trullDeclared?: boolean;
+  /** True only after Pass has fixed this pair's Volát declaration. */
+  pairVolatAlreadyFixed?: boolean;
   /** Stable pair identifier; required to enforce pair-level duplicate rules. */
   pairId?: string;
   previousPairIds?: Array<{ type: DeclarationType; pairId: string }>;
@@ -23,10 +25,10 @@ export interface DeclarationValidation {
  * Competition-rule restrictions that can be decided from the declaration
  * history alone. Card/hand-dependent eligibility remains in declarations.ts.
  *
- * ITVB 7.2: after volát, Trull, four kings and double game may not be
- * declared. ITVB 7.3: an announced ultimo may not be raised to uhu.
- * ITVB 7.13: members of one pair may make only one figure declaration on the
- * same trick. ITVB 7.14: a pair may not repeat a figure already declared.
+ * Trull remains unavailable after Volát. Four Kings and Double Game are
+ * restricted only after the declaring pair has fixed its Volát with Pass.
+ * ITVB 7.3: an announced ultimo may not be raised to uhu. A pair may not
+ * repeat a figure already declared.
  */
 export function validateDeclarationCall(
   type: DeclarationType,
@@ -38,17 +40,19 @@ export function validateDeclarationCall(
   // but it is not a formal prerequisite: a very strong taker can deliberately
   // omit Trull and start with XIX + Centrum to communicate to the partner.
 
-  if (context.pairId && context.declarationsOnCurrentTrick.length > 0) {
-    return { ok: false, reason: 'Egy pár ugyanarra az ütésre csak egy bemondást tehet.' };
-  }
+  // Several different figures may be announced in the same speaking turn.
+  // Repeating the same figure is still blocked by the pair history below.
 
   if (context.pairId && context.previousPairIds?.some(x => x.pairId === context.pairId && x.type === type)) {
     return { ok: false, reason: 'A pár ezt a figurát már bemondta.' };
   }
 
   const volat = context.volatAlreadyDeclared || previous.has('volat');
-  if (volat && ['tuletroa', 'fourKings', 'doubleGame'].includes(type)) {
-    return { ok: false, reason: 'Volát után ez a bemondás már nem tehető meg.' };
+  if (volat && type === 'tuletroa') {
+    return { ok: false, reason: 'Volát után Trull már nem mondható be.' };
+  }
+  if (context.pairVolatAlreadyFixed === true && ['fourKings', 'doubleGame'].includes(type)) {
+    return { ok: false, reason: 'A pár Volátja Passzal már rögzült; Négy király és Duplajáték már nem mondható be.' };
   }
 
   if (type === 'pagatUhu' && previous.has('pagatUltimo')) {

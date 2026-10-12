@@ -35,7 +35,7 @@ function targetFor(type, explicit) {
         return 'T2';
     return undefined;
 }
-export function declareFigure(progress, type, ownerId, trickNumber, explicitTargetCardId, pairId) {
+export function declareFigure(progress, type, ownerId, trickNumber, explicitTargetCardId, pairId, ruleContext = {}) {
     if (type === 'tarokk8' || type === 'tarokk9') {
         throw new Error('A 8/9 tarokk bemondás külön tarokkszám-akció; a 9 tarokkos játékos 8 tarokkot nem mondhat.');
     }
@@ -45,6 +45,7 @@ export function declareFigure(progress, type, ownerId, trickNumber, explicitTarg
             .filter(d => d.declaredAtTrick === trickNumber && d.status !== 'failed' && (!pairId || d.pairId === pairId))
             .map(d => d.type),
         ...(pairId ? { pairId } : {}),
+        ...ruleContext,
         previousPairIds: progress.declarations
             .filter(d => d.pairId)
             .map(d => ({ type: d.type, pairId: d.pairId }))

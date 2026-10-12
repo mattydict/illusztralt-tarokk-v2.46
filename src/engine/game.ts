@@ -167,14 +167,14 @@ export function recordPartnerCall(
   return { ...state, partnerId, calledTarokk };
 }
 
-export function declareFigureInGame(state: GameState, type: DeclarationType, ownerId: PlayerId, trickNumber: number, targetCardId?: string): GameState {
+export function declareFigureInGame(state: GameState, type: DeclarationType, ownerId: PlayerId, trickNumber: number, targetCardId?: string, pairVolatAlreadyFixed = false): GameState {
   if (state.phase !== 'declarations' && state.phase !== 'play') throw new Error('Ebben a játékszakaszban nem lehet bemondást tenni.');
   if (!state.takerId) throw new Error('A felvevő még nincs megadva.');
   if (state.calledTarokk === undefined) throw new Error('A partnerhívást előbb kötelező bemondani.');
   const partnerId = state.partnerId;
   const side = pairOf(ownerId, state.takerId, partnerId);
   const pairId = side === 'taker' ? `taker:${state.takerId}` : side === 'defence' ? `defence:${state.players.find(p => p.id !== state.takerId && p.id !== partnerId)?.id ?? 'defence'}` : undefined;
-  const declarations = declareFigureLifecycle(state.declarations, type, ownerId, trickNumber, targetCardId, pairId);
+  const declarations = declareFigureLifecycle(state.declarations, type, ownerId, trickNumber, targetCardId, pairId, { pairVolatAlreadyFixed });
   return { ...state, declarations, lockedCards: declarations.locks };
 }
 
